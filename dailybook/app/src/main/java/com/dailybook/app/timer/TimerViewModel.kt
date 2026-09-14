@@ -8,6 +8,7 @@ import com.dailybook.app.data.AppSettings
 import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.FocusRepository
 import com.dailybook.app.data.SettingsStore
+import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.notify.Notifier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -188,11 +189,13 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (countFocus) {
-            val title = if (finishedFocus) "专注完成 🍅" else "休息结束"
+            val lang = settingsStore.lang.value
+            val title = if (finishedFocus) AppStrings.focusDoneTitle(lang) else AppStrings.breakDoneTitle(lang)
             val text = if (finishedFocus) {
-                if (next == Phase.LONG_BREAK) "很棒！来一次长休息吧" else "喝口水，短暂休息一下"
+                if (next == Phase.LONG_BREAK) AppStrings.focusDoneLongBreak(lang)
+                else AppStrings.focusDoneShortBreak(lang)
             } else {
-                "回到专注，继续加油"
+                AppStrings.breakDoneBackToFocus(lang)
             }
             notifier.notifyPhaseFinished(title, text)
             if (snapshot.settings.vibrate) notifier.vibrate()

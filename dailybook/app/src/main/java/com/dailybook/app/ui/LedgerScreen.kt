@@ -59,6 +59,10 @@ import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
+import com.dailybook.app.i18n.LedgerStrings
+import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
@@ -80,6 +84,7 @@ fun LedgerScreen(
 ) {
     var sheetOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<TransactionEntity?>(null) }
+    val lang = LocalLang.current
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -92,7 +97,7 @@ fun LedgerScreen(
                     sheetOpen = true
                 },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("记一笔") }
+                text = { Text(LedgerStrings.addEntry(lang)) }
             )
         }
     ) { padding ->
@@ -102,7 +107,7 @@ fun LedgerScreen(
                 .padding(padding)
         ) {
             MonthSwitcher(
-                label = state.monthLabel,
+                label = AppStrings.yearMonth(lang, state.month.year, state.month.monthValue),
                 onPrev = vm::previousMonth,
                 onNext = vm::nextMonth,
                 onToday = vm::goToCurrentMonth,
@@ -130,7 +135,7 @@ fun LedgerScreen(
             SearchField(
                 value = state.ledgerQuery,
                 onValueChange = vm::setLedgerQuery,
-                placeholder = "搜索分类或备注",
+                placeholder = LedgerStrings.searchHint(lang),
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
 
@@ -146,7 +151,7 @@ fun LedgerScreen(
                     FilterChip(
                         selected = state.accountFilter == null,
                         onClick = { vm.setAccountFilter(null) },
-                        label = { Text("全部账户") }
+                        label = { Text(LedgerStrings.accountFilterAll(lang)) }
                     )
                     state.accounts.forEach { account ->
                         FilterChip(
@@ -173,14 +178,14 @@ fun LedgerScreen(
                             else -> "🧾"
                         },
                         title = when {
-                            state.isSearching -> "没有匹配的记录"
-                            filtered -> "${state.accountFilter} 这个月没有记录"
-                            else -> "这个月还没有记账"
+                            state.isSearching -> LedgerStrings.emptySearchTitle(lang)
+                            filtered -> LedgerStrings.emptyFilteredTitle(lang, state.accountFilter.orEmpty())
+                            else -> LedgerStrings.emptyMonthTitle(lang)
                         },
                         subtitle = when {
-                            state.isSearching -> "换个关键词试试"
-                            filtered -> "点上面的「全部账户」看全部流水"
-                            else -> "点右下角「记一笔」开始"
+                            state.isSearching -> LedgerStrings.emptySearchSubtitle(lang)
+                            filtered -> LedgerStrings.emptyFilteredSubtitle(lang)
+                            else -> LedgerStrings.emptyMonthSubtitle(lang)
                         }
                     )
                 }
@@ -237,9 +242,11 @@ private fun MonthSummaryCard(
     todayExpense: Long,
     count: Int
 ) {
+    val lang = LocalLang.current
+
     SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
         Text(
-            text = "本月结余",
+            text = LedgerStrings.balanceThisMonth(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -251,10 +258,10 @@ private fun MonthSummaryCard(
         )
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth()) {
-            StatBlock("支出", "¥${formatAmount(expense)}", expenseColor(), Modifier.weight(1f))
-            StatBlock("收入", "¥${formatAmount(income)}", incomeColor(), Modifier.weight(1f))
+            StatBlock(AppStrings.txExpense(lang), "¥${formatAmount(expense)}", expenseColor(), Modifier.weight(1f))
+            StatBlock(AppStrings.txIncome(lang), "¥${formatAmount(income)}", incomeColor(), Modifier.weight(1f))
             StatBlock(
-                "今日支出",
+                LedgerStrings.statTodayExpense(lang),
                 "¥${formatAmount(todayExpense)}",
                 MaterialTheme.colorScheme.onSurface,
                 Modifier.weight(1f)
@@ -263,7 +270,7 @@ private fun MonthSummaryCard(
         if (count > 0) {
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "本月共 $count 笔记录",
+                text = LedgerStrings.monthCount(lang, count),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -279,6 +286,7 @@ private fun BudgetCard(
     remaining: Long,
     overBudget: Boolean
 ) {
+    val lang = LocalLang.current
     val accent = if (overBudget) expenseColor() else MaterialTheme.colorScheme.primary
 
     SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
@@ -288,13 +296,13 @@ private fun BudgetCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "本月预算",
+                text = LedgerStrings.budgetThisMonth(lang),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = if (overBudget) "已超支 ¥${formatAmount(expense - budget)}"
-                else "剩余 ¥${formatAmount(remaining)}",
+                text = if (overBudget) LedgerStrings.overBudget(lang, formatAmount(expense - budget))
+                else LedgerStrings.budgetRemaining(lang, formatAmount(remaining)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = accent,
                 fontWeight = FontWeight.SemiBold
@@ -304,7 +312,7 @@ private fun BudgetCard(
         ThinProgressBar(ratio = ratio, color = accent)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "已用 ¥${formatAmount(expense)} / ¥${formatAmount(budget)}",
+            text = LedgerStrings.budgetUsed(lang, formatAmount(expense), formatAmount(budget)),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -313,6 +321,8 @@ private fun BudgetCard(
 
 @Composable
 private fun DayHeader(group: DayGroup) {
+    val lang = LocalLang.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -321,13 +331,13 @@ private fun DayHeader(group: DayGroup) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = formatDateHeader(group.date),
+            text = formatDateHeader(group.date, lang),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
         val parts = buildList {
-            if (group.expense > 0) add("支 ¥${formatAmount(group.expense)}")
-            if (group.income > 0) add("收 ¥${formatAmount(group.income)}")
+            if (group.expense > 0) add(LedgerStrings.statSpent(lang, formatAmount(group.expense)))
+            if (group.income > 0) add(LedgerStrings.statReceived(lang, formatAmount(group.income)))
         }
         Text(
             text = parts.joinToString("  "),
@@ -344,6 +354,7 @@ private fun TransactionRow(
     onDelete: () -> Unit
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
+    val lang = LocalLang.current
     val isExpense = tx.type == TxType.EXPENSE
     val amountColor = if (isExpense) expenseColor() else incomeColor()
 
@@ -373,7 +384,7 @@ private fun TransactionRow(
                 }
                 if (tx.dateMillis.toLocalDate() != LocalDate.now()) {
                     if (isNotEmpty()) append(" · ")
-                    append("${tx.dateMillis.toLocalDate().monthValue}月${tx.dateMillis.toLocalDate().dayOfMonth}日")
+                    append(AppStrings.monthDay(lang, tx.dateMillis.toLocalDate().monthValue, tx.dateMillis.toLocalDate().dayOfMonth))
                 }
             }
             if (subtitle.isNotEmpty()) {
@@ -392,7 +403,7 @@ private fun TransactionRow(
         IconButton(onClick = { confirmDelete = true }) {
             Icon(
                 imageVector = Icons.Filled.DeleteOutline,
-                contentDescription = "删除",
+                contentDescription = AppStrings.delete(lang),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -400,10 +411,9 @@ private fun TransactionRow(
 
     if (confirmDelete) {
         ConfirmDialog(
-            title = "删除这条记录？",
-            text = "${tx.category} ¥${formatAmount(tx.amountCents)}" +
-                if (tx.note.isBlank()) "" else "（${tx.note}）",
-            confirmText = "删除",
+            title = LedgerStrings.deleteTitle(lang),
+            text = LedgerStrings.deleteBody(lang, tx.category, formatAmount(tx.amountCents), tx.note),
+            confirmText = AppStrings.delete(lang),
             onConfirm = onDelete,
             onDismiss = { confirmDelete = false }
         )
@@ -454,6 +464,7 @@ private fun TransactionSheet(
     val cents = parseAmountToCents(amountText)
     val categories = Categories.forType(type)
     val today = LocalDate.now()
+    val lang = LocalLang.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -470,7 +481,7 @@ private fun TransactionSheet(
                 .padding(bottom = 24.dp)
         ) {
             Text(
-                text = if (editing == null) "记一笔" else "编辑记录",
+                text = if (editing == null) LedgerStrings.addEntry(lang) else LedgerStrings.editEntry(lang),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -486,7 +497,7 @@ private fun TransactionSheet(
                             val list = Categories.forType(t)
                             if (category !in list) category = list.first()
                         },
-                        label = { Text(t.label) }
+                        label = { Text(t.label(lang)) }
                     )
                 }
             }
@@ -502,7 +513,7 @@ private fun TransactionSheet(
                         amountText = input
                     }
                 },
-                label = { Text("金额") },
+                label = { Text(LedgerStrings.amountLabel(lang)) },
                 prefix = { Text("¥") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -510,7 +521,7 @@ private fun TransactionSheet(
             )
 
             Spacer(Modifier.height(16.dp))
-            FieldLabel("分类")
+            FieldLabel(LedgerStrings.categoryLabel(lang))
             Spacer(Modifier.height(8.dp))
             // 会换行，小屏 / 大字模式不会把分类挤到屏幕外
             ChipFlow {
@@ -524,23 +535,23 @@ private fun TransactionSheet(
             }
 
             Spacer(Modifier.height(16.dp))
-            FieldLabel("日期")
+            FieldLabel(LedgerStrings.dateLabel(lang))
             Spacer(Modifier.height(8.dp))
             ChipFlow {
                 FilterChip(
                     selected = selectedDate == today,
                     onClick = { selectedDate = today },
-                    label = { Text("今天") }
+                    label = { Text(AppStrings.today(lang)) }
                 )
                 FilterChip(
                     selected = selectedDate == today.minusDays(1),
                     onClick = { selectedDate = today.minusDays(1) },
-                    label = { Text("昨天") }
+                    label = { Text(AppStrings.yesterday(lang)) }
                 )
                 FilterChip(
                     selected = selectedDate == today.minusDays(2),
                     onClick = { selectedDate = today.minusDays(2) },
-                    label = { Text("前天") }
+                    label = { Text(AppStrings.dayBeforeYesterday(lang)) }
                 )
                 FilterChip(
                     selected = selectedDate != today &&
@@ -549,15 +560,15 @@ private fun TransactionSheet(
                     onClick = { showDatePicker = true },
                     label = {
                         Text(
-                            if (selectedDate == today) "选日期"
-                            else "${selectedDate.monthValue}月${selectedDate.dayOfMonth}日"
+                            if (selectedDate == today) LedgerStrings.pickDate(lang)
+                            else AppStrings.monthDay(lang, selectedDate.monthValue, selectedDate.dayOfMonth)
                         )
                     }
                 )
             }
 
             Spacer(Modifier.height(16.dp))
-            FieldLabel("账户")
+            FieldLabel(LedgerStrings.accountLabel(lang))
             Spacer(Modifier.height(8.dp))
             ChipFlow {
                 accountOptions.forEach { item ->
@@ -570,7 +581,7 @@ private fun TransactionSheet(
                 FilterChip(
                     selected = false,
                     onClick = { showCustomAccount = true },
-                    label = { Text("＋ 自定义") }
+                    label = { Text(LedgerStrings.customAccountChip(lang)) }
                 )
             }
 
@@ -578,7 +589,7 @@ private fun TransactionSheet(
             OutlinedTextField(
                 value = note,
                 onValueChange = { if (it.length <= 40) note = it },
-                label = { Text("备注（可选）") },
+                label = { Text(LedgerStrings.noteOptional(lang)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -597,9 +608,9 @@ private fun TransactionSheet(
             ) {
                 Text(
                     text = when {
-                        cents == null -> "请输入金额"
-                        editing == null -> "保存  ¥${formatAmount(cents)}"
-                        else -> "保存修改  ¥${formatAmount(cents)}"
+                        cents == null -> LedgerStrings.enterAmount(lang)
+                        editing == null -> LedgerStrings.saveAmount(lang, formatAmount(cents))
+                        else -> LedgerStrings.saveChangesAmount(lang, formatAmount(cents))
                     },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
@@ -612,20 +623,20 @@ private fun TransactionSheet(
         var text by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showCustomAccount = false },
-            title = { Text("自定义账户") },
+            title = { Text(LedgerStrings.customAccountTitle(lang)) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = text,
                         onValueChange = { if (it.length <= 10) text = it },
-                        label = { Text("账户名") },
-                        placeholder = { Text("例如：招商银行、饭卡") },
+                        label = { Text(LedgerStrings.accountNameLabel(lang)) },
+                        placeholder = { Text(LedgerStrings.accountNamePlaceholder(lang)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "账户名会跟着记录一起保存，可以随时按账户筛选和统计。",
+                        text = LedgerStrings.accountNameHint(lang),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -636,10 +647,10 @@ private fun TransactionSheet(
                     val name = text.trim()
                     if (name.isNotEmpty()) account = name
                     showCustomAccount = false
-                }) { Text("确定") }
+                }) { Text(AppStrings.confirm(lang)) }
             },
             dismissButton = {
-                TextButton(onClick = { showCustomAccount = false }) { Text("取消") }
+                TextButton(onClick = { showCustomAccount = false }) { Text(AppStrings.cancel(lang)) }
             }
         )
     }
@@ -659,10 +670,10 @@ private fun TransactionSheet(
                             .toLocalDate()
                     }
                     showDatePicker = false
-                }) { Text("确定") }
+                }) { Text(AppStrings.confirm(lang)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                TextButton(onClick = { showDatePicker = false }) { Text(AppStrings.cancel(lang)) }
             }
         ) {
             DatePicker(state = pickerState)

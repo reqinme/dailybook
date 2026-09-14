@@ -9,6 +9,7 @@ import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.util.toLocalDate
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
@@ -30,10 +31,67 @@ object TodoReminder {
 
     const val EXTRA_TODO_ID = "todo_id"
 
+    /** 用户点了通知上的「稍后提醒」，带着延迟时长 */
+    const val EXTRA_SNOOZE_DELAY = "snooze_delay"
+
+    /** 稍后提醒的闹钟真的到点了 */
+    const val EXTRA_SNOOZE_FIRE = "snooze_fire"
+
     private const val HOUR = 9
     private const val SOON_DELAY_MS = 15_000L
     private const val ACTION_REMIND = "com.dailybook.app.TODO_REMIND"
+    private const val ACTION_SNOOZE = "com.dailybook.app.TODO_SNOOZE"
+    private const val ACTION_SNOOZE_FIRE = "com.dailybook.app.TODO_SNOOZE_FIRE"
     private val ZONE: ZoneId = ZoneId.systemDefault()
+
+    /** 通知 id：Notifier 与「稍后提醒」都按同一个算法取，避免对不上而撤不掉通知 */
+    fun todoNotifyId(todoId: Long): Int = 2000 + (todoId % 100_000L).toInt()
+
+    /** 「明天早上」= 明天 9 点 */
+    fun millisUntilTomorrowMorning(now: LocalDateTime = LocalDateTime.now()): Long {
+        val target = now.toLocalDate().plusDays(1).atTime(HOUR, 0)
+            .atZone(ZONE).toInstant().toEpochMilli()
+        return (target - System.currentTimeMillis()).coerceAtLeast(60_000L)
+    }
+
+    /** 通知里「稍后提醒」按钮的 PendingIntent：立刻回到接收器，由它去排延迟闹钟 */
+    fun snoozeIntent(context: Context, todoId: Long, delayMillis: Long): PendingIntent {
+        val intent = Intent(context, TodoReminderReceiver::class.java).apply {
+            action = ACTION_SNOOZE
+            data = Uri.parse("dailybook://todo-snooze/$todoId/$delayMillis")
+            putExtra(EXTRA_TODO_ID, todoId)
+            putExtra(EXTRA_SNOOZE_DELAY, delayMillis)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    /**
+     * 排一个「稍后提醒」闹钟。
+     * data 里带上触发时刻，所以它和常 규排程的闹钟是两个不同的 PendingIntent，
+     * [sync] 重排时不会把它误撤掉。
+     */
+    fun scheduleSnooze(context: Context, todoId: Long, delayMillis: Long) {
+        val am = context.getSystemService(AlarmManager::class.java) ?: return
+        val at = System.currentTimeMillis() + delayMillis.coerceAtLeast(60_000L)
+        val intent = Intent(context, TodoReminderReceiver::class.java).apply {
+            action = ACTION_SNOOZE_FIRE
+            data = Uri.parse("dailybook://todo-snooze-fire/$todoId/$at")
+            putExtra(EXTRA_TODO_ID, todoId)
+            putExtra(EXTRA_SNOOZE_FIRE, true)
+        }
+        val pi = PendingIntent.getBroadcast(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+    }
 
     fun keyFor(id: Long, dueMillis: Long): String = "$id:$dueMillis"
 

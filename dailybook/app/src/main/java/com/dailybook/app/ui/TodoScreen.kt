@@ -34,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -54,8 +55,10 @@ import com.dailybook.app.MainViewModel
 import com.dailybook.app.TodoFilter
 import com.dailybook.app.UiState
 import com.dailybook.app.data.RepeatRule
-import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.TodoEntity
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.LocalLang
+import com.dailybook.app.i18n.TodoStrings
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.util.formatDueLabel
 import com.dailybook.app.util.isOverdue
@@ -76,6 +79,7 @@ fun TodoScreen(
     var editing by remember { mutableStateOf<TodoEntity?>(null) }
     var confirmClearDone by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val lang = LocalLang.current
 
     fun submit() {
         if (newTitle.isBlank()) return
@@ -96,20 +100,20 @@ fun TodoScreen(
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = "待办",
+                    text = AppStrings.tabTodo(lang),
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onBackground
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "待完成 ${state.pendingCount} 项 · 已完成 ${state.doneCount} 项",
+                    text = TodoStrings.counts(lang, state.pendingCount, state.doneCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (state.doneCount > 0) {
                 TextButton(onClick = { confirmClearDone = true }) {
-                    Text("清除已完成")
+                    Text(TodoStrings.clearDone(lang))
                 }
             }
         }
@@ -119,7 +123,7 @@ fun TodoScreen(
             OutlinedTextField(
                 value = newTitle,
                 onValueChange = { if (it.length <= 60) newTitle = it },
-                placeholder = { Text("添加待办…") },
+                placeholder = { Text(TodoStrings.addPlaceholder(lang)) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
@@ -131,13 +135,13 @@ fun TodoScreen(
                 enabled = newTitle.isNotBlank(),
                 modifier = Modifier.heightIn(min = 52.dp)
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "添加")
+                Icon(Icons.Filled.Add, contentDescription = TodoStrings.addTodo(lang))
             }
         }
 
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "点开任意一条待办，可以设置到期日、重复规则和提醒",
+            text = TodoStrings.hint(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -146,7 +150,7 @@ fun TodoScreen(
         SearchField(
             value = state.todoQuery,
             onValueChange = vm::setTodoQuery,
-            placeholder = "搜索待办"
+            placeholder = TodoStrings.searchPlaceholder(lang)
         )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -154,7 +158,7 @@ fun TodoScreen(
                 FilterChip(
                     selected = state.todoFilter == filter,
                     onClick = { vm.setTodoFilter(filter) },
-                    label = { Text(filter.label) }
+                    label = { Text(filter.label(lang)) }
                 )
             }
         }
@@ -165,12 +169,12 @@ fun TodoScreen(
                 EmptyHint(
                     emoji = "✅",
                     title = when {
-                        state.todoQuery.isNotBlank() -> "没有匹配的待办"
-                        state.todoFilter == TodoFilter.PENDING -> "没有未完成的待办，很棒！"
-                        state.todoFilter == TodoFilter.DONE -> "还没有完成任何待办"
-                        else -> "还没有待办，添加一条试试"
+                        state.todoQuery.isNotBlank() -> TodoStrings.emptyNoMatch(lang)
+                        state.todoFilter == TodoFilter.PENDING -> TodoStrings.emptyNoPending(lang)
+                        state.todoFilter == TodoFilter.DONE -> TodoStrings.emptyNoDone(lang)
+                        else -> TodoStrings.emptyNoTodos(lang)
                     },
-                    subtitle = if (state.todoQuery.isNotBlank()) "换个关键词试试" else null
+                    subtitle = if (state.todoQuery.isNotBlank()) TodoStrings.emptyTryAnotherKeyword(lang) else null
                 )
             }
         } else {
@@ -195,9 +199,9 @@ fun TodoScreen(
 
     if (confirmClearDone) {
         ConfirmDialog(
-            title = "清除 ${state.doneCount} 条已完成待办？",
-            text = "已完成的待办会被删除，且无法恢复。",
-            confirmText = "确定清除",
+            title = TodoStrings.confirmClearDoneTitle(lang, state.doneCount),
+            text = TodoStrings.confirmClearDoneText(lang),
+            confirmText = TodoStrings.confirmClearDoneAction(lang),
             onConfirm = { vm.clearCompletedTodos() },
             onDismiss = { confirmClearDone = false }
         )
@@ -233,6 +237,7 @@ private fun TodoRow(
         else MaterialTheme.colorScheme.surface,
         label = "todoContainer"
     )
+    val lang = LocalLang.current
 
     Row(
         modifier = Modifier
@@ -257,7 +262,7 @@ private fun TodoRow(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isFocusTarget) {
                         Text(
-                            text = "🎯 专注目标",
+                            text = TodoStrings.focusTarget(lang),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -266,7 +271,7 @@ private fun TodoRow(
                     todo.dueMillis?.let { due ->
                         val overdue = !todo.done && isOverdue(due)
                         Text(
-                            text = formatDueLabel(due),
+                            text = formatDueLabel(due, lang),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (overdue) expenseColor()
                             else MaterialTheme.colorScheme.onSurfaceVariant
@@ -275,7 +280,7 @@ private fun TodoRow(
                     if (todo.repeats) {
                         if (todo.dueMillis != null) Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "🔁 ${todo.repeat.label}",
+                            text = TodoStrings.repeatPrefix(lang, todo.repeat.label(lang)),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -287,7 +292,7 @@ private fun TodoRow(
         IconButton(onClick = onFocusTarget) {
             Icon(
                 imageVector = Icons.Filled.CenterFocusStrong,
-                contentDescription = if (isFocusTarget) "取消专注目标" else "设为专注目标",
+                contentDescription = if (isFocusTarget) TodoStrings.unsetFocusTarget(lang) else TodoStrings.setFocusTarget(lang),
                 tint = if (isFocusTarget) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -295,7 +300,7 @@ private fun TodoRow(
         IconButton(onClick = onStar) {
             Icon(
                 imageVector = if (todo.important) Icons.Filled.Star else Icons.Filled.StarBorder,
-                contentDescription = "重要",
+                contentDescription = TodoStrings.important(lang),
                 tint = if (todo.important) MaterialTheme.colorScheme.secondary
                 else MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -322,16 +327,17 @@ private fun EditTodoDialog(
         )
     }
     var showPicker by remember { mutableStateOf(false) }
+    val lang = LocalLang.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑待办") },
+        title = { Text(TodoStrings.editTitle(lang)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { if (it.length <= 60) title = it },
-                    label = { Text("内容") },
+                    label = { Text(TodoStrings.fieldContent(lang)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -341,7 +347,7 @@ private fun EditTodoDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("标记为重要", style = MaterialTheme.typography.bodyMedium)
+                    Text(TodoStrings.importantMarker(lang), style = MaterialTheme.typography.bodyMedium)
                     Switch(checked = important, onCheckedChange = { important = it })
                 }
                 Spacer(Modifier.height(4.dp))
@@ -350,43 +356,60 @@ private fun EditTodoDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("到期日", style = MaterialTheme.typography.bodyMedium)
+                    Text(TodoStrings.dueDateLabel(lang), style = MaterialTheme.typography.bodyMedium)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = dueDate?.let { "${it.monthValue}月${it.dayOfMonth}日" } ?: "未设置",
+                            text = dueDate?.let { AppStrings.monthDay(lang, it.monthValue, it.dayOfMonth) }
+                                ?: AppStrings.notSet(lang),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        TextButton(onClick = { showPicker = true }) { Text("选择") }
+                        TextButton(onClick = { showPicker = true }) { Text(AppStrings.select(lang)) }
                         if (dueDate != null) {
-                            TextButton(onClick = { dueDate = null }) { Text("清除") }
+                            TextButton(onClick = { dueDate = null }) { Text(AppStrings.clear(lang)) }
                         }
                     }
                 }
+                Spacer(Modifier.height(2.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // 逾期任务最常用的一步：直接推到明天，不用再翻日历
+                    OutlinedButton(onClick = { dueDate = LocalDate.now().plusDays(1) }) {
+                        Text(TodoStrings.postponeToTomorrow(lang))
+                    }
+                    val overdueDate = dueDate
+                    if (overdueDate != null && isOverdue(overdueDate.toDayMillis())) {
+                        Text(
+                            text = formatDueLabel(overdueDate.toDayMillis(), lang),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = expenseColor(),
+                            modifier = Modifier.align(Alignment.CenterVertically)
+                        )
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
-                Text("重复", style = MaterialTheme.typography.bodyMedium)
+                Text(TodoStrings.repeatLabel(lang), style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(4.dp))
                 ChipFlow {
                     RepeatRule.entries.forEach { rule ->
                         FilterChip(
                             selected = repeat == rule,
                             onClick = { repeat = rule },
-                            label = { Text(rule.label) }
+                            label = { Text(rule.label(lang)) }
                         )
                     }
                 }
                 if (repeat != RepeatRule.NONE) {
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "勾选完成后自动生成下一次" +
-                            if (dueDate == null) "（没有到期日时按今天起算）" else "（到期日顺延）",
+                        text = if (dueDate == null) TodoStrings.autoNextHintNoDue(lang)
+                        else TodoStrings.autoNextHintDue(lang),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "到期日当天上午 9 点会发通知提醒；没完成的逾期任务次日再提醒一次。",
+                    text = TodoStrings.reminderNotice(lang),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -399,14 +422,14 @@ private fun EditTodoDialog(
                         onSave(title.trim(), important, dueDate?.toDayMillis(), repeat)
                     }
                 }
-            ) { Text("保存") }
+            ) { Text(AppStrings.save(lang)) }
         },
         dismissButton = {
             Row {
                 TextButton(onClick = onDelete) {
-                    Text("删除", color = expenseColor())
+                    Text(AppStrings.delete(lang), color = expenseColor())
                 }
-                TextButton(onClick = onDismiss) { Text("取消") }
+                TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
             }
         }
     )
@@ -423,10 +446,10 @@ private fun EditTodoDialog(
                         Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
                     }
                     showPicker = false
-                }) { Text("确定") }
+                }) { Text(AppStrings.confirm(lang)) }
             },
             dismissButton = {
-                TextButton(onClick = { showPicker = false }) { Text("取消") }
+                TextButton(onClick = { showPicker = false }) { Text(AppStrings.cancel(lang)) }
             }
         ) {
             DatePicker(state = pickerState)

@@ -11,13 +11,18 @@ import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.SettingsStore
+import com.dailybook.app.data.SummaryMode
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
 import com.dailybook.app.notify.LedgerReminder
+import com.dailybook.app.notify.Notifier
+import com.dailybook.app.notify.SummaryReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.ui.theme.ThemeMode
-import com.dailybook.app.util.formatMonthLabel
+import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.toLocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,10 +36,16 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 
-enum class TodoFilter(val label: String) {
-    ALL("全部"),
-    PENDING("待完成"),
-    DONE("已完成")
+enum class TodoFilter {
+    ALL,
+    PENDING,
+    DONE;
+
+    fun label(lang: Lang): String = when (this) {
+        ALL -> AppStrings.filterAll(lang)
+        PENDING -> AppStrings.filterPending(lang)
+        DONE -> AppStrings.filterDone(lang)
+    }
 }
 
 /** 一天的分组（用于记账列表） */
@@ -85,6 +96,10 @@ data class DayBar(val day: Int, val cents: Long)
 @Immutable
 data class FocusDay(val date: LocalDate, val count: Int)
 
+/** 某个待办累计投入的专注时间 */
+@Immutable
+data class TodoFocus(val title: String, val minutes: Int, val count: Int)
+
 /** 月度收支（近 12 个月趋势图） */
 @Immutable
 data class MonthBar(val month: YearMonth, val expense: Long, val income: Long) {
@@ -122,13 +137,14 @@ data class FocusStats(
     val todaySessions: List<FocusSessionEntity> = emptyList(),
     /** 近 12 周热力图：外层是周（列），内层是周一到周日（行） */
     val heatWeeks: List<List<HeatCell>> = emptyList(),
-    val heatMaxMinutes: Int = 0
+    val heatMaxMinutes: Int = 0,
+    /** 按待办汇总的投入时间（只含有标题的那些记录），从多到少 */
+    val perTodo: List<TodoFocus> = emptyList()
 )
 
 @Immutable
 data class UiState(
     val month: YearMonth = YearMonth.now(),
-    val monthLabel: String = formatMonthLabel(YearMonth.now()),
     val monthGroups: List<DayGroup> = emptyList(),
     val monthExpense: Long = 0L,
     val monthIncome: Long = 0L,
@@ -277,14 +293,21 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { TodoReminder.sync(app, todos) }
             }
         }
-        // 每晚记账提醒：开关或时间一变就重排闹钟
+        // 每晚记账提醒 / 每日专注目标：开关、时间、目标一变就重排闹钟
         viewModelScope.launch {
             combine(
                 settings.ledgerReminderEnabled,
                 settings.ledgerReminderHour,
-                settings.ledgerReminderMinute
-            ) { _, _, _ -> Unit }.collect {
+                settings.ledgerReminderMinute,
+                settings.focusGoal
+            ) { _, _, _, _ -> Unit }.collect {
                 withContext(Dispatchers.IO) { LedgerReminder.sync(app) }
+            }
+        }
+        // 定期小结：模式一变就重排
+        viewModelScope.launch {
+            settings.summaryMode.collect {
+                withContext(Dispatchers.IO) { SummaryReminder.sync(app) }
             }
         }
     }
@@ -320,6 +343,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     ) {
         viewModelScope.launch {
             repo.addTransaction(amountCents, type, category, note, dateMillis, account)
+            // 记完一笔顺手看一眼预算，越过预警线就提醒一次
+            if (type == TxType.EXPENSE) withContext(Dispatchers.IO) { checkBudgetAlert() }
         }
     }
 
@@ -404,6 +429,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun setThemeMode(mode: ThemeMode) = settings.setThemeMode(mode)
 
+    /** 切换界面语言（简中 / 繁中 / 英 / 日） */
+    fun setLang(lang: Lang) = settings.setLang(lang)
+
     fun setDynamicColor(enabled: Boolean) = settings.setDynamicColor(enabled)
 
     fun setMonthlyBudget(cents: Long) = settings.setMonthlyBudget(cents)
@@ -420,22 +448,91 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun setLedgerReminderTime(hour: Int, minute: Int) =
         settings.setLedgerReminderTime(hour, minute)
 
+    /** 每日专注目标（0 = 不设） */
+    fun setFocusGoal(count: Int) = settings.setFocusGoal(count)
+
+    /** 定期小结：关 / 每周 / 每月 */
+    fun setSummaryMode(mode: SummaryMode) = settings.setSummaryMode(mode)
+
+    /** 预算预警开关 */
+    fun setBudgetAlert(enabled: Boolean) = settings.setBudgetAlert(enabled)
+
+    // ---- 预算预警 ----
+
+    /**
+     * 记完一笔后检查：月度预算用到 80%、超支，以及各分类预算超支，各提醒一次。
+     * 用「月份 + 阈值」做键，所以同一个月里不会反复打扰；换月后自动重新计。
+     */
+    private suspend fun checkBudgetAlert() {
+        if (!settings.budgetAlert.value) return
+        val month = YearMonth.now()
+        val lang = settings.lang.value
+        val monthKey = month.toString()
+
+        val expenses = repo.snapshot().transactions.filter {
+            it.type == TxType.EXPENSE && YearMonth.from(it.dateMillis.toLocalDate()) == month
+        }
+        val spent = expenses.sumOf { it.amountCents }
+
+        val budget = settings.monthlyBudgetCents.value
+        if (budget > 0L) {
+            when {
+                spent > budget -> warnBudgetOnce("$monthKey:over") {
+                    AppStrings.budgetOverTitle(lang) to
+                        AppStrings.budgetOverText(lang, formatAmount(spent - budget))
+                }
+
+                spent >= budget * 8 / 10 -> warnBudgetOnce("$monthKey:near") {
+                    AppStrings.budgetNearTitle(lang) to
+                        AppStrings.budgetNearText(lang, formatAmount(spent), formatAmount(budget))
+                }
+            }
+        }
+
+        settings.categoryBudgets.value.forEach { (category, catBudget) ->
+            if (catBudget <= 0L) return@forEach
+            val catSpent = expenses.filter { it.category == category }.sumOf { it.amountCents }
+            if (catSpent > catBudget) {
+                warnBudgetOnce("$monthKey:cat:$category") {
+                    AppStrings.notifOverBudgetTitle(lang) to
+                        AppStrings.notifOverBudgetOver(
+                            lang,
+                            category,
+                            formatAmount(catSpent - catBudget)
+                        )
+                }
+            }
+        }
+    }
+
+    private fun warnBudgetOnce(key: String, build: () -> Pair<String, String>) {
+        if (settings.isBudgetWarned(key)) return
+        settings.markBudgetWarned(key)
+        val (title, text) = build()
+        Notifier(app).notifyBudgetAlert(key, title, text)
+    }
+
     // ---- 备份 / 恢复 / 导出 ----
 
     /** 导出全部数据为 JSON 备份文件（换机、重装前先存一份） */
     fun exportBackup(uri: Uri) = runFileTask {
         val snapshot = repo.snapshot()
         Backup.writeText(app, uri, Backup.toJson(snapshot, settings.monthlyBudgetCents.value))
-        "已导出 ${snapshot.transactions.size} 笔记账、${snapshot.todos.size} 条待办、" +
-            "${snapshot.focusSessions.size} 条专注记录"
+        AppStrings.backupExported(
+            settings.lang.value,
+            snapshot.transactions.size,
+            snapshot.todos.size,
+            snapshot.focusSessions.size
+        )
     }
 
     /** 导出记账流水为 CSV（Excel 可直接打开） */
     fun exportLedgerCsv(uri: Uri) = runFileTask {
         val transactions = repo.snapshot().transactions
-        if (transactions.isEmpty()) throw IllegalStateException("还没有记账记录可导出")
-        Backup.writeText(app, uri, Backup.toCsv(transactions))
-        "已导出 ${transactions.size} 笔流水"
+        val lang = settings.lang.value
+        if (transactions.isEmpty()) throw IllegalStateException(AppStrings.nothingToExport(lang))
+        Backup.writeText(app, uri, Backup.toCsv(transactions, lang))
+        AppStrings.csvExported(lang, transactions.size)
     }
 
     /** 从备份文件恢复：会覆盖当前全部数据 */
@@ -443,8 +540,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val parsed = Backup.parse(Backup.readText(app, uri))
         repo.restore(parsed.snapshot)
         settings.setMonthlyBudget(parsed.budgetCents)
-        "已恢复 ${parsed.snapshot.transactions.size} 笔记账、${parsed.snapshot.todos.size} 条待办、" +
-            "${parsed.snapshot.focusSessions.size} 条专注记录"
+        AppStrings.backupRestored(
+            settings.lang.value,
+            parsed.snapshot.transactions.size,
+            parsed.snapshot.todos.size,
+            parsed.snapshot.focusSessions.size
+        )
     }
 
     /** 文件读写放到 IO 线程，结果统一以提示语回到界面 */
@@ -452,7 +553,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val result = runCatching { withContext(Dispatchers.IO) { block() } }
             _message.value = result.getOrElse {
-                "操作失败：${it.message ?: it.javaClass.simpleName}"
+                AppStrings.actionFailed(
+                    settings.lang.value,
+                    it.message ?: it.javaClass.simpleName
+                )
             }
         }
     }
@@ -625,6 +729,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
         val heatMaxMinutes = heatWeeks.flatten().maxOfOrNull { it.minutes }?.coerceAtLeast(0) ?: 0
 
+        // ---- 按待办汇总投入时间（从「专注目标」发起的那些记录）----
+        val perTodo = sessions
+            .filter { it.taskTitle.isNotBlank() }
+            .groupBy { it.taskTitle }
+            .map { (title, items) ->
+                TodoFocus(title, items.sumOf { it.minutes }, items.size)
+            }
+            .sortedByDescending { it.minutes }
+            .take(10)
+
         val focusStats = FocusStats(
             todayCount = todaySessions.size,
             todayMinutes = todaySessions.sumOf { it.minutes },
@@ -637,7 +751,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             recentDays = recentDays,
             todaySessions = todaySessions,
             heatWeeks = heatWeeks,
-            heatMaxMinutes = heatMaxMinutes
+            heatMaxMinutes = heatMaxMinutes,
+            perTodo = perTodo
         )
 
         // ---- 年度报表（近 12 个月趋势 + 当年汇总）----
@@ -675,7 +790,6 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
         return UiState(
             month = month,
-            monthLabel = formatMonthLabel(month),
             monthGroups = groups,
             monthExpense = monthExpense,
             monthIncome = monthIncome,

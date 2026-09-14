@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">日常本</string>
+    <string name="shortcut_add_tx_short">记一笔</string>
+    <string name="shortcut_add_tx_long">打开记账页，记一笔收支</string>
+    <string name="shortcut_add_todo_short">加待办</string>
+    <string name="shortcut_add_todo_long">打开待办页，新建一条</string>
+    <string name="shortcut_focus_short">开始专注</string>
+    <string name="shortcut_focus_long">打开番茄钟，开始一段专注</string>
+</resources>

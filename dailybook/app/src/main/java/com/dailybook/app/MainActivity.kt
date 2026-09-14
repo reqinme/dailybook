@@ -36,6 +36,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +51,9 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dailybook.app.data.SettingsStore
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.LedgerScreen
 import com.dailybook.app.ui.SettingsScreen
@@ -68,8 +72,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         consumeShortcut(intent)
+        val settings = SettingsStore.get(this)
         setContent {
-            DailyBookApp(initialTab = requestedTab, tabRequestSeq = requestSeq)
+            // 语言在这里统一提供，下面所有界面和组件都通过 LocalLang 读当前语言
+            val lang by settings.lang.collectAsStateWithLifecycle()
+            CompositionLocalProvider(LocalLang provides lang) {
+                DailyBookApp(initialTab = requestedTab, tabRequestSeq = requestSeq)
+            }
         }
     }
 
@@ -112,13 +121,15 @@ fun DailyBookApp(
     val themeMode by vm.settings.themeMode.collectAsStateWithLifecycle()
     val dynamicColor by vm.settings.dynamicColor.collectAsStateWithLifecycle()
 
-    val tabs = remember {
+    val lang = LocalLang.current
+
+    val tabs = remember(lang) {
         listOf(
-            Tab("记账", Icons.Filled.AccountBalanceWallet),
-            Tab("待办", Icons.Filled.Checklist),
-            Tab("专注", Icons.Filled.Timer),
-            Tab("统计", Icons.Filled.BarChart),
-            Tab("设置", Icons.Filled.Settings)
+            Tab(AppStrings.tabLedger(lang), Icons.Filled.AccountBalanceWallet),
+            Tab(AppStrings.tabTodo(lang), Icons.Filled.Checklist),
+            Tab(AppStrings.tabFocus(lang), Icons.Filled.Timer),
+            Tab(AppStrings.tabStats(lang), Icons.Filled.BarChart),
+            Tab(AppStrings.tabSettings(lang), Icons.Filled.Settings)
         )
     }
     var selectedTab by remember { mutableIntStateOf(initialTab) }

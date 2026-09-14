@@ -34,9 +34,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import com.dailybook.app.FocusStats
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.CommonStrings
+import com.dailybook.app.i18n.Lang
+import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.timer.Phase
 import com.dailybook.app.timer.TimerUiState
 import com.dailybook.app.timer.TimerViewModel
+
+/** 阶段名（专注 / 短休息 / 长休息） */
+private fun phaseName(lang: Lang, phase: Phase): String = when (phase) {
+    Phase.FOCUS -> AppStrings.phaseFocus(lang)
+    Phase.SHORT_BREAK -> AppStrings.phaseShortBreak(lang)
+    Phase.LONG_BREAK -> AppStrings.phaseLongBreak(lang)
+}
+
+/** 进行中的阶段名（专注中 / 短休息中 / 长休息中） */
+private fun runningPhaseName(lang: Lang, phase: Phase): String = when (phase) {
+    Phase.FOCUS -> CommonStrings.focusRunning(lang)
+    Phase.SHORT_BREAK -> CommonStrings.shortBreakRunning(lang)
+    Phase.LONG_BREAK -> CommonStrings.longBreakRunning(lang)
+}
 
 /** 专注（番茄钟）页 */
 @Composable
@@ -46,6 +64,7 @@ fun TimerScreen(
     vm: TimerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val lang = LocalLang.current
     val accent = when (state.phase) {
         Phase.FOCUS -> MaterialTheme.colorScheme.primary
         Phase.SHORT_BREAK -> MaterialTheme.colorScheme.secondary
@@ -73,7 +92,7 @@ fun TimerScreen(
                         selected = state.phase == phase,
                         onClick = { vm.selectPhase(phase) },
                         label = {
-                            Text("${phase.label} ${state.settings.durationMillisFor(phase) / 60_000}′")
+                            Text("${phaseName(lang, phase)} ${state.settings.durationMillisFor(phase) / 60_000}′")
                         }
                     )
                 }
@@ -86,7 +105,7 @@ fun TimerScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "🎯 当前目标：${state.focusTaskTitle}",
+                        text = CommonStrings.focusGoalLabel(lang, state.focusTaskTitle),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f)
@@ -94,7 +113,7 @@ fun TimerScreen(
                     IconButton(onClick = { vm.clearFocusTask() }) {
                         Icon(
                             Icons.Filled.Close,
-                            contentDescription = "取消专注目标",
+                            contentDescription = CommonStrings.clearFocusGoal(lang),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -106,8 +125,12 @@ fun TimerScreen(
             RingTimer(
                 progress = state.progress,
                 timeText = state.timeText,
-                phaseLabel = if (state.isRunning) state.phase.label + "中" else state.phase.label,
-                hint = "第 $cyclePosition / $longEvery 个番茄",
+                phaseLabel = if (state.isRunning) {
+                    runningPhaseName(lang, state.phase)
+                } else {
+                    phaseName(lang, state.phase)
+                },
+                hint = CommonStrings.pomodoroProgress(lang, cyclePosition, longEvery),
                 accent = accent,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.size(ringSize)
@@ -123,7 +146,7 @@ fun TimerScreen(
                     onClick = { vm.reset() },
                     modifier = Modifier.size(50.dp)
                 ) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "重置")
+                    Icon(Icons.Filled.Refresh, contentDescription = CommonStrings.reset(lang))
                 }
 
                 Button(
@@ -139,7 +162,7 @@ fun TimerScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        text = if (state.isRunning) "暂停" else "开始",
+                        text = if (state.isRunning) CommonStrings.pause(lang) else CommonStrings.start(lang),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -148,14 +171,16 @@ fun TimerScreen(
                     onClick = { vm.skip() },
                     modifier = Modifier.size(50.dp)
                 ) {
-                    Icon(Icons.Filled.SkipNext, contentDescription = "跳过")
+                    Icon(Icons.Filled.SkipNext, contentDescription = CommonStrings.skip(lang))
                 }
             }
 
             Spacer(Modifier.height(22.dp))
 
             Text(
-                text = "今日 ${stats.todayCount} 个专注 · ${stats.todayMinutes} 分钟 · 累计 ${stats.totalCount} 个",
+                text = CommonStrings.todayFocusSummary(
+                    lang, stats.todayCount, stats.todayMinutes, stats.totalCount
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -163,7 +188,11 @@ fun TimerScreen(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = if (state.settings.autoStartNext) "结束后自动开始下一阶段" else "结束后需手动开始下一阶段",
+                text = if (state.settings.autoStartNext) {
+                    CommonStrings.autoStartNext(lang)
+                } else {
+                    CommonStrings.manualStartNext(lang)
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

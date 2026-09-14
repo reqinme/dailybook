@@ -9,6 +9,7 @@ import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
+import com.dailybook.app.i18n.Lang
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.toLocalDate
 import org.json.JSONArray
@@ -166,15 +167,22 @@ object Backup {
      * 记账流水导出为 CSV。开头写入 UTF-8 BOM，Excel 双击打开中文才不会乱码；
      * 换行用 CRLF，同样是照顾 Excel。
      */
-    fun toCsv(transactions: List<TransactionEntity>): String {
+    fun toCsv(transactions: List<TransactionEntity>, lang: Lang = Lang.DEFAULT): String {
         val sb = StringBuilder()
         sb.append('\uFEFF')
-        sb.append("日期,类型,分类,账户,金额,备注\r\n")
+        sb.append(
+            when (lang) {
+                Lang.ZH_CN -> "日期,类型,分类,账户,金额,备注"
+                Lang.ZH_TW -> "日期,類型,分類,帳戶,金額,備註"
+                Lang.EN -> "Date,Type,Category,Account,Amount,Note"
+                Lang.JA -> "日付,種別,カテゴリ,口座,金額,メモ"
+            }
+        ).append("\r\n")
         transactions
             .sortedWith(compareBy({ it.dateMillis }, { it.id }))
             .forEach { tx ->
                 sb.append(csvCell(tx.dateMillis.toLocalDate().toString())).append(',')
-                sb.append(csvCell(tx.type.label)).append(',')
+                sb.append(csvCell(tx.type.label(lang))).append(',')
                 sb.append(csvCell(tx.category)).append(',')
                 sb.append(csvCell(tx.account)).append(',')
                 sb.append(csvCell(formatAmount(tx.amountCents))).append(',')

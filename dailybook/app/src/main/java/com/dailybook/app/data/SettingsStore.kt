@@ -1,11 +1,26 @@
 package com.dailybook.app.data
 
 import android.content.Context
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
 import com.dailybook.app.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
+
+/** 定期汇总的通知频率 */
+enum class SummaryMode {
+    OFF,
+    WEEKLY,
+    MONTHLY;
+
+    fun label(lang: Lang): String = when (this) {
+        OFF -> AppStrings.summaryOff(lang)
+        WEEKLY -> AppStrings.summaryWeekly(lang)
+        MONTHLY -> AppStrings.summaryMonthly(lang)
+    }
+}
 
 /**
  * 轻量设置存储（SharedPreferences），全局单例。
@@ -15,7 +30,6 @@ import org.json.JSONObject
  * StateFlow，避免出现「A 改了设置在 B 那边读不到」的问题。
  */
 class SettingsStore private constructor(context: Context) {
-
     private val prefs =
         context.getSharedPreferences("dailybook_settings", Context.MODE_PRIVATE)
 
@@ -24,6 +38,10 @@ class SettingsStore private constructor(context: Context) {
             .getOrDefault(ThemeMode.SYSTEM)
     )
     val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
+    /** 界面语言（App 内切换，不跟随系统） */
+    private val _lang = MutableStateFlow(Lang.of(prefs.getString(KEY_LANG, null)))
+    val lang: StateFlow<Lang> = _lang.asStateFlow()
 
     private val _dynamicColor = MutableStateFlow(prefs.getBoolean(KEY_DYNAMIC, false))
     val dynamicColor: StateFlow<Boolean> = _dynamicColor.asStateFlow()
@@ -46,6 +64,21 @@ class SettingsStore private constructor(context: Context) {
     private val _ledgerReminderMinute = MutableStateFlow(prefs.getInt(KEY_LEDGER_REMIND_MINUTE, 0))
     val ledgerReminderMinute: StateFlow<Int> = _ledgerReminderMinute.asStateFlow()
 
+    /** 每日专注目标（个），0 表示不设目标 */
+    private val _focusGoal = MutableStateFlow(prefs.getInt(KEY_FOCUS_GOAL, 0))
+    val focusGoal: StateFlow<Int> = _focusGoal.asStateFlow()
+
+    /** 定期汇总：关 / 每周 / 每月 */
+    private val _summaryMode = MutableStateFlow(
+        runCatching { SummaryMode.valueOf(prefs.getString(KEY_SUMMARY, null) ?: SummaryMode.OFF.name) }
+            .getOrDefault(SummaryMode.OFF)
+    )
+    val summaryMode: StateFlow<SummaryMode> = _summaryMode.asStateFlow()
+
+    /** 预算预警：用到 80% 或超支时推一条通知 */
+    private val _budgetAlert = MutableStateFlow(prefs.getBoolean(KEY_BUDGET_ALERT, true))
+    val budgetAlert: StateFlow<Boolean> = _budgetAlert.asStateFlow()
+
     /** 当前选中的专注目标（某条待办） */
     private val _focusTaskId = MutableStateFlow(prefs.getLong(KEY_FOCUS_TASK_ID, NO_TASK))
     val focusTaskId: StateFlow<Long> = _focusTaskId.asStateFlow()
@@ -56,6 +89,11 @@ class SettingsStore private constructor(context: Context) {
     fun setThemeMode(mode: ThemeMode) {
         prefs.edit().putString(KEY_THEME, mode.name).apply()
         _themeMode.value = mode
+    }
+
+    fun setLang(lang: Lang) {
+        prefs.edit().putString(KEY_LANG, lang.tag).apply()
+        _lang.value = lang
     }
 
     fun setDynamicColor(enabled: Boolean) {
@@ -100,6 +138,32 @@ class SettingsStore private constructor(context: Context) {
         _ledgerReminderMinute.value = m
     }
 
+    fun setFocusGoal(count: Int) {
+        val safe = count.coerceIn(0, 20)
+        prefs.edit().putInt(KEY_FOCUS_GOAL, safe).apply()
+        _focusGoal.value = safe
+    }
+
+    fun setSummaryMode(mode: SummaryMode) {
+        prefs.edit().putString(KEY_SUMMARY, mode.name).apply()
+        _summaryMode.value = mode
+    }
+
+    fun setBudgetAlert(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_BUDGET_ALERT, enabled).apply()
+        _budgetAlert.value = enabled
+    }
+
+    /** 某个预警是否已经发过（按月 + 阈值去重，避免每记一笔都提醒） */
+    fun isBudgetWarned(key: String): Boolean = warnedKeys().contains(key)
+
+    fun markBudgetWarned(key: String) {
+        val next = warnedKeys().toMutableSet().apply { add(key) }
+        prefs.edit().putStringSet(KEY_BUDGET_WARNED, next).apply()
+    }
+
+    private fun warnedKeys(): Set<String> = prefs.getStringSet(KEY_BUDGET_WARNED, emptySet()).orEmpty()
+
     private fun loadCategoryBudgets(): Map<String, Long> {
         val raw = prefs.getString(KEY_CATEGORY_BUDGETS, null) ?: return emptyMap()
         return runCatching {
@@ -142,12 +206,17 @@ class SettingsStore private constructor(context: Context) {
         const val NO_TASK = -1L
 
         private const val KEY_THEME = "theme_mode"
+        private const val KEY_LANG = "ui_language"
         private const val KEY_DYNAMIC = "dynamic_color"
         private const val KEY_BUDGET = "monthly_budget_cents"
         private const val KEY_CATEGORY_BUDGETS = "category_budgets"
         private const val KEY_LEDGER_REMIND = "ledger_reminder_enabled"
         private const val KEY_LEDGER_REMIND_HOUR = "ledger_reminder_hour"
         private const val KEY_LEDGER_REMIND_MINUTE = "ledger_reminder_minute"
+        private const val KEY_FOCUS_GOAL = "focus_daily_goal"
+        private const val KEY_SUMMARY = "periodic_summary_mode"
+        private const val KEY_BUDGET_ALERT = "budget_alert_enabled"
+        private const val KEY_BUDGET_WARNED = "budget_warned_keys"
         private const val KEY_FOCUS_TASK_ID = "focus_task_id"
         private const val KEY_FOCUS_TASK_TITLE = "focus_task_title"
         private const val KEY_REMINDED = "reminded_keys"

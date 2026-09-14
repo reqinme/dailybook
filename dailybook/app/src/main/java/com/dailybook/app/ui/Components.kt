@@ -45,6 +45,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.CommonStrings
+import com.dailybook.app.i18n.LocalLang
 import kotlin.math.roundToInt
 
 // ============================================================
@@ -86,6 +89,7 @@ fun MonthSwitcher(
     onToday: () -> Unit,
     showToday: Boolean
 ) {
+    val lang = LocalLang.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -93,7 +97,7 @@ fun MonthSwitcher(
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onPrev) {
-            Icon(Icons.Filled.ChevronLeft, contentDescription = "上个月")
+            Icon(Icons.Filled.ChevronLeft, contentDescription = CommonStrings.prevMonth(lang))
         }
         Text(
             text = label,
@@ -103,10 +107,10 @@ fun MonthSwitcher(
             textAlign = TextAlign.Center
         )
         if (showToday) {
-            TextButton(onClick = onToday) { Text("回本月") }
+            TextButton(onClick = onToday) { Text(CommonStrings.backToThisMonth(lang)) }
         }
         IconButton(onClick = onNext) {
-            Icon(Icons.Filled.ChevronRight, contentDescription = "下个月")
+            Icon(Icons.Filled.ChevronRight, contentDescription = CommonStrings.nextMonth(lang))
         }
     }
 }
@@ -201,18 +205,20 @@ fun EmptyHint(
 fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
-    placeholder: String,
+    placeholder: String? = null,
     modifier: Modifier = Modifier
 ) {
+    val lang = LocalLang.current
+    val hint = placeholder ?: AppStrings.search(lang)
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = { Text(placeholder) },
+        placeholder = { Text(hint) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
         trailingIcon = {
             if (value.isNotEmpty()) {
                 IconButton(onClick = { onValueChange("") }) {
-                    Icon(Icons.Filled.Close, contentDescription = "清除搜索")
+                    Icon(Icons.Filled.Close, contentDescription = CommonStrings.clearSearch(lang))
                 }
             }
         },
@@ -301,10 +307,11 @@ fun ChipFlow(
 fun ConfirmDialog(
     title: String,
     text: String,
-    confirmText: String = "确定",
+    confirmText: String? = null,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val lang = LocalLang.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -313,10 +320,10 @@ fun ConfirmDialog(
             TextButton(onClick = {
                 onConfirm()
                 onDismiss()
-            }) { Text(confirmText) }
+            }) { Text(confirmText ?: AppStrings.confirm(lang)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
         }
     )
 }

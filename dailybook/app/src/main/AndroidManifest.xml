@@ -39,9 +39,14 @@
             android:name=".notify.TodoReminderReceiver"
             android:exported="false" />
 
-        <!-- 每晚记账提醒 -->
+        <!-- 每晚记账提醒 + 每日专注目标检查 -->
         <receiver
             android:name=".notify.LedgerReminderReceiver"
+            android:exported="false" />
+
+        <!-- 每周 / 每月小结 -->
+        <receiver
+            android:name=".notify.SummaryReceiver"
             android:exported="false" />
 
         <!-- 重启 / 覆盖安装后，系统会清掉闹钟，这里重新排一遍 -->

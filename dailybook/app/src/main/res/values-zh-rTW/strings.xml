@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">日常本</string>
+    <string name="shortcut_add_tx_short">記一筆</string>
+    <string name="shortcut_add_tx_long">開啟記帳頁，記一筆收支</string>
+    <string name="shortcut_add_todo_short">加待辦</string>
+    <string name="shortcut_add_todo_long">開啟待辦頁，新增一筆</string>
+    <string name="shortcut_focus_short">開始專注</string>
+    <string name="shortcut_focus_long">開啟番茄鐘，開始一段專注</string>
+</resources>

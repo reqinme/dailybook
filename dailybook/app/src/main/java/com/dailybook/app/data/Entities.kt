@@ -2,14 +2,21 @@ package com.dailybook.app.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
 import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
 import java.time.LocalDate
 
 /** 收支类型 */
-enum class TxType(val label: String) {
-    EXPENSE("支出"),
-    INCOME("收入")
+enum class TxType {
+    EXPENSE,
+    INCOME;
+
+    fun label(lang: Lang): String = when (this) {
+        EXPENSE -> AppStrings.txExpense(lang)
+        INCOME -> AppStrings.txIncome(lang)
+    }
 }
 
 /** 一条记账记录（金额以「分」为单位存储，避免浮点误差） */
@@ -49,11 +56,18 @@ object Accounts {
 }
 
 /** 待办的重复规则 */
-enum class RepeatRule(val label: String) {
-    NONE("不重复"),
-    DAILY("每天"),
-    WEEKLY("每周"),
-    MONTHLY("每月")
+enum class RepeatRule {
+    NONE,
+    DAILY,
+    WEEKLY,
+    MONTHLY;
+
+    fun label(lang: Lang): String = when (this) {
+        NONE -> AppStrings.repeatNone(lang)
+        DAILY -> AppStrings.repeatDaily(lang)
+        WEEKLY -> AppStrings.repeatWeekly(lang)
+        MONTHLY -> AppStrings.repeatMonthly(lang)
+    }
 }
 
 /** 一条待办 */

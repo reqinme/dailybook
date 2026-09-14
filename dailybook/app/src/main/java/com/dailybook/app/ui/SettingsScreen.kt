@@ -51,16 +51,40 @@ import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.backup.Backup
 import com.dailybook.app.data.Categories
+import com.dailybook.app.data.SummaryMode
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
+import com.dailybook.app.i18n.LocalLang
+import com.dailybook.app.i18n.SettingsStrings
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.parseAmountToCents
 
-private enum class ClearTarget(val label: String, val message: String) {
-    TRANSACTIONS("清除所有记账记录", "所有收支记录都会被删除，且无法恢复。"),
-    TODOS("清除所有待办", "所有待办事项都会被删除，且无法恢复。"),
-    FOCUS_STATS("清除专注记录", "专注次数、连续天数和时段明细都会被清零，且无法恢复。"),
-    EVERYTHING("清空全部数据", "记账记录、待办和专注记录都会被删除，且无法恢复。")
+/** 关于卡片里的版本号，「日常本 v1.4」里的 1.4 由它拼出来 */
+private const val APP_VERSION = "1.4"
+
+private enum class ClearTarget {
+    TRANSACTIONS,
+    TODOS,
+    FOCUS_STATS,
+    EVERYTHING
+}
+
+/** 清除项的按钮文案 */
+private fun ClearTarget.label(lang: Lang): String = when (this) {
+    ClearTarget.TRANSACTIONS -> SettingsStrings.clearAllRecords(lang)
+    ClearTarget.TODOS -> SettingsStrings.clearAllTodos(lang)
+    ClearTarget.FOCUS_STATS -> SettingsStrings.clearFocusStats(lang)
+    ClearTarget.EVERYTHING -> SettingsStrings.clearEverything(lang)
+}
+
+/** 清除项的二次确认说明 */
+private fun ClearTarget.message(lang: Lang): String = when (this) {
+    ClearTarget.TRANSACTIONS -> SettingsStrings.clearAllRecordsMessage(lang)
+    ClearTarget.TODOS -> SettingsStrings.clearAllTodosMessage(lang)
+    ClearTarget.FOCUS_STATS -> SettingsStrings.clearFocusStatsMessage(lang)
+    ClearTarget.EVERYTHING -> SettingsStrings.clearEverythingMessage(lang)
 }
 
 @Composable
@@ -70,11 +94,16 @@ fun SettingsScreen(
     timerVm: TimerViewModel,
     modifier: Modifier = Modifier
 ) {
+    val lang = LocalLang.current
     val themeMode by vm.settings.themeMode.collectAsStateWithLifecycle()
     val dynamicColor by vm.settings.dynamicColor.collectAsStateWithLifecycle()
+    val currentLang by vm.settings.lang.collectAsStateWithLifecycle()
     val ledgerReminder by vm.settings.ledgerReminderEnabled.collectAsStateWithLifecycle()
     val reminderHour by vm.settings.ledgerReminderHour.collectAsStateWithLifecycle()
     val reminderMinute by vm.settings.ledgerReminderMinute.collectAsStateWithLifecycle()
+    val summaryMode by vm.settings.summaryMode.collectAsStateWithLifecycle()
+    val budgetAlert by vm.settings.budgetAlert.collectAsStateWithLifecycle()
+    val focusGoal by vm.settings.focusGoal.collectAsStateWithLifecycle()
 
     var clearing by remember { mutableStateOf<ClearTarget?>(null) }
     var showBudgetDialog by remember { mutableStateOf(false) }
@@ -117,37 +146,57 @@ fun SettingsScreen(
     ) {
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "设置",
+            text = SettingsStrings.title(lang),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(16.dp))
 
-        SectionCard(title = "外观") {
-            FieldLabel("主题")
+        SectionCard(title = SettingsStrings.sectionAppearance(lang)) {
+            FieldLabel(SettingsStrings.theme(lang))
             Spacer(Modifier.height(8.dp))
             ChipFlow {
-                ThemeChip("跟随系统", ThemeMode.SYSTEM, themeMode) { vm.setThemeMode(it) }
-                ThemeChip("浅色", ThemeMode.LIGHT, themeMode) { vm.setThemeMode(it) }
-                ThemeChip("深色", ThemeMode.DARK, themeMode) { vm.setThemeMode(it) }
+                ThemeChip(SettingsStrings.themeSystem(lang), ThemeMode.SYSTEM, themeMode) { vm.setThemeMode(it) }
+                ThemeChip(SettingsStrings.themeLight(lang), ThemeMode.LIGHT, themeMode) { vm.setThemeMode(it) }
+                ThemeChip(SettingsStrings.themeDark(lang), ThemeMode.DARK, themeMode) { vm.setThemeMode(it) }
             }
             Spacer(Modifier.height(10.dp))
-            LabeledSwitch("动态取色（Android 12+）", dynamicColor) { vm.setDynamicColor(it) }
+            LabeledSwitch(SettingsStrings.dynamicColor(lang), dynamicColor) { vm.setDynamicColor(it) }
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "记账") {
+        SectionCard(title = AppStrings.language(lang)) {
+            ChipFlow {
+                Lang.entries.forEach { entry ->
+                    FilterChip(
+                        selected = currentLang == entry,
+                        onClick = { vm.setLang(entry) },
+                        // 语言名是原文名（Lang.label），属于数据，不翻译
+                        label = { Text(entry.label) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = AppStrings.languageHint(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = SettingsStrings.sectionLedger(lang)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("月度预算", style = MaterialTheme.typography.bodyMedium)
+                    Text(SettingsStrings.monthlyBudget(lang), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = if (state.hasBudget) "¥${formatAmount(state.budgetCents)}"
-                        else "未设置（不显示预算进度）",
+                        else SettingsStrings.budgetNotSet(lang),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -155,7 +204,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     budgetText = if (state.hasBudget) formatAmount(state.budgetCents) else ""
                     showBudgetDialog = true
-                }) { Text("设置") }
+                }) { Text(SettingsStrings.setMonthlyBudget(lang)) }
             }
 
             Spacer(Modifier.height(4.dp))
@@ -165,25 +214,25 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("分类预算", style = MaterialTheme.typography.bodyMedium)
+                    Text(SettingsStrings.categoryBudget(lang), style = MaterialTheme.typography.bodyMedium)
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = if (state.hasCategoryBudget) {
                             val over = state.categoryBudgets.count { it.over }
-                            "${state.categoryBudgets.size} 个分类已设置" +
-                                if (over > 0) " · $over 个超支" else ""
+                            SettingsStrings.categoryBudgetCount(lang, state.categoryBudgets.size) +
+                                if (over > 0) " · " + SettingsStrings.categoryBudgetOver(lang, over) else ""
                         } else {
-                            "给常超支的分类单独设上限"
+                            SettingsStrings.categoryBudgetHint(lang)
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                TextButton(onClick = { showCategoryBudget = true }) { Text("管理") }
+                TextButton(onClick = { showCategoryBudget = true }) { Text(AppStrings.manage(lang)) }
             }
 
             Spacer(Modifier.height(4.dp))
-            LabeledSwitch("每晚记账提醒", ledgerReminder) { vm.setLedgerReminder(it) }
+            LabeledSwitch(SettingsStrings.nightlyLedgerReminder(lang), ledgerReminder) { vm.setLedgerReminder(it) }
             if (ledgerReminder) {
                 Spacer(Modifier.height(4.dp))
                 Row(
@@ -191,35 +240,56 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("提醒时间", style = MaterialTheme.typography.bodyMedium)
+                    Text(SettingsStrings.reminderTime(lang), style = MaterialTheme.typography.bodyMedium)
                     TextButton(onClick = { showReminderTime = true }) {
                         Text("%02d:%02d".format(reminderHour, reminderMinute))
                     }
                 }
             }
+            Spacer(Modifier.height(4.dp))
+            LabeledSwitch(AppStrings.budgetAlert(lang), budgetAlert) { vm.setBudgetAlert(it) }
+
+            Spacer(Modifier.height(10.dp))
+            Text(AppStrings.summaryLabel(lang), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(6.dp))
+            ChipFlow {
+                SummaryMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = summaryMode == mode,
+                        onClick = { vm.setSummaryMode(mode) },
+                        label = { Text(mode.label(lang)) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = AppStrings.summaryHint(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "专注计时") {
+        SectionCard(title = SettingsStrings.sectionFocus(lang)) {
             LabeledSlider(
-                label = "专注时长",
+                label = SettingsStrings.focusDuration(lang),
                 value = focusSettings.focusMinutes,
                 range = 5..90,
-                valueText = "%d 分钟",
+                valueText = SettingsStrings.minutesTemplate(lang),
                 onChange = { timerVm.setFocusMinutes(it) }
             )
             LabeledSlider(
-                label = "短休息",
+                label = SettingsStrings.shortBreak(lang),
                 value = focusSettings.shortBreakMinutes,
                 range = 1..30,
-                valueText = "%d 分钟",
+                valueText = SettingsStrings.minutesTemplate(lang),
                 onChange = { timerVm.setShortBreakMinutes(it) }
             )
             LabeledSlider(
-                label = "长休息",
+                label = SettingsStrings.longBreak(lang),
                 value = focusSettings.longBreakMinutes,
                 range = 5..45,
-                valueText = "%d 分钟",
+                valueText = SettingsStrings.minutesTemplate(lang),
                 onChange = { timerVm.setLongBreakMinutes(it) }
             )
             Spacer(Modifier.height(6.dp))
@@ -228,7 +298,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("长休息间隔", style = MaterialTheme.typography.bodyMedium)
+                Text(SettingsStrings.longBreakEveryLabel(lang), style = MaterialTheme.typography.bodyMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilledTonalIconButton(
                         onClick = {
@@ -240,12 +310,12 @@ fun SettingsScreen(
                     ) {
                         Icon(
                             Icons.Filled.Remove,
-                            contentDescription = "减少",
+                            contentDescription = SettingsStrings.decrease(lang),
                             modifier = Modifier.size(18.dp)
                         )
                     }
                     Text(
-                        text = "每 ${focusSettings.longBreakEvery} 个",
+                        text = SettingsStrings.longBreakEveryValue(lang, focusSettings.longBreakEvery),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                         textAlign = TextAlign.Center,
@@ -261,61 +331,100 @@ fun SettingsScreen(
                     ) {
                         Icon(
                             Icons.Filled.Add,
-                            contentDescription = "增加",
+                            contentDescription = SettingsStrings.increase(lang),
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
             Spacer(Modifier.height(10.dp))
-            LabeledSwitch("阶段结束震动提醒", focusSettings.vibrate) { timerVm.setVibrate(it) }
-            LabeledSwitch("自动开始下一阶段", focusSettings.autoStartNext) { timerVm.setAutoStart(it) }
-            LabeledSwitch("计时中保持屏幕常亮", focusSettings.keepScreenOn) { timerVm.setKeepScreenOn(it) }
+            LabeledSwitch(SettingsStrings.vibrateOnPhaseEnd(lang), focusSettings.vibrate) { timerVm.setVibrate(it) }
+            LabeledSwitch(SettingsStrings.autoStartNext(lang), focusSettings.autoStartNext) { timerVm.setAutoStart(it) }
+            LabeledSwitch(SettingsStrings.keepScreenOn(lang), focusSettings.keepScreenOn) { timerVm.setKeepScreenOn(it) }
+
+            Spacer(Modifier.height(10.dp))
+            Text(AppStrings.focusGoalLabel(lang), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(6.dp))
+            ChipFlow {
+                listOf(0, 1, 2, 3, 4, 6, 8).forEach { count ->
+                    FilterChip(
+                        selected = focusGoal == count,
+                        onClick = { vm.setFocusGoal(count) },
+                        label = {
+                            Text(
+                                if (count == 0) AppStrings.focusGoalOff(lang)
+                                else AppStrings.focusGoalValue(lang, count)
+                            )
+                        }
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = if (focusGoal > 0) {
+                    AppStrings.focusGoalHint(lang)
+                } else {
+                    AppStrings.focusGoalOff(lang)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "数据") {
+        SectionCard(title = SettingsStrings.sectionData(lang)) {
             Text(
-                text = "本月 ${state.monthCount} 笔记录 · ${state.pendingCount + state.doneCount} 条待办 · " +
-                    "今日 ${state.focusStats.todayCount} 个专注",
+                text = SettingsStrings.ledgerSummary(
+                    lang,
+                    state.monthCount,
+                    state.pendingCount + state.doneCount,
+                    state.focusStats.todayCount
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
 
-            Text("备份与导出", style = MaterialTheme.typography.titleSmall)
+            Text(SettingsStrings.backupAndExport(lang), style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = { backupLauncher.launch(Backup.suggestName("日常本备份", "json")) },
+                    onClick = {
+                        backupLauncher.launch(
+                            Backup.suggestName(AppStrings.backupFileName(lang), "json")
+                        )
+                    },
                     modifier = Modifier.weight(1f)
-                ) { Text("导出备份") }
+                ) { Text(SettingsStrings.exportBackup(lang)) }
                 OutlinedButton(
                     onClick = { confirmImport = true },
                     modifier = Modifier.weight(1f)
-                ) { Text("恢复备份") }
+                ) { Text(SettingsStrings.restoreBackup(lang)) }
             }
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
-                onClick = { csvLauncher.launch(Backup.suggestName("日常本记账", "csv")) },
+                onClick = {
+                    csvLauncher.launch(
+                        Backup.suggestName(AppStrings.ledgerFileName(lang), "csv")
+                    )
+                },
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("导出记账 CSV（Excel 可打开）") }
+            ) { Text(SettingsStrings.exportCsv(lang)) }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "备份是一个 JSON 文件，装下全部记账、待办、专注记录和预算设置，" +
-                    "换手机或重装后可以整份恢复。文件存到你挑的位置，恢复时会覆盖当前数据。",
+                text = SettingsStrings.backupExplain1(lang) + SettingsStrings.backupExplain2(lang),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(Modifier.height(16.dp))
-            Text("清除数据", style = MaterialTheme.typography.titleSmall)
+            Text(SettingsStrings.clearData(lang), style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
             ClearTarget.entries.forEach { target ->
                 OutlinedButton(
                     onClick = { clearing = target },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text(target.label) }
+                ) { Text(target.label(lang)) }
                 Spacer(Modifier.height(8.dp))
             }
         }
@@ -323,14 +432,13 @@ fun SettingsScreen(
         Spacer(Modifier.height(14.dp))
         SectionCard {
             Text(
-                text = "日常本 v1.4",
+                text = SettingsStrings.aboutVersion(lang, APP_VERSION),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "记账 + 待办 + 专注计时，三合一。数据全部存在手机本地，不联网、不上传，" +
-                    "只有通知、震动和开机后排提醒需要系统权限。",
+                text = SettingsStrings.aboutText(lang),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -341,9 +449,9 @@ fun SettingsScreen(
 
     clearing?.let { target ->
         ConfirmDialog(
-            title = "确认${target.label}？",
-            text = target.message,
-            confirmText = "确定清除",
+            title = SettingsStrings.confirmClearTitle(lang, target.label(lang)),
+            text = target.message(lang),
+            confirmText = SettingsStrings.confirmClear(lang),
             onConfirm = {
                 when (target) {
                     ClearTarget.TRANSACTIONS -> vm.clearTransactions()
@@ -358,10 +466,9 @@ fun SettingsScreen(
 
     if (confirmImport) {
         ConfirmDialog(
-            title = "从备份文件恢复？",
-            text = "当前所有记账、待办和专注记录都会被备份文件里的内容替换，无法撤销。" +
-                "建议先点「导出备份」存一份现在的数据。",
-            confirmText = "选择备份文件",
+            title = SettingsStrings.restoreFromBackupTitle(lang),
+            text = SettingsStrings.restoreConfirmText(lang),
+            confirmText = SettingsStrings.pickBackupFile(lang),
             onConfirm = {
                 confirmImport = false
                 restoreLauncher.launch(arrayOf("application/json", "*/*"))
@@ -390,7 +497,7 @@ fun SettingsScreen(
     if (showBudgetDialog) {
         AlertDialog(
             onDismissRequest = { showBudgetDialog = false },
-            title = { Text("设置月度预算") },
+            title = { Text(SettingsStrings.setMonthlyBudget(lang)) },
             text = {
                 Column {
                     OutlinedTextField(
@@ -403,7 +510,7 @@ fun SettingsScreen(
                                 budgetText = input
                             }
                         },
-                        label = { Text("金额") },
+                        label = { Text(SettingsStrings.amount(lang)) },
                         prefix = { Text("¥") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -411,7 +518,7 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        text = "每月支出接近预算时，记账页会显示进度条；超支会标红。留空或填 0 表示不设置。",
+                        text = SettingsStrings.monthlyBudgetExplain(lang),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -421,15 +528,15 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     vm.setMonthlyBudget(parseAmountToCents(budgetText) ?: 0L)
                     showBudgetDialog = false
-                }) { Text("保存") }
+                }) { Text(AppStrings.save(lang)) }
             },
             dismissButton = {
                 Row {
                     TextButton(onClick = {
                         vm.setMonthlyBudget(0L)
                         showBudgetDialog = false
-                    }) { Text("清除") }
-                    TextButton(onClick = { showBudgetDialog = false }) { Text("取消") }
+                    }) { Text(AppStrings.clear(lang)) }
+                    TextButton(onClick = { showBudgetDialog = false }) { Text(AppStrings.cancel(lang)) }
                 }
             }
         )
@@ -457,6 +564,7 @@ private fun CategoryBudgetDialog(
     onSet: (String, Long) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val lang = LocalLang.current
     val texts = remember(budgets) {
         mutableStateMapOf<String, String>().apply {
             Categories.EXPENSE.forEach { category ->
@@ -467,11 +575,11 @@ private fun CategoryBudgetDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("分类预算") },
+        title = { Text(SettingsStrings.categoryBudget(lang)) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    text = "给常超支的分类单独设每月上限，留空表示不限。超支的分类会在统计页标红。",
+                    text = SettingsStrings.categoryBudgetExplain(lang),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -481,6 +589,7 @@ private fun CategoryBudgetDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 分类名是数据，不翻译
                         Text(
                             text = "${Categories.emojiOf(category)} $category",
                             style = MaterialTheme.typography.bodyMedium,
@@ -512,10 +621,10 @@ private fun CategoryBudgetDialog(
                     onSet(category, parseAmountToCents(texts[category].orEmpty()) ?: 0L)
                 }
                 onDismiss()
-            }) { Text("保存") }
+            }) { Text(AppStrings.save(lang)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
         }
     )
 }
@@ -529,6 +638,7 @@ private fun ReminderTimeDialog(
     onConfirm: (Int, Int) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val lang = LocalLang.current
     val pickerState = rememberTimePickerState(
         initialHour = hour,
         initialMinute = minute,
@@ -537,7 +647,7 @@ private fun ReminderTimeDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("每晚提醒时间") },
+        title = { Text(SettingsStrings.reminderTimeTitle(lang)) },
         text = {
             Column {
                 // 常用时段一键选，省得在小屏上拨表盘
@@ -561,10 +671,10 @@ private fun ReminderTimeDialog(
             TextButton(onClick = {
                 onConfirm(pickerState.hour, pickerState.minute)
                 onDismiss()
-            }) { Text("确定") }
+            }) { Text(AppStrings.confirm(lang)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
         }
     )
 }

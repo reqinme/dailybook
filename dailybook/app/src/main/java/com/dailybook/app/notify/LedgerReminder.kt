@@ -18,16 +18,26 @@ object LedgerReminder {
 
     private const val ACTION_REMIND = "com.dailybook.app.LEDGER_REMIND"
 
-    /** 按当前设置重排：关掉开关就把闹钟撤掉，改时间就排到新的时间点 */
+    /** 只设了专注目标、没开记账提醒时，用这个点检查目标达成情况 */
+    private const val DEFAULT_GOAL_HOUR = 21
+
+    /** 按当前设置重排：关掉开关（且没设专注目标）就把闹钟撤掉，改时间就排到新的时间点 */
     fun sync(context: Context) {
         val store = SettingsStore.get(context)
         val am = context.getSystemService(AlarmManager::class.java) ?: return
         val pi = pendingIntent(context)
         am.cancel(pi)
-        if (!store.ledgerReminderEnabled.value) return
+
+        val reminderOn = store.ledgerReminderEnabled.value
+        // 专注目标也搭这趟车：没开记账提醒但设了目标时，固定 21:00 检查一次
+        val goalOn = store.focusGoal.value > 0
+        if (!reminderOn && !goalOn) return
+
+        val hour = if (reminderOn) store.ledgerReminderHour.value else DEFAULT_GOAL_HOUR
+        val minute = if (reminderOn) store.ledgerReminderMinute.value else 0
         am.setAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
-            nextTriggerMillis(store.ledgerReminderHour.value, store.ledgerReminderMinute.value),
+            nextTriggerMillis(hour, minute),
             pi
         )
     }

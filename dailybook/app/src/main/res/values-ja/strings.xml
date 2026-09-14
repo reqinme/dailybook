@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">日常本</string>
+    <string name="shortcut_add_tx_short">記録する</string>
+    <string name="shortcut_add_tx_long">家計簿を開いて収支を記録</string>
+    <string name="shortcut_add_todo_short">ToDo を追加</string>
+    <string name="shortcut_add_todo_long">ToDo リストを開いて追加</string>
+    <string name="shortcut_focus_short">集中を開始</string>
+    <string name="shortcut_focus_long">タイマーを開いて集中を始める</string>
+</resources>

@@ -18,11 +18,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.AccountSlice
 import com.dailybook.app.CategoryBudgetRow
 import com.dailybook.app.CategorySlice
@@ -35,6 +38,9 @@ import com.dailybook.app.UiState
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
 import com.dailybook.app.data.FocusSessionEntity
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.LocalLang
+import com.dailybook.app.i18n.StatsStrings
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
@@ -42,8 +48,6 @@ import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.math.roundToInt
-
-private val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 
 private fun clockText(millis: Long): String {
     val time = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
@@ -56,7 +60,9 @@ fun StatsScreen(
     vm: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val lang = LocalLang.current
     val focus = state.focusStats
+    val focusGoal by vm.settings.focusGoal.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -66,14 +72,14 @@ fun StatsScreen(
     ) {
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "统计",
+            text = StatsStrings.title(lang),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
         Spacer(Modifier.height(8.dp))
 
         MonthSwitcher(
-            label = state.monthLabel,
+            label = AppStrings.yearMonth(lang, state.month.year, state.month.monthValue),
             onPrev = vm::previousMonth,
             onNext = vm::nextMonth,
             onToday = vm::goToCurrentMonth,
@@ -84,10 +90,20 @@ fun StatsScreen(
         Spacer(Modifier.height(8.dp))
         SectionCard {
             Row {
-                StatBlock("支出", "¥${formatAmount(state.monthExpense)}", expenseColor(), Modifier.weight(1f))
-                StatBlock("收入", "¥${formatAmount(state.monthIncome)}", incomeColor(), Modifier.weight(1f))
                 StatBlock(
-                    "结余",
+                    AppStrings.txExpense(lang),
+                    "¥${formatAmount(state.monthExpense)}",
+                    expenseColor(),
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    AppStrings.txIncome(lang),
+                    "¥${formatAmount(state.monthIncome)}",
+                    incomeColor(),
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    AppStrings.txBalance(lang),
                     "¥${formatAmount(state.balance)}",
                     if (state.balance < 0) expenseColor() else MaterialTheme.colorScheme.onSurface,
                     Modifier.weight(1f)
@@ -96,9 +112,9 @@ fun StatsScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "支出分类占比") {
+        SectionCard(title = StatsStrings.expenseCategoryTitle(lang)) {
             if (state.expenseSlices.isEmpty()) {
-                HintText("本月还没有支出记录")
+                HintText(StatsStrings.noExpenseThisMonth(lang))
             } else {
                 state.expenseSlices.forEachIndexed { index, slice ->
                     if (index > 0) Spacer(Modifier.height(12.dp))
@@ -109,7 +125,7 @@ fun StatsScreen(
 
         if (state.accountSlices.size > 1) {
             Spacer(Modifier.height(14.dp))
-            SectionCard(title = "账户支出分布") {
+            SectionCard(title = StatsStrings.accountTitle(lang)) {
                 state.accountSlices.forEachIndexed { index, slice ->
                     if (index > 0) Spacer(Modifier.height(12.dp))
                     AccountSliceRow(slice)
@@ -119,7 +135,7 @@ fun StatsScreen(
 
         if (state.hasCategoryBudget) {
             Spacer(Modifier.height(14.dp))
-            SectionCard(title = "分类预算") {
+            SectionCard(title = StatsStrings.categoryBudgetTitle(lang)) {
                 state.categoryBudgets.forEachIndexed { index, row ->
                     if (index > 0) Spacer(Modifier.height(14.dp))
                     CategoryBudgetView(row)
@@ -127,7 +143,7 @@ fun StatsScreen(
                 if (state.hasOverBudgetCategory) {
                     Spacer(Modifier.height(12.dp))
                     Text(
-                        text = "标红的分类已经超支，下个月从这几个下手最省事。",
+                        text = StatsStrings.overBudgetNote(lang),
                         style = MaterialTheme.typography.bodySmall,
                         color = expenseColor()
                     )
@@ -136,9 +152,9 @@ fun StatsScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "每日支出") {
+        SectionCard(title = StatsStrings.dailyExpenseTitle(lang)) {
             if (state.maxDayCents <= 0L) {
-                HintText("本月还没有支出记录")
+                HintText(StatsStrings.noExpenseThisMonth(lang))
             } else {
                 Spacer(Modifier.height(4.dp))
                 DailyChart(state.dayBars, state.maxDayCents)
@@ -146,9 +162,9 @@ fun StatsScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "近 12 个月收支趋势") {
+        SectionCard(title = StatsStrings.yearTrendTitle(lang)) {
             if (state.yearSummary.maxBarCents <= 0L) {
-                HintText("最近一年还没有记账记录")
+                HintText(StatsStrings.noYearRecords(lang))
             } else {
                 ChartLegend()
                 Spacer(Modifier.height(8.dp))
@@ -157,25 +173,25 @@ fun StatsScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "${state.yearSummary.year} 年汇总") {
+        SectionCard(title = StatsStrings.yearSummaryTitle(lang, state.yearSummary.year)) {
             if (!state.yearSummary.hasData) {
-                HintText("今年还没有记账记录")
+                HintText(StatsStrings.noThisYearRecords(lang))
             } else {
                 Row {
                     StatBlock(
-                        "年支出",
+                        StatsStrings.yearExpense(lang),
                         "¥${formatAmount(state.yearSummary.expense)}",
                         expenseColor(),
                         Modifier.weight(1f)
                     )
                     StatBlock(
-                        "年收入",
+                        StatsStrings.yearIncome(lang),
                         "¥${formatAmount(state.yearSummary.income)}",
                         incomeColor(),
                         Modifier.weight(1f)
                     )
                     StatBlock(
-                        "年结余",
+                        StatsStrings.yearBalance(lang),
                         "¥${formatAmount(state.yearSummary.balance)}",
                         if (state.yearSummary.balance < 0) expenseColor()
                         else MaterialTheme.colorScheme.onSurface,
@@ -185,9 +201,9 @@ fun StatsScreen(
                 Spacer(Modifier.height(10.dp))
                 Text(
                     text = buildString {
-                        append("全年 ${state.yearSummary.count} 笔")
+                        append(StatsStrings.yearCount(lang, state.yearSummary.count))
                         if (state.yearSummary.topCategory.isNotBlank()) {
-                            append(" · 花得最多：")
+                            append(StatsStrings.topCategoryPrefix(lang))
                             append(Categories.emojiOf(state.yearSummary.topCategory))
                             append(state.yearSummary.topCategory)
                             append(" ¥${formatAmount(state.yearSummary.topCategoryCents)}")
@@ -200,25 +216,25 @@ fun StatsScreen(
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "累计") {
+        SectionCard(title = StatsStrings.cumulative(lang)) {
             if (state.totalCount == 0) {
-                HintText("还没有任何记账记录")
+                HintText(StatsStrings.noRecordsAtAll(lang))
             } else {
                 Row {
                     StatBlock(
-                        "总收入",
+                        StatsStrings.totalIncome(lang),
                         "¥${formatAmount(state.totalIncomeCents)}",
                         incomeColor(),
                         Modifier.weight(1f)
                     )
                     StatBlock(
-                        "总支出",
+                        StatsStrings.totalExpense(lang),
                         "¥${formatAmount(state.totalExpenseCents)}",
                         expenseColor(),
                         Modifier.weight(1f)
                     )
                     StatBlock(
-                        "净结余",
+                        StatsStrings.netBalance(lang),
                         "¥${formatAmount(state.totalBalance)}",
                         if (state.totalBalance < 0) expenseColor()
                         else MaterialTheme.colorScheme.onSurface,
@@ -227,7 +243,7 @@ fun StatsScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "从第一笔记账到现在，共 ${state.totalCount} 笔",
+                    text = StatsStrings.sinceFirstRecord(lang, state.totalCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -236,7 +252,7 @@ fun StatsScreen(
 
         if (state.incomeSlices.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
-            SectionCard(title = "收入来源占比") {
+            SectionCard(title = StatsStrings.incomeSourceTitle(lang)) {
                 state.incomeSlices.forEachIndexed { index, slice ->
                     if (index > 0) Spacer(Modifier.height(12.dp))
                     SliceRow(slice, incomeColor())
@@ -247,7 +263,7 @@ fun StatsScreen(
         // ==================== 专注 ====================
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "专注",
+            text = AppStrings.phaseFocus(lang),
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground
         )
@@ -255,14 +271,29 @@ fun StatsScreen(
 
         SectionCard {
             Row {
-                StatBlock("今日", focus.todayCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-                StatBlock("连续", "${focus.streak}", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
-                StatBlock("累计", focus.totalCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+                StatBlock(
+                    StatsStrings.focusToday(lang),
+                    focus.todayCount.toString(),
+                    MaterialTheme.colorScheme.primary,
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    StatsStrings.focusStreak(lang),
+                    "${focus.streak}",
+                    MaterialTheme.colorScheme.secondary,
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    StatsStrings.cumulative(lang),
+                    focus.totalCount.toString(),
+                    MaterialTheme.colorScheme.onSurface,
+                    Modifier.weight(1f)
+                )
             }
             if (focus.todayCount > 0) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "今日专注 ${focus.todayMinutes} 分钟",
+                    text = StatsStrings.todayFocusMinutes(lang, focus.todayMinutes),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -270,56 +301,127 @@ fun StatsScreen(
             Spacer(Modifier.height(14.dp))
             Row {
                 StatBlock(
-                    "本周次数",
+                    StatsStrings.focusWeekCount(lang),
                     focus.weekCount.toString(),
                     MaterialTheme.colorScheme.primary,
                     Modifier.weight(1f)
                 )
                 StatBlock(
-                    "本周时长",
-                    "${focus.weekMinutes} 分",
+                    StatsStrings.focusWeekDuration(lang),
+                    StatsStrings.focusMinutesShort(lang, focus.weekMinutes),
                     MaterialTheme.colorScheme.secondary,
                     Modifier.weight(1f)
                 )
                 StatBlock(
-                    "本月时长",
-                    "${focus.monthMinutes} 分",
+                    StatsStrings.focusMonthDuration(lang),
+                    StatsStrings.focusMinutesShort(lang, focus.monthMinutes),
                     MaterialTheme.colorScheme.onSurface,
                     Modifier.weight(1f)
                 )
             }
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "本月已完成 ${focus.monthCount} 次专注 · 累计 ${
+                text = StatsStrings.focusMonthSummary(
+                    lang,
+                    focus.monthCount,
                     focus.heatWeeks.flatten().sumOf { it.minutes.coerceAtLeast(0) }
-                } 分钟（近 12 周）",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            if (focusGoal > 0) {
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = StatsStrings.focusGoalTitle(lang),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (focus.todayCount >= focusGoal) StatsStrings.focusGoalReached(lang)
+                        else StatsStrings.focusGoalProgress(lang, focus.todayCount, focusGoal),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (focus.todayCount >= focusGoal) incomeColor()
+                        else MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                ThinProgressBar(
+                    ratio = (focus.todayCount.toFloat() / focusGoal.toFloat()).coerceIn(0f, 1f),
+                    color = if (focus.todayCount >= focusGoal) incomeColor()
+                    else MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        if (focus.perTodo.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            SectionCard(title = StatsStrings.perTodoTitle(lang)) {
+                focus.perTodo.forEachIndexed { index, item ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    Column(Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "🎯 ${item.title}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                text = StatsStrings.perTodoMinutes(lang, item.minutes, item.count),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        ThinProgressBar(
+                            ratio = item.minutes.toFloat() /
+                                (focus.perTodo.first().minutes.coerceAtLeast(1)).toFloat(),
+                            color = MaterialTheme.colorScheme.secondary,
+                            height = 6.dp
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = StatsStrings.perTodoHint(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "专注热力图（近 12 周）") {
+        SectionCard(title = StatsStrings.heatmapTitle(lang)) {
             Spacer(Modifier.height(4.dp))
             FocusHeatmap(focus.heatWeeks, focus.heatMaxMinutes)
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "每一列是一周，从上到下为周一到周日；颜色越深，当天专注的时间越长。",
+                text = StatsStrings.heatmapHint(lang),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "最近 7 天完成的专注") {
+        SectionCard(title = StatsStrings.last7DaysTitle(lang)) {
             Spacer(Modifier.height(4.dp))
             FocusWeekChart(focus.recentDays)
         }
 
         Spacer(Modifier.height(14.dp))
-        SectionCard(title = "今日专注明细") {
+        SectionCard(title = StatsStrings.todayDetailTitle(lang)) {
             if (focus.todaySessions.isEmpty()) {
-                HintText("今天还没有完成的专注")
+                HintText(StatsStrings.noFocusToday(lang))
             } else {
                 focus.todaySessions.forEachIndexed { index, session ->
                     if (index > 0) Spacer(Modifier.height(10.dp))
@@ -334,6 +436,7 @@ fun StatsScreen(
 
 @Composable
 private fun SessionRow(session: FocusSessionEntity) {
+    val lang = LocalLang.current
     Column(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -346,7 +449,7 @@ private fun SessionRow(session: FocusSessionEntity) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "${session.minutes} 分钟",
+                text = StatsStrings.sessionMinutes(lang, session.minutes),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary
             )
@@ -436,6 +539,7 @@ private fun DailyChart(bars: List<DayBar>, maxCents: Long) {
 
 @Composable
 private fun FocusWeekChart(days: List<FocusDay>) {
+    val lang = LocalLang.current
     val maxCount = (days.maxOfOrNull { it.count } ?: 0).coerceAtLeast(1)
     val maxBarHeight = 108.dp
 
@@ -473,7 +577,7 @@ private fun FocusWeekChart(days: List<FocusDay>) {
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = WEEKDAY_LABELS[day.date.dayOfWeek.value - 1],
+                    text = AppStrings.weekday(lang, day.date.dayOfWeek.value - 1),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -484,11 +588,12 @@ private fun FocusWeekChart(days: List<FocusDay>) {
 
 @Composable
 private fun ChartLegend() {
+    val lang = LocalLang.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         LegendDot(expenseColor())
         Spacer(Modifier.width(4.dp))
         Text(
-            text = "支出",
+            text = AppStrings.txExpense(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -496,7 +601,7 @@ private fun ChartLegend() {
         LegendDot(incomeColor())
         Spacer(Modifier.width(4.dp))
         Text(
-            text = "收入",
+            text = AppStrings.txIncome(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -615,6 +720,7 @@ private fun AccountSliceRow(slice: AccountSlice) {
 
 @Composable
 private fun CategoryBudgetView(row: CategoryBudgetRow) {
+    val lang = LocalLang.current
     val accent = if (row.over) expenseColor() else MaterialTheme.colorScheme.primary
 
     Column(Modifier.fillMaxWidth()) {
@@ -628,8 +734,8 @@ private fun CategoryBudgetView(row: CategoryBudgetRow) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = if (row.over) "超支 ¥${formatAmount(row.overCents)}"
-                else "还可花 ¥${formatAmount(row.remainingCents)}",
+                text = if (row.over) StatsStrings.overBudget(lang, formatAmount(row.overCents))
+                else StatsStrings.remainingBudget(lang, formatAmount(row.remainingCents)),
                 style = MaterialTheme.typography.bodySmall,
                 color = accent
             )
@@ -638,7 +744,11 @@ private fun CategoryBudgetView(row: CategoryBudgetRow) {
         ThinProgressBar(ratio = row.ratio, color = accent, height = 6.dp)
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "已用 ¥${formatAmount(row.spentCents)} / 预算 ¥${formatAmount(row.budgetCents)}",
+            text = StatsStrings.usedOfBudget(
+                lang,
+                formatAmount(row.spentCents),
+                formatAmount(row.budgetCents)
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -649,6 +759,7 @@ private fun CategoryBudgetView(row: CategoryBudgetRow) {
 @Composable
 private fun FocusHeatmap(weeks: List<List<HeatCell>>, maxMinutes: Int) {
     if (weeks.isEmpty()) return
+    val lang = LocalLang.current
     val cell = 13.dp
     val gap = 3.dp
 
@@ -683,7 +794,7 @@ private fun FocusHeatmap(weeks: List<List<HeatCell>>, maxMinutes: Int) {
     Spacer(Modifier.height(10.dp))
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
-            text = "少",
+            text = StatsStrings.heatmapLess(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -701,7 +812,7 @@ private fun FocusHeatmap(weeks: List<List<HeatCell>>, maxMinutes: Int) {
         }
         Spacer(Modifier.width(2.dp))
         Text(
-            text = "多",
+            text = StatsStrings.heatmapMore(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

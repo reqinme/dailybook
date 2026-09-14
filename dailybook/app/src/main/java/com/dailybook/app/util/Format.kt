@@ -1,5 +1,7 @@
 package com.dailybook.app.util
 
+import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
@@ -8,7 +10,6 @@ import java.time.YearMonth
 import java.time.ZoneId
 
 private val ZONE: ZoneId = ZoneId.systemDefault()
-private val WEEKDAYS = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
 
 fun LocalDate.toDayMillis(): Long = atStartOfDay(ZONE).toInstant().toEpochMilli()
 
@@ -36,28 +37,33 @@ fun parseAmountToCents(input: String): Long? {
     }
 }
 
-/** 日期分组标题：今天 / 昨天 / 9月13日 周六 */
-fun formatDateHeader(date: LocalDate): String {
+/** 日期分组标题：今天 / 昨天 / 前天 / 9月13日 周六 */
+fun formatDateHeader(date: LocalDate, lang: Lang): String {
     val today = LocalDate.now()
     return when (date) {
-        today -> "今天"
-        today.minusDays(1) -> "昨天"
-        today.minusDays(2) -> "前天"
-        else -> "${date.monthValue}月${date.dayOfMonth}日 ${WEEKDAYS[date.dayOfWeek.value - 1]}"
+        today -> AppStrings.today(lang)
+        today.minusDays(1) -> AppStrings.yesterday(lang)
+        today.minusDays(2) -> AppStrings.dayBeforeYesterday(lang)
+        else -> {
+            val day = AppStrings.monthDay(lang, date.monthValue, date.dayOfMonth)
+            val week = AppStrings.weekday(lang, date.dayOfWeek.value - 1)
+            if (lang == Lang.EN) "$day · $week" else "$day $week"
+        }
     }
 }
 
-fun formatMonthLabel(month: YearMonth): String = "${month.year}年${month.monthValue}月"
+fun formatMonthLabel(month: YearMonth, lang: Lang): String =
+    AppStrings.yearMonth(lang, month.year, month.monthValue)
 
 /** 到期日文案：今天到期 / 明天到期 / 已逾期 3 天 / 9月20日 */
-fun formatDueLabel(dueMillis: Long, today: LocalDate = LocalDate.now()): String {
+fun formatDueLabel(dueMillis: Long, lang: Lang, today: LocalDate = LocalDate.now()): String {
     val due = dueMillis.toLocalDate()
     val days = due.toEpochDay() - today.toEpochDay()
     return when {
-        days < 0L -> "已逾期 ${-days} 天"
-        days == 0L -> "今天到期"
-        days == 1L -> "明天到期"
-        else -> "${due.monthValue}月${due.dayOfMonth}日"
+        days < 0L -> AppStrings.dueOverdue(lang, -days)
+        days == 0L -> AppStrings.dueToday(lang)
+        days == 1L -> AppStrings.dueTomorrow(lang)
+        else -> AppStrings.monthDay(lang, due.monthValue, due.dayOfMonth)
     }
 }
 

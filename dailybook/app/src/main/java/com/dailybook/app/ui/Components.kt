@@ -80,41 +80,6 @@ fun categoryColor(category: String): Color {
 // 基础组件
 // ============================================================
 
-/** 月份切换条（记账页与统计页共用） */
-@Composable
-fun MonthSwitcher(
-    label: String,
-    onPrev: () -> Unit,
-    onNext: () -> Unit,
-    onToday: () -> Unit,
-    showToday: Boolean
-) {
-    val lang = LocalLang.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onPrev) {
-            Icon(Icons.Filled.ChevronLeft, contentDescription = CommonStrings.prevMonth(lang))
-        }
-        Text(
-            text = label,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.Center
-        )
-        if (showToday) {
-            TextButton(onClick = onToday) { Text(CommonStrings.backToThisMonth(lang)) }
-        }
-        IconButton(onClick = onNext) {
-            Icon(Icons.Filled.ChevronRight, contentDescription = CommonStrings.nextMonth(lang))
-        }
-    }
-}
-
 /** 统一的卡片容器 */
 @Composable
 fun SectionCard(

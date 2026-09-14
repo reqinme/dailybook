@@ -52,8 +52,10 @@ import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.formatDateHeader
 import com.dailybook.app.util.formatDueLabel
 import com.dailybook.app.util.formatMonthLabel
+import com.dailybook.app.util.toLocalDate
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
@@ -454,16 +456,30 @@ private fun DailyDetailRow(row: DailyRow, lang: Lang) {
 // ---- 专注记录 ----
 
 /**
- * 专注记录：本月汇总 + 今天的逐条明细 + 按待办汇总的投入时间。
+ * 专注记录：本月汇总 + 所选月份的逐条明细 + 按待办汇总的投入时间。
  *
- * 能给的都给了：次数、总时长、平均每次、按待办的投入、今天每条时段（含「中断」标记）。
- * 逐日的全部明细要读专注记录表，而 UiState 只开放了「本月汇总」和「今天的记录」，
- * 所以这里不硬编每一天的数字，用 [StatsStrings.focusSessionsScopeNote] 说清口径。
+ * 「逐条明细」用的是 [FocusStats.monthSessions]（选中月份的全部专注记录），
+ * 不是 `todaySessions`——顶部有年月条，可以往回翻月份，明细必须跟着同一个月走，
+ * 否则会出现「上面写着上个月几次、下面列的却是今天」这种对不上的画面。
+ * 口径由 [StatsStrings.focusSessionsScopeNote] 说明。
  */
 @Composable
 private fun FocusSessionsList(state: UiState, lang: Lang) {
     val focus = state.focusStats
-    val average = if (focus.monthCount <= 0) 0 else focus.monthMinutes / focus.monthCount
+    // `monthSessions` = 选中月份的**全部**专注记录（按开始时间从新到旧，MainViewModel 里已经排好）。
+    // 汇总数字和下面的名单都用它：上面写「本月几次」，下面就一定列着那几次。
+    //
+    // 这里再按 `state.month` 自己筛一遍，是为了让「顶部的年月条 / 汇总 / 名单」三者**无论上游
+    // 怎么算都只讲同一个月**。`todaySessions` 绝对不能出现在这里：它永远是今天，
+    // 跟着年月条往回翻时会变成「上面写着上个月、下面列的却是今天」。
+    val monthSessions = focus.monthSessions.filter {
+        YearMonth.from(it.startedAtMillis.toLocalDate()) == state.month
+    }
+    val monthMinutes = monthSessions.sumOf { it.minutes }
+    val average = if (monthSessions.isEmpty()) 0 else monthMinutes / monthSessions.size
+    // 翻到没有记录的月份时，如果上游给的其实全是别的月份（比如仍按「当前自然月」过滤），
+    // 直说一句，别让用户以为自己的记录丢了
+    val otherScope = monthSessions.isEmpty() && focus.monthSessions.isNotEmpty()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -472,11 +488,11 @@ private fun FocusSessionsList(state: UiState, lang: Lang) {
         item(key = "focus-summary") {
             SectionCard {
                 Text(
-                    text = StatsStrings.focusSessionCount(lang, focus.monthCount, focus.monthMinutes),
+                    text = StatsStrings.focusSessionCount(lang, monthSessions.size, monthMinutes),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (focus.monthCount > 0) {
+                if (monthSessions.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth()) {
                         StatBlock(
@@ -502,23 +518,35 @@ private fun FocusSessionsList(state: UiState, lang: Lang) {
             }
         }
 
-        if (focus.monthCount <= 0) {
+        if (monthSessions.isEmpty()) {
             item(key = "empty") {
                 EmptyBlock(
                     emoji = "🍅",
                     title = StatsStrings.focusSessionsEmpty(lang),
                     subtitle = StatsStrings.focusSessionsEmptyHint(lang)
                 )
+                if (otherScope) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = StatsStrings.focusSessionsMonthScopeOnly(lang),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         } else {
-            if (focus.todaySessions.isNotEmpty()) {
-                item(key = "today-sessions") {
-                    Spacer(Modifier.height(14.dp))
-                    SectionCard(title = StatsStrings.todayDetailTitle(lang)) {
-                        focus.todaySessions.forEachIndexed { index, session ->
-                            if (index > 0) Spacer(Modifier.height(10.dp))
-                            FocusSessionRow(session, lang)
-                        }
+            item(key = "month-sessions") {
+                Spacer(Modifier.height(14.dp))
+                // 标题带上月份：这一页能翻月，写死「今日」会和上面的年月条对不上
+                SectionCard(
+                    title = StatsStrings.focusMonthDetailTitle(
+                        lang,
+                        formatMonthLabel(state.month, lang)
+                    )
+                ) {
+                    monthSessions.forEachIndexed { index, session ->
+                        if (index > 0) Spacer(Modifier.height(10.dp))
+                        FocusSessionRow(session, lang)
                     }
                 }
             }

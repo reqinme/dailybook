@@ -18,16 +18,8 @@ val LightOnSurface = Color(0xFF1B1C1F)
 val LightOnSurfaceVariant = Color(0xFF5C6069)
 val LightOutline = Color(0xFFDCE0E6)
 
-// ---- 品牌色 ----
-val Teal = Color(0xFF2AA79B)
-val TealDim = Color(0xFF1B6B63)
-val TealLight = Color(0xFF17897F)
-
-val Amber = Color(0xFFF2A93B)
-val AmberLight = Color(0xFFB8791A)
-
-val Blue = Color(0xFF5B8DEF)
-val BlueLight = Color(0xFF3B66C4)
+// 品牌色不在这里：v1.8 起改成 12 套可切换配色，统一放在 Palette.kt 的 PaletteSpec 里。
+// （这里原来还有一组写死的品牌色 val，早已无人引用，v1.10 删除，免得下次有人改了它却发现界面没变。）
 
 // ---- 收支颜色（深色底） ----
 val ExpenseDark = Color(0xFFFF7A6E)

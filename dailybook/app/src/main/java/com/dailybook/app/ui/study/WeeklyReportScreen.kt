@@ -46,6 +46,7 @@ import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LocalLang
+import com.dailybook.app.i18n.StatsStrings
 import com.dailybook.app.i18n.StudyStrings
 import com.dailybook.app.ui.EmptyHint
 import com.dailybook.app.ui.Navigator
@@ -66,16 +67,17 @@ import java.util.Locale
  * 学习周报（只读）。
  *
  * 全部数据都来自 [UiState] 里已经有的东西，这一页不查库、不重新统计：
- * - 专注时长 / 次数：`focusStats`（近 7 天用 `focusStats.recentDays` 自己按天汇总；
- *   `focusStats.heatWeeks` 是近 12 周的热力图，周报只用最近 7 天，所以取 recentDays 更直接）；
+ * - 专注时长 / 次数：`focusStats`（次数取 `focusStats.recentDays`，分钟数从
+ *   `focusStats.monthSessions` 里按同一个窗口 today-6 … today 自己汇总；
+ *   **口径说明**：两者都和下面七根柱子出自同一段窗口，所以不会出现「总数非 0 而柱子全空」，
+ *   但这 7 天要是跨了月，跨月的那几天不在 `monthSessions` 里，只能按 0 算（宁可少算不虚报），
+ *   这句限制写在界面上「口径说明」那张卡片里）；
  * - 完成的待办：只用 `todos.count { it.done }`。
  *   **口径说明**：待办表里没有存「完成日期」，所以这里给的是「目前已完成的总条数」，
  *   不是「这周完成的条数」——宁可说清口径，也不假装是周数据；
  * - 背单词打卡：`wordHabits`（生活模块里单位不是「次」的定量习惯，也就是背单词 / 背书计划）
  *   加上 `habitLogs` 中落在最近 7 天的打卡记录数，明细在「单词」页面里看；
  * - 支出：`transactions` 里日期落在最近 7 天的记录（按记账日期，不是创建时间）；
- *   **口径说明**：一天的专注分钟取自 7 天热力图（`heatWeeks`）的格子，
- *   要是这 7 天全落在热力图覆盖范围之外，就退回 `focusStats.weekMinutes` 兜底；
  * - 作业逾期数：`overdueAssignments`。
  *
  * 「导出图片」把上面这些画成一张 1080px 宽的 PNG（Canvas + Paint，纯系统 API，
@@ -216,6 +218,14 @@ fun WeeklyReportScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // 口径说明：上面的数字和下面七根柱子是同一段窗口（today-6 … today）的同一份数据，
+            // 这句只交代跨月那几天按 0 算的限制，免得用户拿它和「本月」的数字对不上时以为算错了
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = StatsStrings.weeklyFocusScopeNote(lang),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             Spacer(Modifier.height(6.dp))
             FocusBarChart(days = report.days, maxMinutes = report.maxFocusMinutes)
         }
@@ -340,10 +350,22 @@ private fun weeklyReportData(state: UiState, today: LocalDate = LocalDate.now())
 
     // 专注：focusStats.recentDays 就是最近 7 天（含今天）的次数，这里换算成分钟与次数
     val focusByDay = state.focusStats.recentDays.associate { it.date to it.count }
-    val minutesByDay = state.focusStats.heatWeeks
-        .flatten()
-        .filter { !it.date.isBefore(start) && !it.date.isAfter(today) && it.minutes >= 0 }
-        .associate { it.date to it.minutes }
+    // 分钟数从选中所属月份的全部记录里按同一窗口（today-6 … today）数出来。
+    // 不用 fallback 了：以前 barMinutes 为 0 时会退回 focusStats.weekMinutes（周一至今），
+    // 于是「周一刚过、上周三才专注过」的那天会印出一个非 0 的近 7 天专注时长，
+    // 而下面七根柱子全是空的（导出的 PNG 也带着同一个虚高的数字）。
+    // 现在这个数字和柱状图出自同一份数据、同一段窗口，两者不可能不一致。
+    // 用「最近 7 天」这一份，**不能用 monthSessions**：后者锚在记账/统计页选中的月份上，
+    // 用户把选中月切走之后这 7 天会突然变成 0，而同一页的柱状图（来自热力图）还有数据。
+    // last7Sessions 就是 today-6 … today 这一段的全部记录，和声明完全一致，跨月也不会漏。
+    val last7Sessions = state.focusStats.last7Sessions
+    val daySessions = last7Sessions.filter { session ->
+        val date = session.startedAtMillis.toLocalDate()
+        !date.isBefore(start) && !date.isAfter(today)
+    }
+    val minutesByDay = daySessions
+        .groupBy { it.startedAtMillis.toLocalDate() }
+        .mapValues { entry -> entry.value.sumOf { it.minutes } }
 
     // 支出：按记账日期落在最近 7 天的支出（不含收入）
     val expenseByDay = state.transactions
@@ -353,8 +375,6 @@ private fun weeklyReportData(state: UiState, today: LocalDate = LocalDate.now())
         .mapValues { entry -> entry.value.sumOf { it.amountCents } }
     val expenseTotal = expenseByDay.values.sum()
 
-    // 最近 7 天有可能落在 heatWeeks 覆盖范围之外（比如很久没打开 App），
-    // 这时 heatWeeks 里没有对应格子，分钟数就只能靠「本周汇总」兜底，见下面的差值处理。
     val days = (0..6).map { offset ->
         val date = start.plusDays(offset.toLong())
         WeeklyDay(
@@ -364,13 +384,9 @@ private fun weeklyReportData(state: UiState, today: LocalDate = LocalDate.now())
             expenseCents = expenseByDay[date] ?: 0L
         )
     }
-    val barMinutes = days.sumOf { it.focusMinutes }
-    val focusMinutes = if (barMinutes > 0) barMinutes else state.focusStats.weekMinutes
-    val focusCount = if (days.sumOf { it.focusCount } > 0) {
-        days.sumOf { it.focusCount }
-    } else {
-        state.focusStats.weekCount
-    }
+    // 两个数都从上面这 7 天里数：和柱状图同一份数据，所以「总数非 0 但柱子全空」不会再出现
+    val focusMinutes = days.sumOf { it.focusMinutes }
+    val focusCount = days.sumOf { it.focusCount }
 
     // 背单词打卡：只算「定量习惯」（wordHabits，单位不是「次」的那些）在最近 7 天的打卡记录数
     val wordIds = state.wordHabits.map { it.id }.toSet()

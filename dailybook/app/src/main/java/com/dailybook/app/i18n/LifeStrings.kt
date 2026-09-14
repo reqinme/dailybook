@@ -61,6 +61,18 @@ object LifeStrings {
     fun habitWeekDone(lang: Lang, days: Int) =
         pickf(lang, "本周 %d 天", "本週 %d 天", "%d days this week", "今週 %d 日", days)
 
+    /** 本周目标天数（[com.dailybook.app.data.HabitEntity.daysPerWeek]）的进度：「本周 2 / 3 天」 */
+    fun habitWeekProgress(lang: Lang, done: Int, target: Int) = pickf(
+        lang, "本周 %d / %d 天", "本週 %d / %d 天",
+        "%d / %d days this week", "今週 %d / %d 日", done, target
+    )
+
+    /** 本周目标天数已经达标（只在 daysPerWeek > 0 时才会出现） */
+    fun habitWeekGoalReached(lang: Lang) = pick(
+        lang, "本周目标已达成", "本週目標已達成",
+        "Weekly target reached", "今週の目標を達成"
+    )
+
     /** 今天的数量再减就是 0 了（＋ / － 的减号禁用时的无障碍说明） */
     fun habitDecrease(lang: Lang) = pick(lang, "减少一次", "減少一次", "Decrease", "1 回減らす")
 
@@ -229,6 +241,20 @@ object LifeStrings {
 
     fun dateToday(lang: Lang) = pick(lang, "就是今天", "就是今天", "Today", "今日です")
 
+    /**
+     * 「只过一次」又已经过完的日子：**已过去 N 天**。
+     *
+     * 这类日期之前会凭空消失（[com.dailybook.app.data.DateRepeat.ONCE] 一过期就算不出下一次），
+     * 现在留在列表里明确标成已过去，既不假装它还在倒计时，也不会让用户以为数据丢了。
+     */
+    fun dateDaysPassed(lang: Lang, days: Long) =
+        pickf(lang, "已过去 %d 天", "已過去 %d 天", "%d days ago", "%d 日前", days)
+
+    /** 列表里「已过去」那一组的小标题 */
+    fun datesPastTitle(lang: Lang) = pick(
+        lang, "已经过去", "已經過去", "Already passed", "過ぎた日付"
+    )
+
     fun datesEmpty(lang: Lang) = pick(
         lang, "还没有重要日期，添加一个开始倒计时",
         "還沒有重要日期，新增一個開始倒數",
@@ -320,6 +346,38 @@ object LifeStrings {
         "這個日期和它的提醒會被刪除，且無法復原。",
         "This date and its reminder are deleted. This cannot be undone.",
         "この日付とリマインダーは削除され、元に戻せません。"
+    )
+
+    // ---- 应用内提醒通知 ----
+    // 通知渠道名 / 通知标题这类「不进界面」的文案也放这里（重要日期模块自己的通知）：
+    // 渠道的建法与命名风格和 AppStrings 里那几个通知渠道保持一致。
+
+    /** 通知渠道名：重要日期提醒 */
+    fun notifChannelDate(lang: Lang) = pick(
+        lang, "重要日期提醒", "重要日期提醒", "Important date reminders", "大切な日付の通知"
+    )
+
+    /** 通知渠道说明 */
+    fun notifChannelDateDesc(lang: Lang) = pick(
+        lang, "生日、纪念日这类日子按你设的提前量提醒你",
+        "生日、紀念日這類日子按你設的提前量提醒你",
+        "Reminds you about birthdays and anniversaries as early as you set",
+        "誕生日や記念日を、設定した日数だけ早く知らせます"
+    )
+
+    /**
+     * 通知标题：%1$s = 日期名（数据，不翻译），%2$d = 提前几天。
+     * 日文里「N 日前」放在标题里很别扭，所以日文只说「快到了」，具体天数交给正文。
+     */
+    fun dateNotifTitle(lang: Lang, title: String, daysBefore: Int) = pickf(
+        lang, "%1\$s 还有 %2\$d 天", "%1\$s 還有 %2\$d 天",
+        "%1\$s in %2\$d days", "%1\$s が近づいています", title, daysBefore
+    )
+
+    /** 「只过一次」的日期没有「还剩几天」的说法，通知标题单独一句 */
+    fun dateNotifTitleOnce(lang: Lang, title: String) = pickf(
+        lang, "快到了：%s", "快到了：%s",
+        "Coming up: %s", "もうすぐ：%s", title
     )
 
     // ---- 导出 .ics ----

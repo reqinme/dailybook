@@ -325,7 +325,6 @@ private fun Route.title(lang: Lang): String = when (this) {
     Route.Grades -> AppStrings.tabGrades(lang)
     Route.Credits -> AppStrings.tabCredits(lang)
     Route.Awards -> AppStrings.tabAwards(lang)
-    Route.Words -> AppStrings.tabWords(lang)
     Route.WeeklyReport -> AppStrings.tabWeeklyReport(lang)
     is Route.StatsDetail -> kind.title(lang)
 }
@@ -367,7 +366,6 @@ private fun ScreenHost(
         Route.Grades -> GradesScreen(state, vm, nav)
         Route.Credits -> CreditsScreen(state, vm, nav)
         Route.Awards -> AwardsScreen(state, vm, nav)
-        Route.Words -> HabitsScreen(state, vm, nav)
         Route.WeeklyReport -> WeeklyReportScreen(state, vm, nav)
 
         is Route.StatsDetail -> StatsDetailScreen(route.kind, state, vm, nav)

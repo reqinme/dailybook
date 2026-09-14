@@ -92,8 +92,6 @@ class AutoBackup private constructor(context: Context) {
     /** 自动备份开关 */
     val enabled: StateFlow<Boolean> = _enabled.asStateFlow()
 
-    private val _enabledFlow: StateFlow<Boolean> = _enabled.asStateFlow()
-
     private val _folderUri = MutableStateFlow(prefs.getString(KEY_FOLDER_URI, null))
     /** 用户挑的文件夹（树 URI 字符串）；没挑过就是 null */
     val folderUri: StateFlow<String?> = _folderUri.asStateFlow()
@@ -107,9 +105,6 @@ class AutoBackup private constructor(context: Context) {
     val lastFailure: StateFlow<BackupFailureCode?> = _failure.asStateFlow()
 
     // ---------- 给设置页用 ----------
-
-    /** [enabled] 的另一种写法，两个都公开，调用方按习惯挑 */
-    fun observeEnabled(): StateFlow<Boolean> = _enabledFlow
 
     fun setEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
@@ -154,17 +149,11 @@ class AutoBackup private constructor(context: Context) {
         _failure.value = null
     }
 
-    /** 上次成功备份时间戳（毫秒），0 = 没有 */
-    fun lastBackupMillis(): Long = _lastBackup.value
-
     /** 上次失败的原因码；null = 没有未处理的失败 */
     fun lastFailureReason(): BackupFailureCode? = _failure.value
 
     /** 上次失败的时间戳（毫秒），0 = 没有；设置页可以拿它显示「什么时候失败的」 */
     fun lastFailureMillis(): Long = prefs.getLong(KEY_FAILED_AT, 0L)
-
-    /** 上次成功备份的时间流，给设置页实时刷新用 */
-    fun observeLastBackup(): StateFlow<Long> = _lastBackup.asStateFlow()
 
     /**
      * 文件夹的展示用短名（树 URI 的最后一段）。

@@ -70,6 +70,9 @@ import java.util.Locale
  * 由父级用「绩点 × 学分」加权算好放进 [UiState.gpa]。
  *
  * 换算规则全部集中在 [scoreToPoint] 里，界面上只负责预览与保存。
+ *
+ * 口径（4.0 / 5.0）由设置页决定，经 [UiState.gpaScale] 传进来，本页**不自己推断**：
+ * 它只影响「原始分数 / 等级 → 绩点」的换算，已经存下来的 `GradeEntity.point` 是多少就是多少。
  */
 
 // ============================================================
@@ -77,7 +80,8 @@ import java.util.Locale
 // ============================================================
 
 /**
- * 把用户填的分数换算成绩点。[scale] 是用户的绩点口径：4.0（默认）或 5.0。
+ * 把用户填的分数换算成绩点。[scale] 是用户的绩点口径：4.0（默认）或 5.0，
+ * 来自设置页的「GPA 计算口径」（[UiState.gpaScale]），不是界面自己猜的。
  *
  * **百分制**（[ScoreKind.PERCENT]）按国内最常见的 4.0 分段（KDoc 里写死，便于对照）：
  *
@@ -178,10 +182,10 @@ fun GradesScreen(
     var deleting by remember { mutableStateOf<GradeEntity?>(null) }
 
     val totalCredits = remember(state.grades) { state.grades.sumOf { it.credit } }
-    // 换算口径：只要有一条成绩的绩点超过 4.0，说明用户用的是 5 分制（父级的 gpa 也是按这个口径算的）
-    val scale = remember(state.grades) {
-        if (state.grades.any { it.point > 4.0 }) 5.0 else DEFAULT_GPA_SCALE
-    }
+    // 换算口径来自设置（GPA 计算口径 4.0 / 5.0），父级已经放进 state —— 界面不再自己猜：
+    // 以前是「只要有一条成绩的绩点超过 4.0 就当成 5.0 口径」，于是用户选了 5.0、
+    // 只要库里还有一条 ≤ 4.0 的旧成绩，预览就会翻回 4.0，存下来的数和预览的不是一个。
+    val scale = state.gpaScale
     // 按学期分组：空学期单独一组放最后（数据里 term 是数据，不翻译）
     val grouped = remember(state.grades) {
         state.grades
@@ -432,8 +436,9 @@ private fun GradeRow(
  */
 private val GRADE_CATEGORIES = listOf("必修", "选修", "通识", "其他")
 
-/** 默认绩点口径：4.0；有成绩的绩点超过 4.0 时界面自动按 5.0 口径预览 */
-private const val DEFAULT_GPA_SCALE = 4.0
+// 这里原来还有一个 DEFAULT_GPA_SCALE = 4.0（界面自己猜口径、猜错的默认值），
+// 现在口径统一来自设置（[UiState.gpaScale]，默认值在 SettingsStore / UiState 那边写死），
+// 本页不再持有任何「默认口径」，免得又出现两处默认值不一致。
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -602,8 +607,13 @@ private fun kindLabel(kind: ScoreKind, lang: Lang): String = when (kind) {
     ScoreKind.POINT -> StudyStrings.gradesKindPoint(lang)
 }
 
-/** 类别是数据，界面上给四个常用项的现成说法；自定义类别原样显示 */
-private fun categoryLabel(category: String, lang: Lang): String = when (category) {
+/**
+ * 类别名 → 当前语言。数据里存的是「必修」这类中文，显示时必须翻译。
+ *
+ * 学分页原来直接 `Text(item)` 把中文印给用户，英文/日文界面下会突然冒出「必修／选修」；
+ * 现在两页共用这一个函数（成绩页与学分页的四个类别本来就该长得一样）。
+ */
+internal fun categoryLabel(category: String, lang: Lang): String = when (category) {
     "必修" -> StudyStrings.gradesCategoryRequired(lang)
     "选修" -> StudyStrings.gradesCategoryElective(lang)
     "通识" -> StudyStrings.gradesCategoryGeneral(lang)

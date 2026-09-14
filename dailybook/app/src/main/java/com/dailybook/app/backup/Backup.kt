@@ -24,6 +24,7 @@ import com.dailybook.app.data.ScoreKind
 import com.dailybook.app.data.StudyTaskEntity
 import com.dailybook.app.data.SubtaskEntity
 import com.dailybook.app.data.TodoEntity
+import com.dailybook.app.data.TodoPriority
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
@@ -106,6 +107,10 @@ object Backup {
                     put("repeatRule", todo.repeatRule)
                     put("priority", todo.priority)
                     put("sortOrder", todo.sortOrder)
+                    // 作业 / DDL 挂的课程名。这个键是 v5 之后才补上的：老备份里没有它，
+                    // 读的时候按空串兜底（这条待办就只是普通待办），所以 FORMAT 不用加 ——
+                    // 加版本号反而会把「其实能读的老备份」判成不兼容（同 appendStudy 里的说法）。
+                    put("courseName", todo.courseName)
                     put("createdAt", todo.createdAt)
                 })
             }
@@ -382,6 +387,14 @@ object Backup {
                 repeatRule = runCatching { RepeatRule.valueOf(o.optString("repeatRule")) }
                     .getOrDefault(RepeatRule.NONE)
                     .name,
+                // 认不出来的优先级退回「普通」
+                priority = runCatching { TodoPriority.valueOf(o.optString("priority")) }
+                    .getOrDefault(TodoPriority.NORMAL)
+                    .name,
+                sortOrder = o.optLong("sortOrder", 0L),
+                // 作业 / DDL 挂的课程名。老备份（没有这个键）读成空串 = 普通待办，
+                // 所以 FORMAT 不用加 —— 加版本号反而会把「能读的老备份」判成不兼容
+                courseName = o.optString("courseName", ""),
                 createdAt = o.optLong("createdAt", 0L)
             )
         }

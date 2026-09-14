@@ -90,10 +90,10 @@ object SettingsStrings {
     /** 说明段落前半句，末尾留一个空格；拼接 [backupExplain2] 后与原文一致 */
     fun backupExplain1(lang: Lang) = pick(
         lang,
-        "备份是一个 JSON 文件，装下全部记账、待办、专注记录和预算设置，",
-        "備份是一個 JSON 檔案，裝下全部記帳、待辦、專注紀錄和預算設定，",
-        "A backup is one JSON file holding every ledger entry, to-do, focus record and budget setting, ",
-        "バックアップは 1 つの JSON ファイルで、家計簿・ToDo・集中の記録と予算設定をすべて含みます。"
+        "备份是一个 JSON 文件，装下全部数据：记账与周期记账、待办与作业/DDL、专注记录、习惯与打卡、备忘录、大事记、重要日期、课表、考试与复习计划、成绩、学分与奖助，以及预算与各类设置，",
+        "備份是一個 JSON 檔案，裝下全部資料：記帳與週期記帳、待辦與作業/DDL、專注紀錄、習慣與打卡、備忘錄、大事記、重要日期、課表、考試與複習計畫、成績、學分與獎助，以及預算與各類設定，",
+        "A backup is one JSON file holding everything: ledger entries and recurring rules, to-dos with assignments and deadlines, focus records, habits and check-ins, memos, milestones, important dates, your timetable, exams and revision plans, grades, credits and awards, plus budgets and settings, ",
+        "バックアップは 1 つの JSON ファイルで、家計簿と定期記録・ToDo（課題/締切）・集中の記録・習慣とチェックイン・メモ・大事記・大切な日・時間割・試験と復習プラン・成績・単位数と奨学金・予算と各種設定をすべて含みます。"
     )
     fun backupExplain2(lang: Lang) = pick(
         lang,
@@ -105,10 +105,10 @@ object SettingsStrings {
     fun restoreFromBackupTitle(lang: Lang) = pick(lang, "从备份文件恢复？", "從備份檔案還原？", "Restore from a backup file?", "バックアップから復元しますか？")
     fun restoreConfirmText(lang: Lang) = pick(
         lang,
-        "当前所有记账、待办和专注记录都会被备份文件里的内容替换，无法撤销。建议先点「导出备份」存一份现在的数据。",
-        "目前所有記帳、待辦和專注紀錄都會被備份檔案裡的內容取代，無法復原。建議先點「匯出備份」存一份目前的資料。",
-        "Everything you have now — ledger, to-dos and focus records — will be replaced by the contents of the backup file, and this cannot be undone. Export a backup of the current data first.",
-        "現在の家計簿・ToDo・集中の記録はすべてバックアップの内容に置き換わり、元に戻せません。先に「バックアップを書き出す」で現在のデータを保存しておくことをおすすめします。"
+        "当前所有数据（记账、待办、专注记录、习惯与打卡、备忘录、大事记、重要日期、课表、考试与复习、成绩、学分、奖助）都会被备份文件里的内容替换，无法撤销。建议先点「导出备份」存一份现在的数据。",
+        "目前所有資料（記帳、待辦、專注紀錄、習慣與打卡、備忘錄、大事記、重要日期、課表、考試與複習、成績、學分、獎助）都會被備份檔案裡的內容取代，無法復原。建議先點「匯出備份」存一份目前的資料。",
+        "Everything you have now — ledger, to-dos, focus records, habits and check-ins, memos, milestones, important dates, timetable, exams and revision, grades, credits and awards — will be replaced by the contents of the backup file, and this cannot be undone. Export a backup of the current data first.",
+        "現在のデータ（家計簿・ToDo・集中の記録・習慣とチェックイン・メモ・大事記・大切な日・時間割・試験と復習・成績・単位数・奨学金と資格）はすべてバックアップの内容に置き換わり、元に戻せません。先に「バックアップを書き出す」で現在のデータを保存しておくことをおすすめします。"
     )
     fun pickBackupFile(lang: Lang) = pick(lang, "选择备份文件", "選擇備份檔案", "Pick backup file", "バックアップファイルを選択")
 
@@ -123,7 +123,7 @@ object SettingsStrings {
     fun clearAllTodos(lang: Lang) =
         pick(lang, "清除所有待办", "清除所有待辦", "Clear all to-dos", "すべての ToDo を削除")
     fun clearAllTodosMessage(lang: Lang) =
-        pick(lang, "所有待办事项都会被删除，且无法恢复。", "所有待辦事項都會被刪除，且無法復原。", "All to-dos will be deleted, and this cannot be undone.", "すべての ToDo が削除され、元に戻せません。")
+        pick(lang, "所有待办事项（含作业 / DDL 与子任务）都会被删除，且无法恢复。", "所有待辦事項（含作業 / DDL 與子任務）都會被刪除，且無法復原。", "All to-dos — including assignments, deadlines and their subtasks — will be deleted, and this cannot be undone.", "すべての ToDo（課題・締切とそのサブタスクを含む）が削除され、元に戻せません。")
     fun clearFocusStats(lang: Lang) =
         pick(lang, "清除专注记录", "清除專注紀錄", "Clear focus records", "集中の記録を削除")
     fun clearFocusStatsMessage(lang: Lang) = pick(
@@ -136,10 +136,10 @@ object SettingsStrings {
     fun clearEverything(lang: Lang) = pick(lang, "清空全部数据", "清空全部資料", "Erase all data", "すべてのデータを消去")
     fun clearEverythingMessage(lang: Lang) = pick(
         lang,
-        "记账记录、待办和专注记录都会被删除，且无法恢复。",
-        "記帳紀錄、待辦和專注紀錄都會被刪除，且無法復原。",
-        "Ledger entries, to-dos and focus records will all be deleted, and this cannot be undone.",
-        "家計簿・ToDo・集中の記録がすべて削除され、元に戻せません。"
+        "记账（含周期记账）、待办（含作业 / DDL 与子任务）、专注记录、习惯与打卡记录、备忘录、大事记、重要日期、课表、考试与复习计划、成绩、学分要求和奖助记录都会被删除，且无法恢复。",
+        "記帳（含週期記帳）、待辦（含作業 / DDL 與子任務）、專注紀錄、習慣與打卡紀錄、備忘錄、大事記、重要日期、課表、考試與複習計畫、成績、學分要求和獎助紀錄都會被刪除，且無法復原。",
+        "Ledger entries (including recurring rules), to-dos (including assignments, deadlines and subtasks), focus records, habits and check-ins, memos, milestones, important dates, your timetable, exams and revision plans, grades, credit targets and awards will all be deleted, and this cannot be undone.",
+        "家計簿（定期記録を含む）、ToDo（課題・締切・サブタスクを含む）、集中の記録、習慣とチェックイン、メモ、大事記、大切な日、時間割、試験と復習プラン、成績、単位数、奨学金と資格の記録がすべて削除され、元に戻せません。"
     )
     fun confirmClear(lang: Lang) = pick(lang, "确定清除", "確定清除", "Clear", "消去する")
 

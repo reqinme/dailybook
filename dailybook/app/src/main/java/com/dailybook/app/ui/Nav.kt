@@ -94,7 +94,6 @@ sealed interface Route {
     data object Grades : Route
     data object Credits : Route
     data object Awards : Route
-    data object Words : Route
     data object WeeklyReport : Route
 
     // ---- 统计里的记录详情（点标题才打开的页面） ----

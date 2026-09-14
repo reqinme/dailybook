@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -189,69 +190,89 @@ fun LedgerScreen(
             )
         }
     ) { padding ->
-        Column(
+        // 整页只有**一个**滚动面：年月条、汇总卡、筛选条、日历、每天的流水全在同一个 LazyColumn 里。
+        // 之前顶部那几张卡固定在 Column 顶部、只有下面的列表能滚，滑动时上面的卡一动不动，
+        // 看起来就像「只有下面能滑」；而且日历 + 固定卡还能把列表挤到几乎没高度。
+        // 现在从上到下都能滚，滚起来是一整页。
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(padding),
+            // 底部留出 FAB 的空间，最后一行不会被悬浮按钮压住
+            contentPadding = PaddingValues(bottom = 104.dp)
         ) {
-            MonthYearBar(
-                yearMonth = state.month,
-                label = AppStrings.yearMonth(lang, state.month.year, state.month.monthValue),
-                onPrev = vm::previousMonth,
-                onNext = vm::nextMonth,
-                onPick = { picked -> vm.moveToMonth(picked) },
-                onToday = vm::goToCurrentMonth
-            )
-
-            MonthSummaryCard(
-                expense = state.monthExpense,
-                income = state.monthIncome,
-                balance = state.balance,
-                todayExpense = state.todayExpense,
-                count = state.monthCount
-            )
-
-            if (state.hasBudget) {
-                BudgetCard(
-                    expense = state.monthExpense,
-                    budget = state.budgetCents,
-                    ratio = state.budgetRatio,
-                    remaining = state.budgetRemainingCents,
-                    overBudget = state.overBudget
+            // ---------------- 顶部区（跟着一起滚） ----------------
+            item(key = "month-bar") {
+                MonthYearBar(
+                    yearMonth = state.month,
+                    label = AppStrings.yearMonth(lang, state.month.year, state.month.monthValue),
+                    onPrev = vm::previousMonth,
+                    onNext = vm::nextMonth,
+                    onPick = { picked -> vm.moveToMonth(picked) },
+                    onToday = vm::goToCurrentMonth
                 )
             }
 
+            item(key = "month-summary") {
+                MonthSummaryCard(
+                    expense = state.monthExpense,
+                    income = state.monthIncome,
+                    balance = state.balance,
+                    todayExpense = state.todayExpense,
+                    count = state.monthCount
+                )
+            }
+
+            if (state.hasBudget) {
+                item(key = "budget") {
+                    BudgetCard(
+                        expense = state.monthExpense,
+                        budget = state.budgetCents,
+                        ratio = state.budgetRatio,
+                        remaining = state.budgetRemainingCents,
+                        overBudget = state.overBudget
+                    )
+                }
+            }
+
             if (state.hasReimbursement) {
-                ReimbursementCard(state = state)
+                item(key = "reimbursement") { ReimbursementCard(state = state) }
             }
 
+            // 点过日历里的某一天才出现：说明当前按哪一天筛，✕ 或再点同一天取消。
+            // 注意这里只放**一处** —— 以前它同时出现在固定头部和列表里，用户会看到两张一模一样的卡。
             if (state.dayFilter != null) {
-                DayFilterCard(state = state, vm = vm)
+                item(key = "day-filter") { DayFilterCard(state = state, vm = vm) }
             }
 
-            SearchField(
-                value = state.ledgerQuery,
-                onValueChange = vm::setLedgerQuery,
-                placeholder = LedgerStrings.searchHint(lang),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
+            item(key = "search") {
+                SearchField(
+                    value = state.ledgerQuery,
+                    onValueChange = vm::setLedgerQuery,
+                    placeholder = LedgerStrings.searchHint(lang),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
 
             // 用过两个以上账户才显示筛选条，只有一个账户时不必占地方
             if (state.accounts.size > 1) {
-                AccountFilterRow(state = state, vm = vm, lang = lang)
+                item(key = "account-filter") { AccountFilterRow(state = state, vm = vm, lang = lang) }
             }
 
             if (state.hasTags) {
-                TagFilterRow(state = state, vm = vm, lang = lang)
+                item(key = "tag-filter") { TagFilterRow(state = state, vm = vm, lang = lang) }
             }
 
-            LedgerViewToggle(
-                view = view,
-                onSelect = { view = it },
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
+            item(key = "view-toggle") {
+                LedgerViewToggle(
+                    view = view,
+                    onSelect = { view = it },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
 
-            LedgerList(
+            // ---------------- 日历 + 流水（同一个 scope，接着往下排） ----------------
+            ledgerItems(
                 state = state,
                 vm = vm,
                 view = view,
@@ -319,49 +340,39 @@ fun LedgerScreen(
 }
 
 /**
- * 内容区：日历视图 + 流水列表，**同一个 LazyColumn**（内容区里唯一的滚动面）。
+ * 流水内容：日历（日历视图时）+ 每天的流水，直接排进**调用方的 LazyColumn**。
  *
- * 这一版把日历挪进 LazyColumn 当第一个 item。
- * 之前日历是 LazyColumn 的兄弟节点，上面那几张固定高度的汇总 / 筛选卡加上日历正好占满一屏，
- * 列表就被挤成 0 高度，而外层 Column 又不会滚 —— 于是「打开日历筛选后不能上下滑动」。
- * 现在整屏只有一个滚动面：日历、当天筛选条、每天的流水都在里面，多余的内容一律靠滚动看到，
- * 没有任何一块被裁掉，也没有谁再需要 weight(1f) 去抢高度。
+ * 写成 `LazyListScope` 扩展而不是自己建 LazyColumn，是为了让记账页整页共用一个滚动面：
+ * 年月条 / 汇总卡 / 筛选条 / 日历 / 流水依次排下去，一起滚。
+ *
+ * 历史坑：更早的版本里日历是 LazyColumn 的兄弟节点，上面那几张固定高度的卡加上日历正好占满一屏，
+ * 列表被挤成 0 高度，外层 Column 又不会滚 —— 于是「打开日历筛选后不能上下滑动」。
+ * 后来又出现「只有下半部分能滑」。现在只有这一个滚动面，这两类问题都不会再有。
  */
-@Composable
-private fun LedgerList(
+private fun LazyListScope.ledgerItems(
     state: UiState,
     vm: MainViewModel,
     view: LedgerView,
     lang: Lang,
     onEdit: (TransactionEntity) -> Unit
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        // 底部留出 FAB 的空间，最后一行不会被悬浮按钮压住
-        contentPadding = PaddingValues(bottom = 104.dp)
-    ) {
-        if (view == LedgerView.CALENDAR) {
-            item(key = "month-calendar") {
-                Column(Modifier.fillMaxWidth()) {
-                    MonthCalendar(
-                        days = state.calendarDays,
-                        maxExpense = state.maxCalendarExpense,
-                        selected = state.dayFilter,
-                        lang = lang,
-                        onPick = { date -> vm.setDayFilter(date) }
-                    )
-                    HintText(
-                        text = LedgerStrings.calendarScrollHint(lang),
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp)
-                    )
-                }
+    if (view == LedgerView.CALENDAR) {
+        item(key = "month-calendar") {
+            Column(Modifier.fillMaxWidth()) {
+                MonthCalendar(
+                    days = state.calendarDays,
+                    maxExpense = state.maxCalendarExpense,
+                    selected = state.dayFilter,
+                    lang = lang,
+                    onPick = { date -> vm.setDayFilter(date) }
+                )
+                HintText(
+                    text = LedgerStrings.calendarScrollHint(lang),
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp)
+                )
             }
         }
-
-        // 点过日历里的某一天才出现：说明当前按哪一天筛，✕ 或再点同一天取消
-        if (state.dayFilter != null) {
-            item(key = "day-filter") { DayFilterCard(state = state, vm = vm) }
-        }
+    }
 
         if (!state.hasMonthData) {
             item(key = "empty") {
@@ -406,7 +417,6 @@ private fun LedgerList(
                 }
             }
         }
-    }
 }
 
 /** 账户筛选条：原有行为不变，只把它挪成独立组件 */

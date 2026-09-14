@@ -28,6 +28,7 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
@@ -442,6 +445,10 @@ private fun WeekGrid(
 ) {
     val labelWidth = 34.dp
     val contentWidth = CELL_WIDTH * 7
+    // 表头与网格**共用同一个滚动状态**：否则横向滑动网格时表头不动，
+    // 「周六」会飘到别的列上面去，看着就不像一张表。
+    val horizontal = rememberScrollState()
+    val lineColor = MaterialTheme.colorScheme.outlineVariant
 
     Column(Modifier.fillMaxWidth()) {
         // 表头：与下面的网格用同样的「外层 weight + 内层滚动」结构，保证两行对齐
@@ -449,7 +456,7 @@ private fun WeekGrid(
             // 左上角留白，与节次列对齐
             Spacer(Modifier.width(labelWidth))
             Row(modifier = Modifier.weight(1f)) {
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Row(modifier = Modifier.horizontalScroll(horizontal)) {
                     (0..6).forEach { day ->
                         Box(
                             modifier = Modifier
@@ -480,14 +487,26 @@ private fun WeekGrid(
             }
         }
 
+        // 表头与内容之间的分隔线，表格的「表头」才立得住
+        HorizontalDivider(color = lineColor)
+
         Row(Modifier.fillMaxWidth()) {
-            // 节次列
+            // 节次列：每格底边也画一条线，和右侧网格的行线接上，整张表才是「格子」而不是悬浮色块
             Column(Modifier.width(labelWidth)) {
                 (1..MAX_PERIOD).forEach { period ->
                     Box(
                         modifier = Modifier
                             .height(CELL_HEIGHT)
-                            .fillMaxWidth(),
+                            .fillMaxWidth()
+                            .drawBehind {
+                                val stroke = 1.dp.toPx()
+                                drawLine(
+                                    lineColor,
+                                    Offset(0f, size.height - stroke / 2),
+                                    Offset(size.width, size.height - stroke / 2),
+                                    stroke
+                                )
+                            },
                         contentAlignment = Alignment.TopStart
                     ) {
                         Text(
@@ -505,11 +524,27 @@ private fun WeekGrid(
             // 如果两者写在一起（weight + horizontalScroll 同时修饰一个节点），
             // 滚动容器会被塞进固定宽度里，表就滚不动了。
             Box(modifier = Modifier.weight(1f)) {
-                Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Box(modifier = Modifier.horizontalScroll(horizontal)) {
                     Box(
                         modifier = Modifier
                             .width(contentWidth)
                             .height(CELL_HEIGHT * MAX_PERIOD)
+                            // 表格线：横线 13 条（12 节的上下沿 + 底边）、竖线 8 条（7 天分界 + 右边沿）。
+                            // 用 drawBehind 画而不是堆分隔组件，格子尺寸就还是精确的 64×54，
+                            // 课程块的 offset 定位也不会因为多出来的分隔条错位。
+                            .drawBehind {
+                                val stroke = 1.dp.toPx()
+                                val w = size.width
+                                val h = size.height
+                                for (row in 0..MAX_PERIOD) {
+                                    val y = (CELL_HEIGHT.toPx() * row).coerceAtMost(h)
+                                    drawLine(lineColor, Offset(0f, y), Offset(w, y), stroke)
+                                }
+                                for (col in 0..7) {
+                                    val x = (CELL_WIDTH.toPx() * col).coerceAtMost(w)
+                                    drawLine(lineColor, Offset(x, 0f), Offset(x, h), stroke)
+                                }
+                            }
                     ) {
                         // 底格：只画很淡的分隔背景，不放任何可点内容
                         Column {
@@ -522,10 +557,8 @@ private fun WeekGrid(
                                                 .height(CELL_HEIGHT)
                                                 .background(
                                                     MaterialTheme.colorScheme.surfaceVariant
-                                                        .copy(alpha = 0.35f),
-                                                    Shapes.badge
+                                                        .copy(alpha = 0.35f)
                                                 )
-                                                .padding(1.dp)
                                         )
                                     }
                                 }

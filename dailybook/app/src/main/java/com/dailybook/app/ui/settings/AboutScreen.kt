@@ -109,17 +109,6 @@ fun AboutScreen(nav: Navigator, modifier: Modifier = Modifier) {
             )
         }
 
-        Spacer(Modifier.height(14.dp))
-
-        // 顺便给「检查更新」留个入口，省得退回去再进
-        SectionCard {
-            SettingsRow(
-                title = AppStrings.checkUpdate(lang),
-                subtitle = SettingsStrings.updateNoNetworkNote(lang),
-                onClick = { nav.push(Route.Update) }
-            )
-        }
-
         Spacer(Modifier.height(28.dp))
     }
 }

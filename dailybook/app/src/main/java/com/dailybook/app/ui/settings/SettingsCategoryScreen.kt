@@ -97,6 +97,7 @@ import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.formatDueLabel
 import com.dailybook.app.util.parseAmountToCents
 import com.dailybook.app.util.toDayMillis
+import com.dailybook.app.util.toLocalDate
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -485,6 +486,8 @@ private fun LedgerSettings(state: UiState, vm: MainViewModel) {
     if (showCategoryBudget) {
         CategoryBudgetDialog(
             budgets = state.categoryBudgets.associate { it.category to it.budgetCents },
+            // 自建分类 / 账本里用过的分类也要出现在对话框里，否则保存会把它们的预算抹掉
+            expenseCategories = state.expenseCategories,
             onSet = { category, cents -> vm.setCategoryBudget(category, cents) },
             onDismiss = { showCategoryBudget = false }
         )
@@ -668,7 +671,10 @@ private fun StudySettings(state: UiState, vm: MainViewModel) {
             title = SettingsStrings.termStart(lang),
             subtitle = SettingsStrings.termStartHint(lang),
             trailing = if (termStart > 0L) {
-                val d = java.time.LocalDate.ofEpochDay(termStart / 86_400_000L)
+                // 存的是**本地零点**的时间戳，必须按本地时区取日期。
+                // 之前用 `LocalDate.ofEpochDay(termStart / 86_400_000L)`（按 UTC 算），
+                // 在 UTC+8 会把用户选的 9 月 1 日显示成 8 月 31 日。
+                val d = termStart.toLocalDate()
                 AppStrings.monthDay(lang, d.monthValue, d.dayOfMonth)
             } else {
                 AppStrings.notSet(lang)
@@ -1135,17 +1141,35 @@ private fun paletteDotColor(palette: ThemePalette): Color = lightSchemeOf(palett
 // 记账页的对话框（原 SettingsScreen.kt 里的私有对话框，原样搬过来）
 // =====================================================================
 
-/** 分类预算：逐个支出分类填上限，留空表示不限 */
+/**
+ * 分类预算：逐个支出分类填上限，留空表示不限。
+ *
+ * 这里列的是**并集**：预置支出分类 + 已经在用 / 已经设过预算的分类
+ * （[expenseCategories] 来自 `UiState.expenseCategories`，含用户自建分类和账本里用过的分类）。
+ *
+ * 为什么必须是并集：`SettingsStore.setCategoryBudget` 在金额 `<= 0` 时是**删除**这个键，
+ * 而保存会把对话框里每个分类都写一遍。所以「只列预置分类」就等于给自建分类（比如「宠物」）
+ * 传 0——用户一按保存，那个分类的预算连同它的超支提醒就被悄悄删掉了。
+ * 反过来，凡是写出去的行都必须在对话框里露过面：下面 [rows] 同时喂给渲染和保存，
+ * 既不会删掉没露面的预算，也不会写出用户没看见的值。
+ */
 @Composable
 private fun CategoryBudgetDialog(
     budgets: Map<String, Long>,
+    expenseCategories: List<String>,
     onSet: (String, Long) -> Unit,
     onDismiss: () -> Unit
 ) {
     val lang = LocalLang.current
-    val texts = remember(budgets) {
+    // 预置分类按原顺序排在前面，其余（自建 / 用过的）按名字追加在后，重复的去掉
+    val rows = remember(expenseCategories) {
+        (Categories.EXPENSE + expenseCategories).distinct().sortedBy { category ->
+            Categories.EXPENSE.indexOf(category).let { if (it >= 0) it else Categories.EXPENSE.size }
+        }
+    }
+    val texts = remember(rows, budgets) {
         mutableStateMapOf<String, String>().apply {
-            Categories.EXPENSE.forEach { category ->
+            rows.forEach { category ->
                 put(category, budgets[category]?.let { formatAmount(it) } ?: "")
             }
         }
@@ -1162,7 +1186,7 @@ private fun CategoryBudgetDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(12.dp))
-                Categories.EXPENSE.forEach { category ->
+                rows.forEach { category ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -1195,7 +1219,9 @@ private fun CategoryBudgetDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                Categories.EXPENSE.forEach { category ->
+                // 只写对话框里真的出现过的行（rows 与渲染用的是同一份），
+                // 留空 = 解析成 0 = 清掉预算，这是用户自己看得见、改得动的
+                rows.forEach { category ->
                     onSet(category, parseAmountToCents(texts[category].orEmpty()) ?: 0L)
                 }
                 onDismiss()
@@ -1599,9 +1625,18 @@ private fun RecurringDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (selectedCategory.isNotEmpty()) {
+                    // 金额必须大于 0：空着、填「.」解析不出来、或者填 0 都不建规则。
+                    // 以前这里把 null 当 0 用，于是会建出一条「支出 · 0.00」的规则：
+                    // 到日子就往账本里插一笔 ¥0.00，而且 Backup 导出时按 amountCents > 0 过滤，
+                    // 这种规则连备份都存不下来（备份 / 恢复一圈回来就消失了）。
+                    val cents = amountCents
+                    if (cents == null || cents <= 0L) {
+                        // 复用已有的「请先填写大于 0 的金额」：
+                        // 空着、填「.」解析不出来、或者填 0，用户需要看到的都是这一句
+                        rejected = true
+                    } else if (selectedCategory.isNotEmpty()) {
                         onAdd(
-                            amountCents ?: 0L,
+                            cents,
                             type,
                             selectedCategory,
                             account,

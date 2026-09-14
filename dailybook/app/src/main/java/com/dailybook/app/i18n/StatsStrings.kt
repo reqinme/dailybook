@@ -170,9 +170,34 @@ object StatsStrings {
         "Focus completed in the last 7 days", "直近7日間の集中"
     )
 
+    /**
+     * 「近 7 天」这句口径说明：学习周报上那一格专注数字的窗口就是今天往前数 7 天，
+     * 和它下面七根柱子是同一段窗口、同一份数据（所以不会再出现「总数非 0 而柱子全空」）。
+     * 唯一要说清的限制是跨月：上个月的那几天按 0 计，宁可少算也不虚报。
+     */
+    fun weeklyFocusScopeNote(lang: Lang) = pick(
+        lang,
+        "口径：今天和前 6 天，与下面七根柱子同一段窗口；跨月时上个月那几天按 0 计",
+        "口徑：今天和前 6 天，與下面七根柱子同一段窗口；跨月時上個月那幾天按 0 計",
+        "Scope: today plus the previous six days — the same window as the seven bars; days that fall in the previous month count as 0",
+        "口径：今日とその前 6 日で、下の 7 本の棒と同じ期間です。月をまたぐ場合、前月の分は 0 として扱います"
+    )
+
     fun todayDetailTitle(lang: Lang) = pick(
         lang, "今日专注明细", "今日專注明細",
         "Today's focus sessions", "今日の集中の内訳"
+    )
+
+    /**
+     * 专注记录详情页里那份名单的标题：「2026年8月 专注明细」。
+     *
+     * 详情页顶部能翻月份，名单跟着选中的月份走，所以标题必须带上月份——
+     * 写死「今日」会和上面的年月条自相矛盾（统计页那张卡片仍用 [todayDetailTitle]，它确实是今日）。
+     */
+    fun focusMonthDetailTitle(lang: Lang, yearMonth: String) = pickf(
+        lang, "%s 专注明细", "%s 專注明細",
+        "Focus sessions in %s", "%s の集中の内訳",
+        yearMonth
     )
 
     fun noFocusToday(lang: Lang) = pick(
@@ -567,15 +592,28 @@ object StatsStrings {
     )
 
     /**
-     * 一句实话：逐日 / 全部专注明细要读焦点记录表，而 UiState 只给到今天的明细与本月汇总，
-     * 所以这一页给的是「本月汇总 + 今日明细」，不硬编造每一天的数字。
+     * 这句以前是交代限制的（那时 UiState 只开放了「今天的明细」）；
+     * 现在名单跟着选中的月份走，这句改成交代**口径**：一个月一列，就是那一整月的全部记录。
      */
     fun focusSessionsScopeNote(lang: Lang) = pick(
         lang,
-        "这里给的是本月汇总和今天的明细；逐日全部明细要读专注记录表，当前状态里没有开放。",
-        "這裡給的是本月彙總和今天的明細；逐日全部明細要讀專注紀錄表，目前狀態裡沒有開放。",
-        "This page shows the month's totals plus today's sessions. A full day-by-day list would need the focus session table, which the current state does not expose.",
-        "ここでは今月の集計と今日の内訳を表示します。日別の全記録は集中記録テーブルが必要で、現在の状態では取得できません。"
+        "这里的名单和上面的汇总都是同一个月的：这个月完成的每一条专注记录都在里面（含标着「中断」的），不是只有今天。",
+        "這裡的名單和上面的彙總都是同一個月的：這個月完成的每一條專注紀錄都在裡面（含標著「中斷」的），不是只有今天。",
+        "The list and the totals above both cover the same month: every session finished in that month is here (including the ones marked as interrupted), not just today's.",
+        "この一覧と上の集計はどちらも同じ月のものです。その月に完了した集中記録がすべて並び（「中断」の印が付いたものも含む）、今日の分だけではありません。"
+    )
+
+    /**
+     * 翻到没有记录的月份时的补充说明：当前状态里的专注记录只按「当前自然月」统计
+     * （见 MainViewModel 里 `monthSessions` 的口径），所以别的月份这里查不到记录，
+     * 不代表记录丢了。等状态改成按选中月份统计之后，这句就不会再出现。
+     */
+    fun focusSessionsMonthScopeOnly(lang: Lang) = pick(
+        lang,
+        "当前状态里只统计了本月的专注记录，所以翻到别的月份时这里查不到记录——不是记录丢了。",
+        "目前狀態裡只統計了本月的專注紀錄，所以翻到別的月份時這裡查不到紀錄——不是紀錄丟了。",
+        "The current state only tracks focus sessions of the present month, so other months have nothing to show here — nothing has been lost.",
+        "現在の状態では今月分の集中記録しか集計していないため、ほかの月を開いてもここには表示されません。記録が消えたわけではありません。"
     )
 
     // ---- 待办完成情况（TODO_SUMMARY） ----

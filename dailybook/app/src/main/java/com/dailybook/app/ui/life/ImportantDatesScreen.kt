@@ -75,6 +75,10 @@ import java.util.Locale
  * 顶部是「最近的那个日子」的大字倒计时（[UiState.upcomingDates] 的第一个），
  * 下面按最近程度列出其余日子；每行可以单独导出 .ics 到系统日历里。
  *
+ * 「只过一次」又已经过完的日子单列一组（[UiState.pastDates]），明确写成「已过去 N 天」：
+ * 它们以前会凭空消失（算不出「下一次」就从列表里掉出去，还让整页显示成「还没有重要日期」），
+ * 而顶部那张大字卡片仍然是「下一次还没发生的日子」，不会被已经过去的日期顶掉。
+ *
  * 农历日期的展示：月名 / 日名（正月初一、闰六月十五）直接取 [Lunar] 的数据，
  * 属于农历本身的数据，不进 [LifeStrings]，四语都显示同样的字样。
  */
@@ -121,8 +125,10 @@ fun ImportantDatesScreen(
         exportLauncher.launch(icsFileName(item.title, nextMillis))
     }
 
+    // 顶部大卡片只认「下一次还没发生的日子」；已经过完的「只过一次」在下面单列一组
     val hero = state.upcomingDates.firstOrNull()
     val rest = state.upcomingDates.drop(1)
+    val past = state.pastDates
 
     Box(
         modifier = modifier
@@ -138,7 +144,7 @@ fun ImportantDatesScreen(
             )
             Spacer(Modifier.height(12.dp))
 
-            if (state.upcomingDates.isEmpty()) {
+            if (state.upcomingDates.isEmpty() && past.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     EmptyHint(
                         emoji = "🎂",
@@ -171,11 +177,28 @@ fun ImportantDatesScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        items(items = rest, key = { it.item.id }) { upcoming ->
+                        items(items = rest, key = { the -> "up-" + the.item.id }) { upcoming ->
                             DateRow(
                                 upcoming = upcoming,
                                 onEdit = { editing = upcoming.item },
                                 onExport = { startExport(upcoming.item, upcoming.nextMillis) }
+                            )
+                        }
+                    }
+                    if (past.isNotEmpty()) {
+                        item(key = "past-title") {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = LifeStrings.datesPastTitle(lang),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        items(items = past, key = { the -> "past-" + the.item.id }) { passed ->
+                            DateRow(
+                                upcoming = passed,
+                                onEdit = { editing = passed.item },
+                                onExport = { startExport(passed.item, passed.nextMillis) }
                             )
                         }
                     }
@@ -429,10 +452,18 @@ private fun RepeatChip(repeat: DateRepeat, lang: Lang) {
 // 展示辅助（供本文件与同一包内的其它生活页复用）
 // ============================================================
 
-/** 倒计时文案：今天 / 还有 N 天 */
-internal fun countdownText(lang: Lang, daysLeft: Long): String =
-    if (daysLeft <= 0L) LifeStrings.dateToday(lang)
-    else LifeStrings.dateDaysLeft(lang, daysLeft)
+/**
+ * 倒计时文案：就是今天 / 还有 N 天 / 已过去 N 天。
+ *
+ * 最后一种只对「只过一次」又已经过完的日子出现（[UiState.pastDates]）：
+ * 那时候 [daysLeft] 是负数，以前和 0 一起被写成「就是今天」，
+ * 于是唯一还能看到它的那一天显示的是一句不实的话。
+ */
+internal fun countdownText(lang: Lang, daysLeft: Long): String = when {
+    daysLeft > 0L -> LifeStrings.dateDaysLeft(lang, daysLeft)
+    daysLeft == 0L -> LifeStrings.dateToday(lang)
+    else -> LifeStrings.dateDaysPassed(lang, -daysLeft)
+}
 
 /** 阳历日期：9月20日 周六 */
 internal fun solarDateText(lang: Lang, millis: Long): String {

@@ -393,7 +393,9 @@ private fun CreditTargetDialog(
                         FilterChip(
                             selected = category == item,
                             onClick = { category = item },
-                            label = { Text(item) }
+                            // 与成绩页共用同一个翻译函数：数据里存的是「必修」这类中文，
+                            // 但类别名要跟着界面语言走，不能把中文原样印给英文/日文用户。
+                            label = { Text(categoryLabel(item, lang)) }
                         )
                     }
                 }

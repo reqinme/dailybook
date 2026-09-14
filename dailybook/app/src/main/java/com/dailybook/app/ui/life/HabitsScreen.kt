@@ -71,7 +71,9 @@ import java.time.LocalDate
  * - 下方的 7 个小圆点是最近一周，有记录的那天填实心。
  *
  * 连续天数 / 本周天数都来自 [UiState.habitStreak] 与 [UiState.habitWeekDone]，
- * 这里不再自己算一遍（算法只有一处，界面和提醒才不会有分歧）。
+ * 这里不再自己算一遍（算法只有一处，界面和提醒才不会有分歧）；
+ * 「每周目标天数」（[HabitEntity.daysPerWeek]）也在这里和本周已打卡天数对照着显示成
+ * 「本周 2 / 3 天」，达标时额外标一句 —— 这个设置以前只存不用，用户看不出任何差别。
  *
  * 本页不发任何导航（没有子页面），但签名保持和父级统一调用的形式一致。
  */
@@ -322,10 +324,29 @@ private fun HabitRow(
                         color = MaterialTheme.colorScheme.secondary
                     )
                     Spacer(Modifier.width(8.dp))
+                    // 本周目标天数（daysPerWeek）：只在设了目标（> 0）时显示「本周 2 / 3 天」，
+                    // 达标了换成一句明确的话 + 一个对勾，不靠用户自己去比数字。
+                    val weeklyTarget = habit.daysPerWeek
+                    val weekReached = weeklyTarget > 0 && weekDone >= weeklyTarget
+                    if (weekReached) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(Modifier.width(3.dp))
+                    }
                     Text(
-                        text = LifeStrings.habitWeekDone(lang, weekDone),
+                        text = when {
+                            weeklyTarget <= 0 -> LifeStrings.habitWeekDone(lang, weekDone)
+                            weekReached -> LifeStrings.habitWeekProgress(lang, weekDone, weeklyTarget) +
+                                " · " + LifeStrings.habitWeekGoalReached(lang)
+                            else -> LifeStrings.habitWeekProgress(lang, weekDone, weeklyTarget)
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (weekReached) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(6.dp))

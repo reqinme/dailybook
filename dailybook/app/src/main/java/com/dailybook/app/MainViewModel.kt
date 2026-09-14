@@ -41,11 +41,13 @@ import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.notify.ClassReminder
+import com.dailybook.app.notify.ImportantDateReminder
 import com.dailybook.app.notify.LedgerReminder
 import com.dailybook.app.notify.Notifier
 import com.dailybook.app.notify.SummaryReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.ui.theme.ThemeMode
+import com.dailybook.app.util.ImportantDateSchedule
 import com.dailybook.app.util.Lunar
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.toDayMillis
@@ -151,45 +153,24 @@ data class TodoSection(val bucket: TodoBucket, val items: List<TodoEntity>)
  * 一条重要日期的「下一次发生」。
  * [item] 是原始记录，[nextMillis] 是算出来的下一次公历日期（当天 00:00），
  * [daysLeft] 是距今天的天数（0 = 就是今天）。
+ *
+ * 「只过一次」（[DateRepeat.ONCE]）且已经过完的**不会**出现在 [UiState.upcomingDates] 里，
+ * 而是进 [UiState.pastDates]（[daysLeft] 为负数），所以这里的 [daysLeft] 对
+ * [UiState.upcomingDates] 来说总是 >= 0。
  */
 @Immutable
 data class UpcomingDate(val item: ImportantDateEntity, val nextMillis: Long, val daysLeft: Long)
 
 /**
- * 阳历重要日期的下一次发生（农历那套走 [Lunar.solarOfNextOccurrence]）。
+ * 一条重要日期的下一次发生日；农历与阳历的规则都收在 [ImportantDateSchedule] 里
+ * （界面显示、提醒排程共用同一份实现，所以规则只留一处）。
  *
- * [DateRepeat.ONCE] 只认原来那一天：已经过去了就返回 null（不再出现在倒计时列表里）；
- * YEARLY / MONTHLY / WEEKLY 一律往后滚到「今天或今天之后」的最近一次。
- * 先按年 / 月 / 周大步快进到今天附近，再用一个小循环校正（月末对齐时可能要再多走一两步）。
+ * 返回 null 表示「算不出下一次」：农历超出 [Lunar] 的年份表，或「只过一次」已经过完
+ * （过完的那种不再进倒计时列表，但会进 [UiState.pastDates]，不会凭空消失）。
  */
-private fun nextSolarOccurrence(start: LocalDate, rule: DateRepeat, today: LocalDate): LocalDate? {
-    if (rule == DateRepeat.ONCE) return if (start.isBefore(today)) null else start
-    var date = start
-    when (rule) {
-        DateRepeat.YEARLY -> {
-            val years = ChronoUnit.YEARS.between(start, today)
-            if (years > 0) date = start.plusYears(years)
-        }
-        DateRepeat.MONTHLY -> {
-            val months = ChronoUnit.MONTHS.between(start, today)
-            if (months > 0) date = start.plusMonths(months)
-        }
-        DateRepeat.WEEKLY -> {
-            val weeks = ChronoUnit.WEEKS.between(start, today)
-            if (weeks > 0) date = start.plusWeeks(weeks)
-        }
-        DateRepeat.ONCE -> return null
-    }
-    var guard = 0
-    while (date.isBefore(today) && guard++ < 8) {
-        date = when (rule) {
-            DateRepeat.YEARLY -> date.plusYears(1)
-            DateRepeat.MONTHLY -> date.plusMonths(1)
-            DateRepeat.WEEKLY -> date.plusWeeks(1)
-            DateRepeat.ONCE -> return null
-        }
-    }
-    return date
+private fun nextOccurrenceDate(item: ImportantDateEntity, today: LocalDate): LocalDate? {
+    val next = ImportantDateSchedule.nextOccurrence(item, today) ?: return null
+    return next.takeIf { !it.isBefore(today) }
 }
 
 /** 环比：本月 / 上月、今年 / 去年 */
@@ -272,8 +253,16 @@ data class FocusStats(
     val monthMinutes: Int = 0,
     val recentDays: List<FocusDay> = emptyList(),
     val todaySessions: List<FocusSessionEntity> = emptyList(),
-    /** 选中月份的全部专注记录：统计详情页要按月列出（不只是今天） */
+    /** 选中月份（[UiState.month]）的全部专注记录：统计详情页要按月列出（不只是今天）。
+     *  [monthCount] / [monthMinutes] 也是同一批记录的汇总，所以切月时三个数一起变。 */
     val monthSessions: List<FocusSessionEntity> = emptyList(),
+    /**
+     * 最近 7 天（含今天）完成的专注记录，**与选中的月份无关**。
+     *
+     * 学习周报声明的是「近 7 天」，所以它必须用这一份：用 [monthSessions] 的话，
+     * 用户把选中月切到别的月份时这 7 天会突然变成 0，而同一页的柱状图还有数据（数字与图打架）。
+     */
+    val last7Sessions: List<FocusSessionEntity> = emptyList(),
     /** 近 12 周热力图：外层是周（列），内层是周一到周日（行） */
     val heatWeeks: List<List<HeatCell>> = emptyList(),
     val heatMaxMinutes: Int = 0,
@@ -354,8 +343,16 @@ data class UiState(
     val habitStreak: Map<Long, Int> = emptyMap(),
     /** 每个习惯本周已打卡的天数：habitId → 本周（周一起）打过卡的不同日期数 */
     val habitWeekDone: Map<Long, Int> = emptyMap(),
-    /** 重要日期的下一次发生，按还剩几天从近到远排 */
+    /** 重要日期的下一次发生，按还剩几天从近到远排；只含「今天或今天之后」的（[UpcomingDate.daysLeft] >= 0） */
     val upcomingDates: List<UpcomingDate> = emptyList(),
+    /**
+     * 「只过一次」且已经过完的重要日期，[UpcomingDate.daysLeft] 是负数。
+     *
+     * 单列一份而不是混进 [upcomingDates]：顶部大卡片与「下一个纪念日」的语义是
+     * 「下一次还没发生的日子」，混进去会让倒计时卡片显示一个已经过去的日子；
+     * 但这些记录也**不该**凭空消失（以前就是那样），所以在列表里单独成组、明确标成已过去。
+     */
+    val pastDates: List<UpcomingDate> = emptyList(),
     /** 定量类习惯（单位不是「次」的那些，也就是「背单词 / 背书计划」） */
     val wordHabits: List<HabitEntity> = emptyList(),
     // ---- 学习模块：课表 / 考试 / 作业 / 成绩 / 学分 / 奖助 ----
@@ -379,6 +376,14 @@ data class UiState(
     val todos: List<TodoEntity> = emptyList(),
     /** 加权平均绩点：Σ(绩点 × 学分) / Σ学分，没有学分记录时是 0 */
     val gpa: Double = 0.0,
+    /**
+     * GPA 计算口径：4.0（默认）或 5.0，来自设置里的 [SettingsStore.gpaScale]。
+     *
+     * **只决定「原始分数 / 等级怎么换算成绩点」**（成绩页录入时的预览与保存），
+     * 已经存下来的 [GradeEntity.point] 是多少就是多少，GPA 永远按它加权算 ——
+     * 所以切换口径不会回头改写历史成绩，界面也不会再自己猜一个口径出来。
+     */
+    val gpaScale: Double = 4.0,
     /** 已修学分总和 */
     val totalCredits: Double = 0.0,
     /** 每个课程类别已修的学分：类别 → 学分 */
@@ -467,7 +472,9 @@ private data class StudyInputs(
     val studyTasks: List<StudyTaskEntity>,
     val grades: List<GradeEntity>,
     val awards: List<AwardEntity>,
-    val creditTargets: List<CreditTargetEntity>
+    val creditTargets: List<CreditTargetEntity>,
+    /** GPA 口径（4.0 / 5.0）：界面换算分数 → 绩点时要和设置里选的一致 */
+    val gpaScale: Double
 )
 
 /** 专注侧的输入聚合：记录 + 当前目标 + 分类清单，凑一层免得 combine 超过 5 个 */
@@ -558,17 +565,32 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         LifeInputs(memos, milestones, dates, habits, habitLogs)
     }
 
-    // 奖助与学分要求先自己拼一层：这样下面那层 combine 正好 5 个流
+    // 奖助与学分要求先自己拼一层：这样下面那层 combine 全是 5 个流凑出来的
     private val studyExtras = combine(repo.awards, repo.creditTargets) { a, t -> a to t }
+
+    // GPA 口径来自设置（设置页写 SettingsStore.gpaScale），成绩页只读它 ——
+    // 以前界面是「有哪条绩点超过 4.0 就猜成 5.0」，用户选了 5.0 也会被自己的旧数据翻回 4.0。
+    //
+    // 注意：`combine` 只提供到 **5 个流**的重载，写成 6 个编译不过（会报 SuspendFunction6 与
+    // SuspendFunction1 不匹配）。所以把「成绩 + 口径」先拼成一层，下面那层就还是 5 个。
+    private val studyGrades = combine(repo.grades, settings.gpaScale) { grades, scale -> grades to scale }
 
     private val studyInputs = combine(
         repo.courses,
         repo.exams,
         repo.studyTasks,
-        repo.grades,
-        studyExtras
-    ) { courses, exams, studyTasks, grades, extras ->
-        StudyInputs(courses, exams, studyTasks, grades, extras.first, extras.second)
+        studyExtras,
+        studyGrades
+    ) { courses, exams, studyTasks, extras, grades ->
+        StudyInputs(
+            courses = courses,
+            exams = exams,
+            studyTasks = studyTasks,
+            grades = grades.first,
+            awards = extras.first,
+            creditTargets = extras.second,
+            gpaScale = grades.second
+        )
     }
 
     private val focusSettings = combine(
@@ -640,30 +662,57 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { SummaryReminder.sync(app) }
             }
         }
-        // 上课提醒：课表（增删改都算）、开关、提前量任一变化就重排。
+        // 上课提醒：课表（增删改都算）、开关、提前量、**学期起始日**任一变化就重排。
         // 订阅时 courses 会先发一次当前值，所以「打开 App 重排一次」也由它兜住了；
         // 排程内部会先撤旧闹钟，重复触发不会堆积。
+        //
+        // 学期起始日必须订阅：ClassSchedule.nextOccurrence 用它把「第几周」换算成真实日期
+        // （`fallbackTermStartMillis = store.termStartMillis`），漏了它就会出现
+        // 「改了学期起始日，已经排好的闹钟还按旧的周次响（单周的课在双周响）」。
         viewModelScope.launch {
             combine(
                 repo.courses,
                 settings.classReminder,
-                settings.classReminderMinutes
-            ) { _, _, _ -> Unit }.collect {
+                settings.classReminderMinutes,
+                settings.termStartMillis
+            ) { _, _, _, _ -> Unit }.collect {
                 withContext(Dispatchers.IO) { ClassReminder.reschedule(app) }
+            }
+        }
+        // 重要日期的「提前 N 天提醒」：日期增删改（提前量、重复规则、历法都算）任一变化就重排。
+        // 和上课提醒一样「同一时刻只挂一个闹钟」，订阅时先发一次当前值，
+        // 所以「打开 App 补排一次 + 响过之后由接收器自己续排」这两条路都通了。
+        viewModelScope.launch {
+            repo.importantDates.collect {
+                withContext(Dispatchers.IO) { ImportantDateReminder.reschedule(app) }
             }
         }
     }
 
     // ---- 月份切换 ----
 
-    fun previousMonth() { selectedMonth.value = selectedMonth.value.minusMonths(1) }
+    // 切月时**必须**清掉「按某一天筛选」：否则筛选还停在旧月份的那一天，
+    // 新月份里查不到那一天，列表直接空掉，而那张筛选卡还会显示「0 笔 · ¥0.00」自相矛盾。
+    fun previousMonth() {
+        ledgerDay.value = null
+        selectedMonth.value = selectedMonth.value.minusMonths(1)
+    }
 
-    fun nextMonth() { selectedMonth.value = selectedMonth.value.plusMonths(1) }
+    fun nextMonth() {
+        ledgerDay.value = null
+        selectedMonth.value = selectedMonth.value.plusMonths(1)
+    }
 
     /** 跳到指定月份：年月快速切换器（记账页与统计页共用）用的 */
-    fun moveToMonth(target: YearMonth) { selectedMonth.value = target }
+    fun moveToMonth(target: YearMonth) {
+        ledgerDay.value = null
+        selectedMonth.value = target
+    }
 
-    fun goToCurrentMonth() { selectedMonth.value = YearMonth.now() }
+    fun goToCurrentMonth() {
+        ledgerDay.value = null
+        selectedMonth.value = YearMonth.now()
+    }
 
     // ---- 搜索 / 筛选 ----
 
@@ -1485,9 +1534,23 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val weekSessions = focus.sessions.filter {
             !it.startedAtMillis.toLocalDate().isBefore(monday)
         }
-        val currentMonth = YearMonth.from(today)
+        // 「本月」锚的是**选中月**（上面 `val month = ledger.month`），不是「今天所在的月」：
+        // monthSessions / monthCount / monthMinutes 是统计页与月报里「选中月」那一栏的数字。
+        // 以前这里用的是 YearMonth.from(today)，于是把月份切到 5 月、标题写着「5 月」，
+        // 专注那一栏却还是当前月的数 —— 标题与数字互相打架。
+        // （周与热力图仍然锚在当前周 / 今天附近，这是刻意保留的：它们本来就是「最近」的意思。）
+        val selectedMonth = month
         val monthSessions = focus.sessions.filter {
-            YearMonth.from(it.startedAtMillis.toLocalDate()) == currentMonth
+            YearMonth.from(it.startedAtMillis.toLocalDate()) == selectedMonth
+        }
+
+        // 最近 7 天（含今天）的专注记录，**与选中的月份无关**。
+        // 学习周报声明的是「近 7 天」，它不能跟着记账/统计页选的月份走：
+        // 否则用户把选中月切到别处时，那 7 天会突然变成 0，而同一页的柱状图（来自热力图）还是有数 ——
+        // 数字和柱子又打架了。
+        val last7 = today.minusDays(6)..today
+        val last7Sessions = focus.sessions.filter {
+            it.startedAtMillis.toLocalDate() in last7
         }
 
         // ---- 近 12 周热力图：列是周，行是周一到周日；未来日期记 -1，界面画成空格 ----
@@ -1525,6 +1588,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             recentDays = recentDays,
             todaySessions = todaySessions,
             monthSessions = monthSessions.sortedByDescending { it.startedAtMillis },
+            last7Sessions = last7Sessions,
             heatWeeks = heatWeeks,
             heatMaxMinutes = heatMaxMinutes,
             perTodo = perTodo
@@ -1571,23 +1635,22 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         // 定量类习惯：单位不是「次」的就是按量记的（背单词是「个」、背书计划是「页」）
         val wordHabits = life.habits.filter { it.unit != "次" }
 
-        // 重要日期的下一次发生：农历交给 Lunar 换算，阳历按重复规则往后滚；
-        // 「只过一次」的（不管阳历农历）就认它原来那天，已经过去就不再出现；最后按剩余天数从近到远排
+        // 重要日期的下一次发生：农历交给 Lunar 换算，阳历按重复规则往后滚 ——
+        // 规则都在 ImportantDateSchedule 里（和提醒排程共用一份）。
+        // 「只过一次」那天过去之后算不出「下一次」，以前就这么凭空消失了；
+        // 现在它不会进 upcomingDates（那是「下一次还没发生的」，顶部大卡片只认它），
+        // 而是进 pastDates，界面上明确标成「已过去 N 天」。
         val upcomingDates = life.dates.mapNotNull { item ->
-            val next = when {
-                item.repeatRule == DateRepeat.ONCE ->
-                    nextSolarOccurrence(item.dateMillis.toLocalDate(), DateRepeat.ONCE, today)
-                item.lunar ->
-                    // 第一个参数的年只是占位：solarOfNextOccurrence 内部按「今天的农历年」往后找
-                    Lunar.solarOfNextOccurrence(
-                        Lunar.LunarDate(today.year, item.lunarMonth, item.lunarDay, item.lunarLeap),
-                        today
-                    )
-                else ->
-                    nextSolarOccurrence(item.dateMillis.toLocalDate(), item.repeatRule, today)
-            } ?: return@mapNotNull null
+            val next = nextOccurrenceDate(item, today) ?: return@mapNotNull null
             UpcomingDate(item, next.toDayMillis(), ChronoUnit.DAYS.between(today, next))
         }.sortedBy { it.daysLeft }
+
+        // 已经过完的「只过一次」：按离今天从近到远排（daysLeft 是负数，越近越靠前）
+        val pastDates = life.dates.mapNotNull { item ->
+            val next = ImportantDateSchedule.nextOccurrence(item, today) ?: return@mapNotNull null
+            if (!next.isBefore(today)) return@mapNotNull null
+            UpcomingDate(item, next.toDayMillis(), ChronoUnit.DAYS.between(today, next))
+        }.sortedByDescending { it.daysLeft }
 
         // ---- 学习模块：课表 / 考试 / 作业 / 成绩 / 学分 / 奖助 ----
         // 下一场考试：已经开考的不算；examDaysLeft 是整天数（今天考 = 0）
@@ -1774,7 +1837,15 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             .map { bucket -> bucket to todo.all.filter { bucketOf(it, todayDate) == bucket } }
             .filter { it.second.isNotEmpty() }
             .map { (bucket, items) ->
-                TodoSection(bucket, items.sortedWith(compareByDescending<TodoEntity> { it.important }))
+                TodoSection(
+            bucket,
+            // 排序：重要的在前，其次按用户拖拽出来的 sortOrder。
+            // 以前只按 important 排，而 reorderTodos 写进去的 sortOrder 没有任何读取路径 ——
+            // 于是「拖拽排序」在界面上永远看不到效果（拖了等于没拖）。
+            items.sortedWith(
+                compareByDescending<TodoEntity> { it.important }.thenBy { it.sortOrder }
+            )
+        )
             }
 
         return UiState(
@@ -1832,6 +1903,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             habitStreak = habitStreak,
             habitWeekDone = habitWeekDone,
             upcomingDates = upcomingDates,
+            pastDates = pastDates,
             wordHabits = wordHabits,
             // 学习模块
             courses = study.courses,
@@ -1847,6 +1919,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             transactions = ledger.all,
             todos = todo.all,
             gpa = gpa,
+            gpaScale = study.gpaScale,
             totalCredits = totalCredits,
             creditsByCategory = creditsByCategory,
             studyMinutesToday = studyMinutesToday

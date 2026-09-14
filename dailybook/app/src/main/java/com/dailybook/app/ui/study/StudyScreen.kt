@@ -130,12 +130,10 @@ fun StudyScreen(
             hint = StudyStrings.hubHintAwards(lang, state.awards.size),
             route = Route.Awards
         ),
-        HubEntry(
-            icon = Icons.Filled.Translate,
-            title = AppStrings.tabWords(lang),
-            hint = StudyStrings.hubHintWords(lang, state.wordHabits.size),
-            route = Route.Words
-        ),
+        // 这里原来还有一张「背单词」卡片，点进去挂的却是**习惯打卡**界面
+        // （顶栏标题还写着「背单词」），等于同一个界面在「生活 → 习惯打卡」之外
+        // 又开了一个名不副实的入口。背单词/背书计划本来就是「单位不是『次』的习惯」，
+        // 在习惯打卡里把单位设成「个/页」即可，所以这里不再重复放入口。
         HubEntry(
             icon = Icons.Filled.Description,
             title = AppStrings.tabWeeklyReport(lang),

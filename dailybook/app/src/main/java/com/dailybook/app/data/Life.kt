@@ -158,6 +158,15 @@ interface ImportantDateDao {
     @Query("SELECT * FROM important_dates ORDER BY id ASC")
     suspend fun getAll(): List<ImportantDateEntity>
 
+    /**
+     * 按 id 取一条；没有就返回 null。
+     *
+     * 提醒接收器要用它：闹钟到点时必须**重新读一次库**，因为那条日期可能已经被删或改过了 ——
+     * 不能用闹钟排程时缓存下来的旧对象发通知。
+     */
+    @Query("SELECT * FROM important_dates WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): ImportantDateEntity?
+
     @Insert
     suspend fun insertAll(items: List<ImportantDateEntity>)
 }

@@ -30,6 +30,11 @@ class BootReceiver : BroadcastReceiver() {
                 LedgerReminder.sync(context)
                 // 上课提醒同一时刻只挂「下一节」一个闹钟，重启后补排
                 ClassReminder.reschedule(context)
+                // 定期小结（每周日 20:00 / 每月 1 日 10:00）：原来漏了这一句，
+                // 重启后小结会**静默失效**（只剩打开 App 时才会再排），这里补上。
+                SummaryReminder.sync(context)
+                // 重要日期的「提前 N 天提醒」：同一时刻只挂一个闹钟，重启后补排
+                ImportantDateReminder.reschedule(context)
             } catch (_: Exception) {
                 // 排程失败无伤大雅，下次打开 App 会再排
             } finally {

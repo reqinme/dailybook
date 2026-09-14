@@ -44,6 +44,11 @@
             android:name=".notify.LedgerReminderReceiver"
             android:exported="false" />
 
+        <!-- 上课提醒：闹钟到点后重新查库再决定要不要提醒，并顺手排下一节 -->
+        <receiver
+            android:name=".notify.ClassReminderReceiver"
+            android:exported="false" />
+
         <!-- 每周 / 每月小结 -->
         <receiver
             android:name=".notify.SummaryReceiver"

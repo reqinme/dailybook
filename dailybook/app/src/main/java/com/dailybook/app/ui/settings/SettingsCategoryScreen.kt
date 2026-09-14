@@ -76,6 +76,7 @@ import com.dailybook.app.i18n.LedgerStrings
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.i18n.SettingsStrings
 import com.dailybook.app.i18n.TodoStrings
+import com.dailybook.app.notify.ClassReminder
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.ConfirmDialog
 import com.dailybook.app.ui.ChipFlow
@@ -91,6 +92,7 @@ import com.dailybook.app.ui.rememberBackgroundBitmap
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.ui.theme.ThemePalette
 import com.dailybook.app.ui.theme.lightSchemeOf
+import com.dailybook.app.util.ClassSchedule
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.formatDueLabel
 import com.dailybook.app.util.parseAmountToCents
@@ -177,7 +179,7 @@ fun SettingsCategoryScreen(
             SettingsCategory.LANGUAGE -> LanguageSettings(vm)
             SettingsCategory.LEDGER -> LedgerSettings(state, vm)
             SettingsCategory.FOCUS -> FocusSettingsSection(timerVm, vm)
-            SettingsCategory.STUDY -> StudySettings(vm)
+            SettingsCategory.STUDY -> StudySettings(state, vm)
             SettingsCategory.DATA -> DataSettings(state, vm)
             SettingsCategory.ABOUT -> AboutCategorySection(nav)
         }
@@ -641,13 +643,17 @@ private fun FocusSettingsSection(timerVm: TimerViewModel, vm: MainViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun StudySettings(vm: MainViewModel) {
+private fun StudySettings(state: UiState, vm: MainViewModel) {
     val lang = LocalLang.current
     val termStart by vm.settings.termStartMillis.collectAsStateWithLifecycle()
     val gpaScale by vm.settings.gpaScale.collectAsStateWithLifecycle()
     val classReminder by vm.settings.classReminder.collectAsStateWithLifecycle()
     val remindMinutes by vm.settings.classReminderMinutes.collectAsStateWithLifecycle()
     var showTermPicker by remember { mutableStateOf(false) }
+    // 有没有任何一门课填了上课时间：决定提示该说「提醒能响」还是「还没课有填时间」
+    val anyCourseHasTime = remember(state.courses) {
+        state.courses.any { ClassSchedule.isValidTime(it.startMinutes) }
+    }
 
     SectionCard(title = AppStrings.settingsStudy(lang)) {
         Text(
@@ -693,25 +699,47 @@ private fun StudySettings(vm: MainViewModel) {
         Spacer(Modifier.height(14.dp))
 
         // ---- 上课提醒 ----
-        // 说明：这里只呈现状态，**不提供开关** —— 因为课表只记「周几 + 第几节」，
-        // 没有具体时间，排不出准确的提醒时刻。给一个能拨但不会发生任何事的开关
-        // 是在骗用户，所以宁可不给。等课表能填每节课的起止时间再接上。
-        Text(
-            text = SettingsStrings.classReminder(lang),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        // 这个开关现在是真的：课程里能填「开始 / 结束时间」之后，提醒时刻 = 上课时刻 - 提前量，
+        // 由 ClassReminder 用非精确闹钟排下一次（不申请新权限）。
+        // 仍然有一件事必须说清楚：只有**填了开始时间**的课才排得出提醒，
+        // 所以下面那行提示按「有没有课填过时间」分成两句，两句都是真的。
+        val context = LocalContext.current
+
+        LabeledSwitch(
+            SettingsStrings.classReminder(lang),
+            classReminder
+        ) { enabled ->
+            vm.settings.setClassReminder(enabled)
+            // 开 / 关都要重排：开了排下一节，关了把已排的闹钟撤掉
+            ClassReminder.reschedule(context)
+        }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = SettingsStrings.classReminderNoTime(lang),
+            text = if (!anyCourseHasTime) {
+                SettingsStrings.classReminderNoTimeHint(lang)
+            } else {
+                SettingsStrings.classReminderHint(lang)
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (classReminder || remindMinutes != 15) {
-            // 以前拨过开关的用户：把残留的偏好清回默认，避免留下一个「开了但其实没用」的状态
-            LaunchedEffect(Unit) {
-                vm.settings.setClassReminder(false)
-                vm.settings.setClassReminderMinutes(15)
+
+        if (classReminder) {
+            Spacer(Modifier.height(12.dp))
+            FieldLabel(SettingsStrings.minutesBefore(lang))
+            Spacer(Modifier.height(6.dp))
+            ChipFlow {
+                CLASS_REMINDER_MINUTES.forEach { minutes ->
+                    FilterChip(
+                        selected = remindMinutes == minutes,
+                        onClick = {
+                            vm.settings.setClassReminderMinutes(minutes)
+                            // 提前量一变，旧闹钟的时刻就不对了，立刻按新提前量重排
+                            ClassReminder.reschedule(context)
+                        },
+                        label = { Text(SettingsStrings.minutesBeforeValue(lang, minutes)) }
+                    )
+                }
             }
         }
     }

@@ -40,6 +40,7 @@ import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
+import com.dailybook.app.notify.ClassReminder
 import com.dailybook.app.notify.LedgerReminder
 import com.dailybook.app.notify.Notifier
 import com.dailybook.app.notify.SummaryReminder
@@ -639,6 +640,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { SummaryReminder.sync(app) }
             }
         }
+        // 上课提醒：课表（增删改都算）、开关、提前量任一变化就重排。
+        // 订阅时 courses 会先发一次当前值，所以「打开 App 重排一次」也由它兜住了；
+        // 排程内部会先撤旧闹钟，重复触发不会堆积。
+        viewModelScope.launch {
+            combine(
+                repo.courses,
+                settings.classReminder,
+                settings.classReminderMinutes
+            ) { _, _, _ -> Unit }.collect {
+                withContext(Dispatchers.IO) { ClassReminder.reschedule(app) }
+            }
+        }
     }
 
     // ---- 月份切换 ----
@@ -1187,7 +1200,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // ---- 课表 ----
 
-    /** 新增一门课（课表里的一格：星期几 + 第几节到第几节 + 起止周） */
+    /**
+     * 新增一门课（课表里的一格：星期几 + 第几节到第几节 + 起止周）。
+     *
+     * [startMinutes] / [endMinutes] 是当天 00:00 起的分钟数（-1 = 没填），上课提醒靠它算准点时刻。
+     */
     fun addCourse(
         name: String,
         teacher: String = "",
@@ -1197,6 +1214,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         endPeriod: Int = 2,
         weeks: String = "",
         termStartMillis: Long,
+        startMinutes: Int = -1,
+        endMinutes: Int = -1,
         colorIndex: Int = 0,
         note: String = ""
     ) {
@@ -1212,6 +1231,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 endPeriod = endPeriod,
                 weeks = weeks,
                 termStartMillis = termStartMillis,
+                startMinutes = startMinutes,
+                endMinutes = endMinutes,
                 colorIndex = colorIndex,
                 note = note
             )

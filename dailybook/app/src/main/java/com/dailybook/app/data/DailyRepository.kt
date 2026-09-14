@@ -481,6 +481,12 @@ class DailyRepository(context: Context) {
 
     // ---- 课表 ----
 
+    /**
+     * 新增一门课。
+     *
+     * [startMinutes] / [endMinutes] 是当天 00:00 起的分钟数（-1 = 没填），
+     * 上课提醒靠它算准点时刻；只填了节次也能存，只是排不出提醒。
+     */
     suspend fun addCourse(
         name: String,
         teacher: String = "",
@@ -490,6 +496,8 @@ class DailyRepository(context: Context) {
         endPeriod: Int = 2,
         weeks: String = "",
         termStartMillis: Long,
+        startMinutes: Int = -1,
+        endMinutes: Int = -1,
         colorIndex: Int = 0,
         note: String = "",
         nowMillis: Long = System.currentTimeMillis()
@@ -504,6 +512,8 @@ class DailyRepository(context: Context) {
                 endPeriod = endPeriod,
                 weeks = weeks,
                 termStartMillis = termStartMillis,
+                startMinutes = startMinutes,
+                endMinutes = endMinutes,
                 colorIndex = colorIndex,
                 note = note,
                 createdAt = nowMillis

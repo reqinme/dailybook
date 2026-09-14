@@ -272,9 +272,10 @@ abstract class AppDatabase : RoomDatabase() {
          * v1.8 → v1.9：课程新增「上课 / 下课钟点」两列（上课提醒要用它算准点时刻）。
          *
          * 两列的声明必须和 Room 由 [CourseEntity] 生成的一模一样：
-         * `Int` 属性 + Kotlin 默认值 → `INTEGER NOT NULL DEFAULT -1`
-         * （**不是** `DEFAULT '-1'`：那是字符串默认值，类型/默认值任一不符，
-         * Room 打开数据库时校验 schema 就会抛异常，App 直接起不来）。
+         * `INTEGER NOT NULL DEFAULT -1`（**不是** `DEFAULT '-1'` —— 那是字符串默认值）。
+         * 而 Room **不会**因为 Kotlin 写了 `= -1` 就在建表语句里带默认值，
+         * 所以实体上必须显式写 `@ColumnInfo(defaultValue = "-1")`，两边才对得上；
+         * 类型、NOT NULL、默认值里有任何一项不符，Room 打开数据库时校验 schema 就会抛异常。
          *
          * 先加列、不填值：老数据全部是 -1（= 还没填时间），课表照常显示，
          * 只是这些课排不出上课提醒 —— 用户在课程里填上时间就自动接上了。

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -44,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dailybook.app.MainViewModel
@@ -61,6 +63,7 @@ import com.dailybook.app.ui.Navigator
 import com.dailybook.app.ui.SectionCard
 import com.dailybook.app.ui.Shapes
 import com.dailybook.app.ui.theme.expenseColor
+import com.dailybook.app.util.ClassSchedule
 import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
 import java.time.Instant
@@ -358,7 +361,7 @@ fun CoursesScreen(
             existing = null,
             defaultTermStart = defaultTermStart,
             onDismiss = { adding = false },
-            onSave = { name, teacher, location, day, start, end, weeks, termStart, color ->
+            onSave = { name, teacher, location, day, start, end, weeks, termStart, startMinutes, endMinutes, color ->
                 vm.addCourse(
                     name = name,
                     teacher = teacher,
@@ -368,6 +371,8 @@ fun CoursesScreen(
                     endPeriod = end,
                     weeks = weeks,
                     termStartMillis = termStart,
+                    startMinutes = startMinutes,
+                    endMinutes = endMinutes,
                     colorIndex = color
                 )
                 adding = false
@@ -380,7 +385,7 @@ fun CoursesScreen(
             existing = course,
             defaultTermStart = defaultTermStart,
             onDismiss = { editing = null },
-            onSave = { name, teacher, location, day, start, end, weeks, termStart, color ->
+            onSave = { name, teacher, location, day, start, end, weeks, termStart, startMinutes, endMinutes, color ->
                 vm.updateCourse(
                     course.copy(
                         name = name,
@@ -391,6 +396,8 @@ fun CoursesScreen(
                         endPeriod = end,
                         weeks = weeks,
                         termStartMillis = termStart,
+                        startMinutes = startMinutes,
+                        endMinutes = endMinutes,
                         colorIndex = color
                     )
                 )
@@ -558,6 +565,7 @@ private fun CourseBlock(
 ) {
     val background = courseColor(course.colorIndex)
     val textColor = courseTextColor(background)
+    val range = ClassSchedule.formatRange(course.startMinutes, course.endMinutes)
     Box(
         modifier = modifier
             .padding(2.dp)
@@ -573,6 +581,16 @@ private fun CourseBlock(
                 maxLines = if (span >= 3) 4 else 2,
                 overflow = TextOverflow.Ellipsis
             )
+            // 格子只有 64dp 宽，钟点单独一行、字号最小；没填时间的课就少这一行
+            if (range.isNotEmpty()) {
+                Text(
+                    text = range,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             if (course.location.isNotBlank()) {
                 Text(
                     text = course.location,
@@ -663,6 +681,9 @@ private fun CourseRow(
                             course.location
                         )
                     )
+                    // 填了钟点就把 `08:00–09:40` 挂在节次后面；没填的课显示和以前一模一样
+                    val range = ClassSchedule.formatRange(course.startMinutes, course.endMinutes)
+                    if (range.isNotEmpty()) append(" · ").append(range)
                     if (course.weeks.isNotBlank()) append(" · ").append(course.weeks)
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -685,6 +706,136 @@ private fun CourseRow(
 // 添加 / 编辑弹窗
 // ============================================================
 
+/**
+ * 「开始时间」的一键预设：常见的整点 / 半点上课时刻。
+ * 只是省得在小屏上敲数字，用户照样可以自己填任意时间。
+ */
+private val START_PRESETS = listOf(8 * 60, 8 * 60 + 30, 9 * 60, 10 * 60, 14 * 60, 16 * 60, 18 * 60, 19 * 60)
+
+/** 「结束时间」的预设：比开始时间常见的那几档晚一两节 */
+private val END_PRESETS = listOf(9 * 60 + 40, 10 * 60 + 30, 11 * 60 + 30, 12 * 60, 15 * 60 + 40, 17 * 60 + 30, 19 * 60 + 30, 21 * 60)
+
+private val TIME_PRESET_FORMAT = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+
+/** [parseClock] 的「没填」标记：和「填得不合法」区分开 */
+private const val NO_CLOCK = Int.MIN_VALUE
+
+/**
+ * 把输入框里的 `8:00` / `08:00` / `8` 读成「当天 00:00 起的分钟数」。
+ *
+ * - 返回 [NO_CLOCK]：**没填**（空串，或者才写到 `8:` 这种半截状态）—— 存 -1，这门课不排提醒；
+ * - 返回 null：**填得不合法**（小时不在 0..23、分钟不在 0..59）—— 拦下不让保存。
+ */
+private fun parseClock(text: String): Int? {
+    val clean = text.trim()
+    if (clean.isEmpty()) return NO_CLOCK
+    val parts = clean.split(':')
+    val hour = parts.getOrNull(0)?.trim().orEmpty()
+    val minute = parts.getOrNull(1)?.trim().orEmpty()
+    // 还没写到分钟（`8:`）不算填错，只当没填完
+    if (hour.isEmpty()) return NO_CLOCK
+    val h = hour.toIntOrNull() ?: return null
+    val m = if (minute.isEmpty()) 0 else minute.toIntOrNull() ?: return null
+    if (h !in 0..23 || m !in 0..59) return null
+    return h * 60 + m
+}
+
+/** 把 [parseClock] 的结果收成「能存进数据库的分钟数」（没填 / 不合法都算 -1） */
+private fun Int?.toStoredMinutes(): Int =
+    if ((this == null) || (this == NO_CLOCK)) ClassSchedule.NO_TIME else this
+
+/**
+ * 一个钟点输入行：常用时间快选 chips + 时 / 分两个小输入框。
+ *
+ * 沿用设置页 `ReminderTimeDialog` 的「chip 快选」思路，但换成手填时 / 分两个格子 ——
+ * 弹窗里要放两组时间，Material 的 `TimePicker` 表盘太大，两个就撑爆了。
+ */
+@Composable
+private fun CourseTimeRow(
+    value: String,
+    onChange: (String) -> Unit,
+    onClear: () -> Unit,
+    presets: List<Int>,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    val lang = LocalLang.current
+    val current = parseClock(value)
+
+    Column(modifier) {
+        ChipFlow {
+            presets.forEach { minutes ->
+                val label = java.time.LocalTime.of(minutes / 60, minutes % 60)
+                    .format(TIME_PRESET_FORMAT)
+                FilterChip(
+                    selected = current == minutes,
+                    onClick = {
+                        // 再点一次已选中的预设 = 取消选择，等于「这节课不填时间」
+                        if (current == minutes) onClear() else onChange(label)
+                    },
+                    label = { Text(label) }
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        CourseTimeFields(
+            value = value,
+            onChange = onChange,
+            accent = accent
+        )
+        if (value.isNotBlank()) {
+            TextButton(onClick = onClear) { Text(StudyStrings.coursesTimeClear(lang)) }
+        }
+    }
+}
+
+/** 时 / 分两个输入框：只收数字，各有两位上限 */
+@Composable
+private fun CourseTimeFields(value: String, onChange: (String) -> Unit, accent: Color) {
+    val parts = value.split(':')
+    val hourText = parts.getOrNull(0).orEmpty()
+    val minuteText = parts.getOrNull(1).orEmpty()
+    val hour = hourText.toIntOrNull()
+    val minute = minuteText.toIntOrNull()
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = hourText,
+            // 越界直接打不进去：这样保存时几乎不会撞上校验（校验仍然保留，防手滑）
+            onValueChange = { raw ->
+                val digits = raw.filter { it.isDigit() }.take(2)
+                if (digits.isEmpty() || (digits.toIntOrNull() ?: 0) <= 23) {
+                    onChange("$digits:$minuteText")
+                }
+            },
+            singleLine = true,
+            isError = hourText.isNotEmpty() && (hour == null || hour > 23),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.width(72.dp)
+        )
+        Text(
+            text = ":",
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (minuteText.isNotEmpty() && (minute == null || minute > 59)) accent
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 6.dp)
+        )
+        OutlinedTextField(
+            value = minuteText,
+            onValueChange = { raw ->
+                val digits = raw.filter { it.isDigit() }.take(2)
+                if (digits.isEmpty() || (digits.toIntOrNull() ?: 0) <= 59) {
+                    onChange("$hourText:$digits")
+                }
+            },
+            singleLine = true,
+            isError = minuteText.isNotEmpty() && (minute == null || minute > 59),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.width(72.dp)
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CourseDialog(
@@ -700,6 +851,8 @@ private fun CourseDialog(
         endPeriod: Int,
         weeks: String,
         termStartMillis: Long,
+        startMinutes: Int,
+        endMinutes: Int,
         colorIndex: Int
     ) -> Unit,
     onDelete: (() -> Unit)? = null
@@ -716,9 +869,21 @@ private fun CourseDialog(
     var colorIndex by remember { mutableStateOf(existing?.colorIndex ?: 0) }
     var showDatePicker by remember { mutableStateOf(false) }
     var rejected by remember { mutableStateOf(false) }
+    // 上课 / 下课钟点：空串 = 没填（存 -1）。老课程和老备份读出来就是 -1，这里也就显示为空
+    var startTimeText by remember { mutableStateOf(ClassSchedule.formatMinutes(existing?.startMinutes ?: -1)) }
+    var endTimeText by remember { mutableStateOf(ClassSchedule.formatMinutes(existing?.endMinutes ?: -1)) }
 
     val start = startText.trim().toIntOrNull()?.coerceIn(1, MAX_PERIOD) ?: 1
     val end = endText.trim().toIntOrNull()?.coerceIn(start, MAX_PERIOD) ?: start
+
+    val startMinutes = parseClock(startTimeText)
+    val endMinutes = parseClock(endTimeText)
+    val startFilled = startMinutes != null && startMinutes != NO_CLOCK
+    val endFilled = endMinutes != null && endMinutes != NO_CLOCK
+    // 空 / 写了一半 -> -1（不排提醒）；越界的数字 -> null（拦下不让保存）
+    val timeInvalid = startMinutes == null || endMinutes == null
+    // 只填了一头就按 -1 存另一头，不硬凑一个假的结束时间
+    val timeOrderInvalid = startFilled && endFilled && endMinutes < startMinutes
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -805,6 +970,58 @@ private fun CourseDialog(
                     )
                 }
 
+                // ---- 上课 / 下课钟点：上课提醒就靠这两个时间 ----
+                // 第几节是教学安排，换算不出钟点，所以提醒必须单独填真实时间；
+                // 不填也能存，只是这门课不会有提醒（下面的小字说清楚了）。
+                Spacer(Modifier.height(10.dp))
+                FieldLabel(StudyStrings.coursesBoundaryLabel(lang, start = true))
+                Spacer(Modifier.height(6.dp))
+                CourseTimeRow(
+                    value = startTimeText,
+                    onChange = { startTimeText = it },
+                    onClear = { startTimeText = "" },
+                    presets = START_PRESETS,
+                    accent = expenseColor()
+                )
+
+                Spacer(Modifier.height(10.dp))
+                FieldLabel(StudyStrings.coursesBoundaryLabel(lang, start = false))
+                Spacer(Modifier.height(6.dp))
+                CourseTimeRow(
+                    value = endTimeText,
+                    onChange = { endTimeText = it },
+                    onClear = { endTimeText = "" },
+                    presets = END_PRESETS,
+                    accent = expenseColor()
+                )
+
+                Spacer(Modifier.height(6.dp))
+                // 填了开始时间就回显一遍范围，让用户确认排出来的提醒是几点
+                if (startFilled) {
+                    Text(
+                        text = StudyStrings.coursesTimeRange(
+                            lang,
+                            ClassSchedule.formatRange(
+                                startMinutes!!,
+                                if (endFilled) endMinutes!! else ClassSchedule.NO_TIME
+                            )
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
+                Text(
+                    text = when {
+                        timeInvalid -> StudyStrings.coursesTimeInvalid(lang)
+                        timeOrderInvalid -> StudyStrings.coursesTimeOrder(lang)
+                        else -> StudyStrings.coursesTimeEmptyHint(lang)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (timeInvalid || timeOrderInvalid) expenseColor()
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Spacer(Modifier.height(10.dp))
                 FieldLabel(StudyStrings.coursesWeeks(lang))
                 Spacer(Modifier.height(6.dp))
@@ -874,6 +1091,8 @@ private fun CourseDialog(
                     val clean = name.trim()
                     if (clean.isEmpty()) {
                         rejected = true
+                    } else if (timeInvalid || timeOrderInvalid) {
+                        // 时间不合法就不保存：存进去也排不出提醒，不如当场说清楚
                     } else {
                         onSave(
                             clean,
@@ -884,6 +1103,8 @@ private fun CourseDialog(
                             end,
                             weeks.trim(),
                             termStart,
+                            startMinutes.toStoredMinutes(),
+                            endMinutes.toStoredMinutes(),
                             colorIndex
                         )
                     }

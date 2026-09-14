@@ -1,5 +1,6 @@
 package com.dailybook.app.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Entity
@@ -41,9 +42,17 @@ data class CourseEntity(
     val weeks: String = "",
     /** 学期起始日（当天 00:00），用来把「第几周」换算成真实日期 */
     val termStartMillis: Long,
-    /** 上课开始时间：当天 00:00 起的分钟数；-1 = 还没填 */
+    /**
+     * 上课开始时间：当天 00:00 起的分钟数；-1 = 还没填。
+     *
+     * `@ColumnInfo(defaultValue = "-1")` 不能省：迁移 `MIGRATION_7_8` 给这一列带了
+     * `DEFAULT -1`，Room 生成的期望建表语句里也必须带同一个默认值，
+     * 否则两边对不上（Room 官方要求「迁移加了默认值就要在实体上声明」）。
+     */
+    @ColumnInfo(defaultValue = "-1")
     val startMinutes: Int = -1,
     /** 下课时间：同上；-1 = 还没填 */
+    @ColumnInfo(defaultValue = "-1")
     val endMinutes: Int = -1,
     val colorIndex: Int = 0,
     val note: String = "",
@@ -70,6 +79,10 @@ interface CourseDao {
 
     @Query("SELECT * FROM courses ORDER BY id ASC")
     suspend fun getAll(): List<CourseEntity>
+
+    /** 按 id 取一门课：下课提醒到点后要重新确认这节课还在不在 */
+    @Query("SELECT * FROM courses WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): CourseEntity?
 
     @Insert
     suspend fun insertAll(items: List<CourseEntity>)

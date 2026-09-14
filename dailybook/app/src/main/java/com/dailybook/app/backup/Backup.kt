@@ -255,6 +255,10 @@ object Backup {
                     put("endPeriod", item.endPeriod)
                     put("weeks", item.weeks)
                     put("termStartMillis", item.termStartMillis)
+                    // v5 之后新增的两个钟点字段：老备份里没有这两个键，读的时候按 -1 兜底，
+                    // 所以 FORMAT 不用加 —— 加版本号反而会把「能读的老备份」判成不兼容
+                    put("startMinutes", item.startMinutes)
+                    put("endMinutes", item.endMinutes)
                     put("colorIndex", item.colorIndex)
                     put("note", item.note)
                     put("createdAt", item.createdAt)
@@ -499,6 +503,9 @@ object Backup {
                         endPeriod = o.optInt("endPeriod", 2),
                         weeks = o.optString("weeks", ""),
                         termStartMillis = o.optLong("termStartMillis", 0L),
+                        // 老备份（没有这两个键）读成 -1 = 没填时间，导入后课表照常，只是不排上课提醒
+                        startMinutes = o.optInt("startMinutes", -1),
+                        endMinutes = o.optInt("endMinutes", -1),
                         colorIndex = o.optInt("colorIndex", 0),
                         note = o.optString("note", ""),
                         createdAt = o.optLong("createdAt", 0L)

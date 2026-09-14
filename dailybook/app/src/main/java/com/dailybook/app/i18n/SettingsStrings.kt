@@ -450,11 +450,52 @@ object SettingsStrings {
         "時間割に沿って授業の前に通知します（先に学期開始日と各授業の週を設定してください）"
     )
 
-    /** 上课提醒暂时不可用的原因（课表只有节次，没有具体时间） */
+    /**
+     * 上课提醒暂时不可用的原因（课表只有节次，没有具体时间）。
+     *
+     * ⚠️ 文案已被 [classReminderNoTimeHint] 取代：现在课表能填起止时间，提醒真的能排了，
+     * 「暂时还不能排」这句已经不成立。留着只是为了不动老代码引用，不要再往界面上放。
+     */
     fun classReminderNoTime(lang: Lang) = pick(
         lang, "暂时还不能排上课提醒：课表里只记了「周几、第几节」，没有具体几点几分，排不出准确的提醒时间。等课表能填每节课的起止时间后会接上",
         "暫時還不能排上課提醒：課表裡只記了「週幾、第幾節」，沒有具體幾點幾分，排不出準確的提醒時間。等課表能填每節課的起止時間後會接上",
         "Class reminders cannot be scheduled yet: the timetable only stores the weekday and period numbers, not clock times, so there is no accurate moment to fire. This will be wired up once a course can carry its start and end time",
         "授業リマインダーはまだ設定できません。時間割は曜日と時限しか持っておらず、開始時刻が無いため正確な通知時刻を決められません。授業に開始・終了時刻を入力できるようになったら対応します"
+    )
+
+    // ---- 上课提醒（开课时间表能填钟点之后）：通知文案 + 开关下方的诚实提示 ----
+
+    /** 通知标题：「08:00 · 高等数学」；钟点是本地化后的时间，课程名是数据 */
+    fun classReminderNotifyTitle(lang: Lang, clock: String, courseName: String) = pickf(
+        lang, "%1\$s · %2\$s", "%1\$s · %2\$s",
+        "%1\$s · %2\$s", "%1\$s · %2\$s",
+        clock, courseName
+    )
+
+    /** 通知正文：填了地点就说地点，没填就只说快上课了 */
+    fun classReminderNotifyBody(lang: Lang, location: String) =
+        if (location.isBlank()) {
+            pick(
+                lang, "马上要上课了", "馬上要上課了",
+                "Class starts soon", "まもなく授業が始まります"
+            )
+        } else {
+            pickf(
+                lang, "马上要上课了 · %s", "馬上要上課了 · %s",
+                "Class starts soon · %s", "まもなく授業が始まります · %s",
+                location
+            )
+        }
+
+    /**
+     * 开关打开、但**还没有任何一门课填了上课时间**时的提示。
+     *
+     * 这句必须是真的：提醒只认「课程里填的起止时间」，没填时间的课排不出来。
+     */
+    fun classReminderNoTimeHint(lang: Lang) = pick(
+        lang, "开关是开着的，但还没有课程填了上课时间 —— 提醒只对填了起止时间的课生效，去课表里给课程补上时间才会响",
+        "開關是開著的，但還沒有課程填了上課時間 —— 提醒只對填了起止時間的課生效，去課表裡給課程補上時間才會響",
+        "The switch is on, but no course has a start time yet — reminders only fire for courses with times filled in, so add them in the timetable",
+        "スイッチはオンですが、開始時刻を入力した授業がまだありません。リマインダーは時刻を入力した授業にだけ働くので、時間割で入力してください"
     )
 }

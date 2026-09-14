@@ -203,6 +203,13 @@ object AppStrings {
         "每晚提醒你记下当天的收支", "每晚提醒你記下當天的收支",
         "A nightly nudge to record the day's spending", "毎晩、その日の収支を記録するよう促します"
     )
+    fun notifChannelClass(lang: Lang) = pick(lang, "上课提醒", "上課提醒", "Class reminder", "授業リマインダー")
+    fun notifChannelClassDesc(lang: Lang) = pick(
+        lang,
+        "每节课开始前按你设的提前量提醒你", "每節課開始前按你設的提前量提醒你",
+        "Nudges you before a class starts, as early as you set",
+        "授業が始まる前に、設定した分だけ早く知らせます"
+    )
     fun notifLedgerTitle(lang: Lang) = pick(
         lang, "今天的账记了吗？", "今天的帳記了嗎？",
         "Did you record today's spending?", "今日の支出は記録しましたか？"

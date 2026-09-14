@@ -693,32 +693,27 @@ private fun StudySettings(vm: MainViewModel) {
         Spacer(Modifier.height(14.dp))
 
         // ---- 上课提醒 ----
-        LabeledSwitch(
-            title = SettingsStrings.classReminder(lang),
-            checked = classReminder,
-            onChange = { vm.settings.setClassReminder(it) }
-        )
-        if (classReminder) {
-            Spacer(Modifier.height(6.dp))
-            FieldLabel(SettingsStrings.minutesBefore(lang))
-            Spacer(Modifier.height(6.dp))
-            ChipFlow {
-                CLASS_REMINDER_MINUTES.forEach { minutes ->
-                    FilterChip(
-                        selected = remindMinutes == minutes,
-                        onClick = { vm.settings.setClassReminderMinutes(minutes) },
-                        label = { Text(SettingsStrings.minutesBeforeValue(lang, minutes)) }
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
+        // 说明：这里只呈现状态，**不提供开关** —— 因为课表只记「周几 + 第几节」，
+        // 没有具体时间，排不出准确的提醒时刻。给一个能拨但不会发生任何事的开关
+        // 是在骗用户，所以宁可不给。等课表能填每节课的起止时间再接上。
         Text(
-            text = SettingsStrings.classReminderHint(lang),
+            text = SettingsStrings.classReminder(lang),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = SettingsStrings.classReminderNoTime(lang),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        if (classReminder || remindMinutes != 15) {
+            // 以前拨过开关的用户：把残留的偏好清回默认，避免留下一个「开了但其实没用」的状态
+            LaunchedEffect(Unit) {
+                vm.settings.setClassReminder(false)
+                vm.settings.setClassReminderMinutes(15)
+            }
+        }
     }
 
     if (showTermPicker) {

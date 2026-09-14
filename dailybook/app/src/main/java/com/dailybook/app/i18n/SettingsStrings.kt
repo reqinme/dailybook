@@ -449,4 +449,12 @@ object SettingsStrings {
         "Reminds you before each class on your timetable (set the term start date and each course's weeks first)",
         "時間割に沿って授業の前に通知します（先に学期開始日と各授業の週を設定してください）"
     )
+
+    /** 上课提醒暂时不可用的原因（课表只有节次，没有具体时间） */
+    fun classReminderNoTime(lang: Lang) = pick(
+        lang, "暂时还不能排上课提醒：课表里只记了「周几、第几节」，没有具体几点几分，排不出准确的提醒时间。等课表能填每节课的起止时间后会接上",
+        "暫時還不能排上課提醒：課表裡只記了「週幾、第幾節」，沒有具體幾點幾分，排不出準確的提醒時間。等課表能填每節課的起止時間後會接上",
+        "Class reminders cannot be scheduled yet: the timetable only stores the weekday and period numbers, not clock times, so there is no accurate moment to fire. This will be wired up once a course can carry its start and end time",
+        "授業リマインダーはまだ設定できません。時間割は曜日と時限しか持っておらず、開始時刻が無いため正確な通知時刻を決められません。授業に開始・終了時刻を入力できるようになったら対応します"
+    )
 }

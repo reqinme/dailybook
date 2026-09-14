@@ -83,7 +83,14 @@ gradle testDebugUnitTest   # 15 个 JVM 单元测试（重复日期 / 提醒排�
 gradle lintRelease         # 静态检查
 ```
 
-已构建产物在 `..\dist\`，打包件 `日常本v1.3-三合一.zip`。
+已构建的安装包统一收在工作区根目录的 `dist\`（即 `apk\dist\`）：
+
+| 文件 | 说明 |
+| --- | --- |
+| `DailyBook-v1.3-release.apk` | 正式签名版，约 1.6 MB，**装机用这个**（签名与历史版本同源，可直接覆盖安装） |
+| `DailyBook-v1.3-debug.apk` | 调试版备胎，约 17 MB，签名不同，覆盖不了正式版，需先卸载 |
+
+构建产物本身在 `app/build/outputs/apk/{release,debug}/`。
 
 ## 设计要点
 

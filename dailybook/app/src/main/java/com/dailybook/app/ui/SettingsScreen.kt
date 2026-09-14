@@ -1,5 +1,8 @@
 package com.dailybook.app.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,18 +28,21 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
+import com.dailybook.app.backup.Backup
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.util.formatAmount
@@ -62,6 +68,30 @@ fun SettingsScreen(
     var clearing by remember { mutableStateOf<ClearTarget?>(null) }
     var showBudgetDialog by remember { mutableStateOf(false) }
     var budgetText by remember { mutableStateOf("") }
+    var confirmImport by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val message by vm.message.collectAsStateWithLifecycle()
+    LaunchedEffect(message) {
+        message?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.consumeMessage()
+        }
+    }
+
+    // 三个文件选择器：导出备份 / 导出 CSV 用「新建文件」，恢复用「打开文件」。
+    // 位置由用户在系统界面里挑，所以 App 不需要任何存储权限。
+    val backupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> uri?.let { vm.exportBackup(it) } }
+
+    val csvLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri -> uri?.let { vm.exportLedgerCsv(it) } }
+
+    val restoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { vm.importBackup(it) } }
 
     val timerState by timerVm.state.collectAsStateWithLifecycle()
     val focusSettings = timerState.settings
@@ -199,6 +229,35 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
+
+            Text("备份与导出", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { backupLauncher.launch(Backup.suggestName("日常本备份", "json")) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("导出备份") }
+                OutlinedButton(
+                    onClick = { confirmImport = true },
+                    modifier = Modifier.weight(1f)
+                ) { Text("恢复备份") }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { csvLauncher.launch(Backup.suggestName("日常本记账", "csv")) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("导出记账 CSV（Excel 可打开）") }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "备份是一个 JSON 文件，装下全部记账、待办、专注记录和预算设置，" +
+                    "换手机或重装后可以整份恢复。文件存到你挑的位置，恢复时会覆盖当前数据。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(Modifier.height(16.dp))
+            Text("清除数据", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(8.dp))
             ClearTarget.entries.forEach { target ->
                 OutlinedButton(
                     onClick = { clearing = target },
@@ -211,14 +270,14 @@ fun SettingsScreen(
         Spacer(Modifier.height(14.dp))
         SectionCard {
             Text(
-                text = "日常本 v1.2",
+                text = "日常本 v1.3",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "记账 + 待办 + 专注计时，三合一。数据全部存在手机本地，不联网、不上传，" +
-                    "只有专注计时的通知和震动需要系统权限。",
+                    "只有通知、震动和开机后排提醒需要系统权限。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -241,6 +300,20 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { clearing = null }
+        )
+    }
+
+    if (confirmImport) {
+        ConfirmDialog(
+            title = "从备份文件恢复？",
+            text = "当前所有记账、待办和专注记录都会被备份文件里的内容替换，无法撤销。" +
+                "建议先点「导出备份」存一份现在的数据。",
+            confirmText = "选择备份文件",
+            onConfirm = {
+                confirmImport = false
+                restoreLauncher.launch(arrayOf("application/json", "*/*"))
+            },
+            onDismiss = { confirmImport = false }
         )
     }
 

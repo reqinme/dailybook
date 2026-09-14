@@ -24,6 +24,14 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions")
     suspend fun clearAll()
+
+    // ---- 备份 / 恢复用 ----
+
+    @Query("SELECT * FROM transactions ORDER BY dateMillis ASC, id ASC")
+    suspend fun getAll(): List<TransactionEntity>
+
+    @Insert
+    suspend fun insertAll(items: List<TransactionEntity>)
 }
 
 @Dao
@@ -56,4 +64,25 @@ interface TodoDao {
 
     @Query("DELETE FROM todos")
     suspend fun clearAll()
+
+    // ---- 备份 / 恢复 / 提醒用 ----
+
+    @Query("SELECT * FROM todos ORDER BY id ASC")
+    suspend fun getAll(): List<TodoEntity>
+
+    @Query("SELECT * FROM todos WHERE id = :id")
+    suspend fun getById(id: Long): TodoEntity?
+
+    /** 找一条「同名且同到期日、还没完成」的待办，用于避免重复任务被重复生成 */
+    @Query(
+        """
+        SELECT * FROM todos
+        WHERE title = :title AND dueMillis = :dueMillis AND done = 0
+        LIMIT 1
+        """
+    )
+    suspend fun findPending(title: String, dueMillis: Long): TodoEntity?
+
+    @Insert
+    suspend fun insertAll(items: List<TodoEntity>)
 }

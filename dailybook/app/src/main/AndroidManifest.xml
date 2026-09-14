@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 13+ 发送计时完成通知需要运行时授权 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 关机重启后重新排一遍待办提醒（闹钟会被系统清空） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -25,6 +27,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 待办到点提醒：闹钟到点后重新查库再决定要不要提醒 -->
+        <receiver
+            android:name=".notify.TodoReminderReceiver"
+            android:exported="false" />
+
+        <!-- 重启 / 覆盖安装后，系统会清掉闹钟，这里重新排一遍 -->
+        <receiver
+            android:name=".notify.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.TodoFilter
 import com.dailybook.app.UiState
+import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.ui.theme.expenseColor
@@ -134,13 +135,19 @@ fun TodoScreen(
             }
         }
 
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "点开任意一条待办，可以设置到期日、重复规则和提醒",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
         Spacer(Modifier.height(12.dp))
         SearchField(
             value = state.todoQuery,
             onValueChange = vm::setTodoQuery,
             placeholder = "搜索待办"
         )
-
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TodoFilter.entries.forEach { filter ->
@@ -200,8 +207,8 @@ fun TodoScreen(
         EditTodoDialog(
             item = item,
             onDismiss = { editing = null },
-            onSave = { title, important, dueMillis ->
-                vm.updateTodo(item, title, important, dueMillis)
+            onSave = { title, important, dueMillis, repeat ->
+                vm.updateTodo(item, title, important, dueMillis, repeat)
                 editing = null
             },
             onDelete = {
@@ -245,7 +252,7 @@ private fun TodoRow(
                 else MaterialTheme.colorScheme.onSurface,
                 textDecoration = if (todo.done) TextDecoration.LineThrough else TextDecoration.None
             )
-            if (isFocusTarget || todo.dueMillis != null) {
+            if (isFocusTarget || todo.dueMillis != null || todo.repeats) {
                 Spacer(Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (isFocusTarget) {
@@ -254,7 +261,7 @@ private fun TodoRow(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        if (todo.dueMillis != null) Spacer(Modifier.width(8.dp))
+                        if (todo.dueMillis != null || todo.repeats) Spacer(Modifier.width(8.dp))
                     }
                     todo.dueMillis?.let { due ->
                         val overdue = !todo.done && isOverdue(due)
@@ -263,6 +270,14 @@ private fun TodoRow(
                             style = MaterialTheme.typography.bodySmall,
                             color = if (overdue) expenseColor()
                             else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (todo.repeats) {
+                        if (todo.dueMillis != null) Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "🔁 ${todo.repeat.label}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
                         )
                     }
                 }
@@ -293,11 +308,12 @@ private fun TodoRow(
 private fun EditTodoDialog(
     item: TodoEntity,
     onDismiss: () -> Unit,
-    onSave: (title: String, important: Boolean, dueMillis: Long?) -> Unit,
+    onSave: (title: String, important: Boolean, dueMillis: Long?, repeatRule: RepeatRule) -> Unit,
     onDelete: () -> Unit
 ) {
     var title by remember { mutableStateOf(item.title) }
     var important by remember { mutableStateOf(item.important) }
+    var repeat by remember { mutableStateOf(item.repeat) }
     var dueDate by remember {
         mutableStateOf(
             item.dueMillis?.let {
@@ -347,13 +363,40 @@ private fun EditTodoDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                Text("重复", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(4.dp))
+                ChipFlow {
+                    RepeatRule.entries.forEach { rule ->
+                        FilterChip(
+                            selected = repeat == rule,
+                            onClick = { repeat = rule },
+                            label = { Text(rule.label) }
+                        )
+                    }
+                }
+                if (repeat != RepeatRule.NONE) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "勾选完成后自动生成下一次" +
+                            if (dueDate == null) "（没有到期日时按今天起算）" else "（到期日顺延）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "到期日当天上午 9 点会发通知提醒；没完成的逾期任务次日再提醒一次。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     if (title.isNotBlank()) {
-                        onSave(title.trim(), important, dueDate?.toDayMillis())
+                        onSave(title.trim(), important, dueDate?.toDayMillis(), repeat)
                     }
                 }
             ) { Text("保存") }

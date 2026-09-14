@@ -3,4 +3,6 @@
     <string name="app_name">日常本</string>
     <string name="channel_name">计时提醒</string>
     <string name="channel_description">专注或休息阶段结束时通知你</string>
+    <string name="todo_channel_name">待办提醒</string>
+    <string name="todo_channel_description">待办到期时提醒你</string>
 </resources>

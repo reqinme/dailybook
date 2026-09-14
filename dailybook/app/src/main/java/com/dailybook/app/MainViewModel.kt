@@ -1,24 +1,31 @@
 package com.dailybook.app
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.dailybook.app.backup.Backup
 import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.FocusSessionEntity
+import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
+import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.util.formatMonthLabel
 import com.dailybook.app.util.toLocalDate
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -48,6 +55,28 @@ data class DayBar(val day: Int, val cents: Long)
 /** 专注天数（柱状图） */
 @Immutable
 data class FocusDay(val date: LocalDate, val count: Int)
+
+/** 月度收支（近 12 个月趋势图） */
+@Immutable
+data class MonthBar(val month: YearMonth, val expense: Long, val income: Long) {
+    val label: String get() = "${month.monthValue}月"
+}
+
+/** 年度汇总 */
+@Immutable
+data class YearSummary(
+    val year: Int = YearMonth.now().year,
+    val income: Long = 0L,
+    val expense: Long = 0L,
+    val count: Int = 0,
+    val topCategory: String = "",
+    val topCategoryCents: Long = 0L,
+    val monthBars: List<MonthBar> = emptyList()
+) {
+    val balance: Long get() = income - expense
+    val hasData: Boolean get() = count > 0
+    val maxBarCents: Long get() = monthBars.maxOfOrNull { maxOf(it.expense, it.income) } ?: 0L
+}
 
 /** 专注统计（全部由 focus_sessions 表派生） */
 @Immutable
@@ -83,7 +112,11 @@ data class UiState(
     val doneCount: Int = 0,
     val focusTaskId: Long = SettingsStore.NO_TASK,
     val focusTaskTitle: String = "",
-    val focusStats: FocusStats = FocusStats()
+    val focusStats: FocusStats = FocusStats(),
+    val yearSummary: YearSummary = YearSummary(),
+    val totalIncomeCents: Long = 0L,
+    val totalExpenseCents: Long = 0L,
+    val totalCount: Int = 0
 ) {
     val balance: Long get() = monthIncome - monthExpense
     val hasMonthData: Boolean get() = monthGroups.isNotEmpty()
@@ -98,6 +131,9 @@ data class UiState(
     val budgetRemainingCents: Long get() = (budgetCents - monthExpense).coerceAtLeast(0L)
 
     val overBudget: Boolean get() = budgetCents > 0L && monthExpense > budgetCents
+
+    /** 有史以来的净结余 */
+    val totalBalance: Long get() = totalIncomeCents - totalExpenseCents
 }
 
 /** 记账侧的输入聚合，避免每次重组都重新拼装大量 flow */
@@ -115,12 +151,12 @@ private data class TodoInputs(
     val query: String
 )
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
-    private val repo = DailyRepository(application)
+    private val repo = DailyRepository(app)
 
     /** 全局共享的设置存储（与 TimerViewModel 拿到的是同一个实例） */
-    val settings: SettingsStore = SettingsStore.get(application)
+    val settings: SettingsStore = SettingsStore.get(app)
 
     private val selectedMonth = MutableStateFlow(YearMonth.now())
     private val todoFilter = MutableStateFlow(TodoFilter.ALL)
@@ -153,6 +189,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) { ledger, todos, sessions, taskId, taskTitle ->
         buildState(ledger, todos, sessions, taskId, taskTitle)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
+
+    /** 操作结果提示（导出成功、导入失败之类），界面弹完即清空 */
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    fun consumeMessage() { _message.value = null }
+
+    init {
+        // 待办一变就重排提醒：完成 / 删除 / 改期都会自动撤销或顺延，不会留下幽灵提醒
+        viewModelScope.launch {
+            repo.todos.collect { todos ->
+                withContext(Dispatchers.IO) { TodoReminder.sync(app, todos) }
+            }
+        }
+    }
 
     // ---- 月份切换 ----
 
@@ -204,10 +255,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ---- 待办 ----
 
-    fun addTodo(title: String, dueMillis: Long?) {
+    fun addTodo(title: String, dueMillis: Long?, repeatRule: RepeatRule = RepeatRule.NONE) {
         val text = title.trim()
         if (text.isEmpty()) return
-        viewModelScope.launch { repo.addTodo(text, dueMillis) }
+        viewModelScope.launch { repo.addTodo(text, dueMillis, repeatRule) }
     }
 
     fun toggleTodoDone(item: TodoEntity) {
@@ -218,11 +269,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repo.toggleTodoImportant(item) }
     }
 
-    fun updateTodo(item: TodoEntity, title: String, important: Boolean, dueMillis: Long?) {
+    fun updateTodo(
+        item: TodoEntity,
+        title: String,
+        important: Boolean,
+        dueMillis: Long?,
+        repeatRule: RepeatRule = item.repeat
+    ) {
         val text = title.trim()
         if (text.isEmpty()) return
         viewModelScope.launch {
-            repo.updateTodo(item.copy(title = text, important = important, dueMillis = dueMillis))
+            repo.updateTodo(
+                item.copy(
+                    title = text,
+                    important = important,
+                    dueMillis = dueMillis,
+                    repeatRule = repeatRule.name
+                )
+            )
         }
     }
 
@@ -254,6 +318,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setDynamicColor(enabled: Boolean) = settings.setDynamicColor(enabled)
 
     fun setMonthlyBudget(cents: Long) = settings.setMonthlyBudget(cents)
+
+    // ---- 备份 / 恢复 / 导出 ----
+
+    /** 导出全部数据为 JSON 备份文件（换机、重装前先存一份） */
+    fun exportBackup(uri: Uri) = runFileTask {
+        val snapshot = repo.snapshot()
+        Backup.writeText(app, uri, Backup.toJson(snapshot, settings.monthlyBudgetCents.value))
+        "已导出 ${snapshot.transactions.size} 笔记账、${snapshot.todos.size} 条待办、" +
+            "${snapshot.focusSessions.size} 条专注记录"
+    }
+
+    /** 导出记账流水为 CSV（Excel 可直接打开） */
+    fun exportLedgerCsv(uri: Uri) = runFileTask {
+        val transactions = repo.snapshot().transactions
+        if (transactions.isEmpty()) throw IllegalStateException("还没有记账记录可导出")
+        Backup.writeText(app, uri, Backup.toCsv(transactions))
+        "已导出 ${transactions.size} 笔流水"
+    }
+
+    /** 从备份文件恢复：会覆盖当前全部数据 */
+    fun importBackup(uri: Uri) = runFileTask {
+        val parsed = Backup.parse(Backup.readText(app, uri))
+        repo.restore(parsed.snapshot)
+        settings.setMonthlyBudget(parsed.budgetCents)
+        "已恢复 ${parsed.snapshot.transactions.size} 笔记账、${parsed.snapshot.todos.size} 条待办、" +
+            "${parsed.snapshot.focusSessions.size} 条专注记录"
+    }
+
+    /** 文件读写放到 IO 线程，结果统一以提示语回到界面 */
+    private fun runFileTask(block: suspend () -> String) {
+        viewModelScope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { block() } }
+            _message.value = result.getOrElse {
+                "操作失败：${it.message ?: it.javaClass.simpleName}"
+            }
+        }
+    }
 
     // ---- 清除数据 ----
 
@@ -373,6 +474,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             todaySessions = todaySessions
         )
 
+        // ---- 年度报表（近 12 个月趋势 + 当年汇总）----
+        val thisYear = today.year
+        val yearTx = ledger.all.filter { it.dateMillis.toLocalDate().year == thisYear }
+        val yearExpense = yearTx.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
+        val yearIncome = yearTx.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
+        val topExpense = yearTx
+            .filter { it.type == TxType.EXPENSE }
+            .groupBy { it.category }
+            .map { (category, items) -> category to items.sumOf { it.amountCents } }
+            .maxByOrNull { it.second }
+        val byMonth = ledger.all.groupBy { YearMonth.from(it.dateMillis.toLocalDate()) }
+        val monthBars = (11 downTo 0).map { back ->
+            val m = YearMonth.from(today).minusMonths(back.toLong())
+            val items = byMonth[m].orEmpty()
+            MonthBar(
+                month = m,
+                expense = items.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents },
+                income = items.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
+            )
+        }
+        val yearSummary = YearSummary(
+            year = thisYear,
+            income = yearIncome,
+            expense = yearExpense,
+            count = yearTx.size,
+            topCategory = topExpense?.first.orEmpty(),
+            topCategoryCents = topExpense?.second ?: 0L,
+            monthBars = monthBars
+        )
+
+        val allIncome = ledger.all.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
+        val allExpense = ledger.all.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
+
         return UiState(
             month = month,
             monthLabel = formatMonthLabel(month),
@@ -395,7 +529,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             doneCount = todo.all.size - pending,
             focusTaskId = focusTaskId,
             focusTaskTitle = focusTaskTitle,
-            focusStats = focusStats
+            focusStats = focusStats,
+            yearSummary = yearSummary,
+            totalIncomeCents = allIncome,
+            totalExpenseCents = allExpense,
+            totalCount = ledger.all.size
         )
     }
 }

@@ -35,4 +35,12 @@ interface FocusSessionDao {
 
     @Query("DELETE FROM focus_sessions")
     suspend fun clearAll()
+
+    // ---- 备份 / 恢复用 ----
+
+    @Query("SELECT * FROM focus_sessions ORDER BY id ASC")
+    suspend fun getAll(): List<FocusSessionEntity>
+
+    @Insert
+    suspend fun insertAll(items: List<FocusSessionEntity>)
 }

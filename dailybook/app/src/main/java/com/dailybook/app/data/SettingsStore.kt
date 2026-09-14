@@ -65,6 +65,23 @@ class SettingsStore private constructor(context: Context) {
 
     fun clearFocusTask() = setFocusTask(NO_TASK, "")
 
+    // ---- 待办提醒的记账本（哪条提醒过了、哪条排过闹钟） ----
+
+    /** 已提醒过的键："<id>:<dueMillis>" 与 "<id>:<dueMillis>:overdue" */
+    fun remindedKeys(): Set<String> = prefs.getStringSet(KEY_REMINDED, emptySet()).orEmpty()
+
+    fun addRemindedKey(key: String) {
+        val next = remindedKeys().toMutableSet().apply { add(key) }
+        prefs.edit().putStringSet(KEY_REMINDED, next).apply()
+    }
+
+    /** 当前排过提醒闹钟的待办 id，便于删除或改期后撤销 */
+    fun scheduledTodoIds(): Set<String> = prefs.getStringSet(KEY_SCHEDULED, emptySet()).orEmpty()
+
+    fun setScheduledTodoIds(ids: Set<String>) {
+        prefs.edit().putStringSet(KEY_SCHEDULED, ids).apply()
+    }
+
     companion object {
         const val NO_TASK = -1L
 
@@ -73,6 +90,8 @@ class SettingsStore private constructor(context: Context) {
         private const val KEY_BUDGET = "monthly_budget_cents"
         private const val KEY_FOCUS_TASK_ID = "focus_task_id"
         private const val KEY_FOCUS_TASK_TITLE = "focus_task_title"
+        private const val KEY_REMINDED = "reminded_keys"
+        private const val KEY_SCHEDULED = "scheduled_todo_ids"
 
         @Volatile
         private var instance: SettingsStore? = null

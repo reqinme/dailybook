@@ -72,7 +72,7 @@ object TodoReminder {
 
     /**
      * 排一个「稍后提醒」闹钟。
-     * data 里带上触发时刻，所以它和常 규排程的闹钟是两个不同的 PendingIntent，
+     * data 里带上触发时刻，所以它和常规排程的闹钟是两个不同的 PendingIntent，
      * [sync] 重排时不会把它误撤掉。
      */
     fun scheduleSnooze(context: Context, todoId: Long, delayMillis: Long) {

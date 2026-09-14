@@ -1,9 +1,14 @@
 package com.dailybook.app.ui
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,12 +21,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -29,31 +41,186 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.AccountSlice
 import com.dailybook.app.CategoryBudgetRow
 import com.dailybook.app.CategorySlice
+import com.dailybook.app.Comparison
 import com.dailybook.app.DayBar
 import com.dailybook.app.FocusDay
 import com.dailybook.app.HeatCell
+import com.dailybook.app.Insight
+import com.dailybook.app.InsightKind
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.MonthBar
+import com.dailybook.app.R
 import com.dailybook.app.UiState
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.i18n.AppStrings
+import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.i18n.StatsStrings
+import com.dailybook.app.report.CategoryData
+import com.dailybook.app.report.CompareData
+import com.dailybook.app.report.DailyBarData
+import com.dailybook.app.report.MonthlyReportData
+import com.dailybook.app.report.buildHtml
+import com.dailybook.app.report.renderBitmap
+import com.dailybook.app.report.writePdf
+import com.dailybook.app.report.writePng
+import com.dailybook.app.report.writeText
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
+import com.dailybook.app.util.formatMonthLabel
 import java.time.Instant
 import java.time.YearMonth
 import java.time.ZoneId
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** 月报导出的三种格式 */
+private enum class ExportFormat(val mime: String, val extension: String) {
+    IMAGE("image/png", "png"),
+    HTML("text/html", "html"),
+    PDF("application/pdf", "pdf")
+}
 
 private fun clockText(millis: Long): String {
     val time = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
     return "%02d:%02d".format(time.hour, time.minute)
 }
 
+// ==================== v1.7：智能洞察 / 月报的数据拼装 ====================
+
+/**
+ * 把结构化洞察翻成一句话。
+ *
+ * SPENT_MORE 在数据层只有「能落到某个分类」时才带 category，
+ * 所以没有分类时用 [StatsStrings.insightSpentMoreNoCategory] 这个不带分类的版本，
+ * 避免拼出「主要在」这种半截话。渲染不出来（比如金额为 0）就返回空串，由调用方丢掉。
+ */
+private fun insightLine(insight: Insight, lang: Lang): String = when (insight.kind) {
+    InsightKind.SPENT_MORE -> if (insight.category.isBlank()) {
+        StatsStrings.insightSpentMoreNoCategory(lang, formatAmount(insight.amountCents))
+    } else {
+        AppStrings.insightSpentMore(
+            lang,
+            formatAmount(insight.amountCents),
+            "${Categories.emojiOf(insight.category)}${insight.category}"
+        )
+    }
+
+    InsightKind.SPENT_LESS ->
+        AppStrings.insightSpentLess(lang, formatAmount(insight.amountCents))
+
+    InsightKind.NO_RECORD_DAYS -> AppStrings.insightNoRecord(lang, insight.days)
+
+    InsightKind.TOP_CATEGORY -> AppStrings.insightTopCategory(
+        lang,
+        "${Categories.emojiOf(insight.category)}${insight.category}",
+        formatAmount(insight.amountCents)
+    )
+
+    InsightKind.BUDGET_LEFT ->
+        AppStrings.insightBudgetLeft(lang, formatAmount(insight.amountCents))
+}
+
+private fun insightsToLines(insights: List<Insight>, lang: Lang): List<String> =
+    insights.map { insightLine(it, lang) }.filter { it.isNotBlank() }
+
+/** 环比卡片里那一块「金额 + 涨跌」 */
+private data class CompareStat(
+    val label: String,
+    val amountText: String,
+    val percent: Int?,
+    val amountColor: Color
+)
+
+/**
+ * 这个月有没有值得出月报的数据。
+ *
+ * 只看「有金额或有分类」这三件事，故意不去读 UiState 里别的标志位：
+ * 月报的全部内容都由这三样派生，所以它们都是空的就一定没什么可导出。
+ */
+private val UiState.isReportable: Boolean
+    get() = monthExpense > 0L || monthIncome > 0L || expenseSlices.isNotEmpty()
+
+/**
+ * 从 UiState 拼出月报需要的一切。
+ *
+ * 模块（[com.dailybook.app.report]）不认识 UiState、也不查字符串资源，
+ * 所以所有文案都在这里用 pick/pickf 系列先拼好，包括洞察句子。
+ */
+private fun monthlyReportData(state: UiState, lang: Lang): MonthlyReportData {
+    val monthLabel = formatMonthLabel(state.month, lang)
+    val comparison = state.comparison
+
+    // 分类行：金额由大到小，占比以支出最高的那类为基准，柱条才好比较
+    val topCents = state.expenseSlices.maxOfOrNull { it.cents } ?: 0L
+    val categories = state.expenseSlices.take(8).map { slice ->
+        CategoryData(
+            name = "${Categories.emojiOf(slice.category)}${slice.category}",
+            amountText = formatAmount(slice.cents),
+            ratio = if (topCents <= 0L) 0f else (slice.cents.toFloat() / topCents.toFloat())
+        )
+    }
+    val maxDayCents = state.maxDayCents.coerceAtLeast(1L)
+
+    return MonthlyReportData(
+        title = AppStrings.reportMonthlyTitle(lang, monthLabel),
+        monthLabel = monthLabel,
+        appName = "${AppStrings.appName(lang)} DailyBook",
+        summarySectionTitle = StatsStrings.reportSummarySection(lang),
+        expenseLabel = AppStrings.txExpense(lang),
+        incomeLabel = AppStrings.txIncome(lang),
+        balanceLabel = AppStrings.txBalance(lang),
+        expenseCents = state.monthExpense,
+        incomeCents = state.monthIncome,
+        balanceCents = state.balance,
+        summaryNote = StatsStrings.reportSummaryLine(lang, monthLabel),
+        dailySectionTitle = StatsStrings.reportDailySection(lang),
+        dailyBars = state.dayBars.map { bar ->
+            DailyBarData(
+                label = StatsStrings.reportDailyBar(lang, bar.day, formatAmount(bar.cents)),
+                ratio = (bar.cents.toFloat() / maxDayCents.toFloat()).coerceIn(0f, 1f)
+            )
+        },
+        categorySectionTitle = StatsStrings.reportCategorySection(lang),
+        categoryTopLabel = StatsStrings.reportTopCategoryLabel(lang),
+        categories = categories,
+        focusSectionTitle = StatsStrings.reportFocusSection(lang),
+        focusLine = StatsStrings.reportFocusLine(
+            lang,
+            state.focusStats.monthCount,
+            state.focusStats.monthMinutes
+        ),
+        compareSectionTitle = StatsStrings.reportCompareSection(lang),
+        comparisons = listOf(
+            CompareData(
+                AppStrings.txExpense(lang),
+                formatAmount(state.monthExpense),
+                StatsStrings.compareDelta(lang, comparison.monthExpensePercent())
+            ),
+            CompareData(
+                AppStrings.txIncome(lang),
+                formatAmount(state.monthIncome),
+                StatsStrings.compareDelta(lang, comparison.monthIncomePercent())
+            ),
+            CompareData(
+                StatsStrings.yearExpense(lang),
+                formatAmount(state.yearSummary.expense),
+                StatsStrings.compareDelta(lang, comparison.yearExpensePercent())
+            )
+        ),
+        insightSectionTitle = StatsStrings.reportInsightSection(lang),
+        insights = insightsToLines(state.insights, lang),
+        emptyText = StatsStrings.reportEmptySection(lang)
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun StatsScreen(
     state: UiState,
@@ -63,6 +230,101 @@ fun StatsScreen(
     val lang = LocalLang.current
     val focus = state.focusStats
     val focusGoal by vm.settings.focusGoal.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // ---- v1.7 月报导出 ----
+    // 三个按钮都走系统文件选择器（SAF）：用户在系统界面里挑好位置，App 直接把内容写过去，
+    // 所以既不需要存储权限，也不用先落一份临时文件。生成 + 写盘都在 IO 线程上，不卡界面。
+    // 点按钮时把当时的月报数据快照存下来，SAF 回调里直接用这一份（回调不在同一次重组里）。
+    var reportData by remember { mutableStateOf<MonthlyReportData?>(null) }
+    var exporting by remember { mutableStateOf(false) }
+
+    /** 生成 + 写盘放 IO 线程；成功失败各用一个 Toast 收尾 */
+    fun runExport(generate: suspend () -> Unit) {
+        if (exporting) return
+        exporting = true
+        scope.launch {
+            val failure = withContext(Dispatchers.IO) {
+                runCatching { generate() }.exceptionOrNull()
+            }
+            exporting = false
+            val text = if (failure == null) {
+                AppStrings.reportSaved(lang)
+            } else {
+                StatsStrings.reportExportFailed(
+                    lang,
+                    failure.message ?: failure.javaClass.simpleName
+                )
+            }
+            Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val htmlLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(ExportFormat.HTML.mime)
+    ) { uri ->
+        val data = reportData ?: return@rememberLauncherForActivityResult
+        if (uri != null) runExport { writeText(context, uri, buildHtml(data, lang)) }
+    }
+
+    val pdfLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(ExportFormat.PDF.mime)
+    ) { uri ->
+        val data = reportData ?: return@rememberLauncherForActivityResult
+        if (uri != null) {
+            runExport {
+                if (!writePdf(context, uri, data, lang)) error("writePdf returned false")
+            }
+        }
+    }
+
+    val pngLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument(ExportFormat.IMAGE.mime)
+    ) { uri ->
+        val data = reportData ?: return@rememberLauncherForActivityResult
+        if (uri != null) {
+            runExport {
+                val bitmap = renderBitmap(data, lang)
+                try {
+                    writePng(context, uri, bitmap)
+                } finally {
+                    // 1080×N 的位图，写完立刻回收，不留在内存里等 GC
+                    bitmap.recycle()
+                }
+            }
+        }
+    }
+
+    /** 没有数据就不弹文件选择器，直接提示 */
+    fun startExport(format: ExportFormat) {
+        if (state.isReportable) {
+            reportData = monthlyReportData(state, lang)
+            val fileName = "${StatsStrings.reportFileName(
+                lang,
+                context.getString(R.string.app_name),
+                state.month.toString()
+            )}.${format.extension}"
+            when (format) {
+                ExportFormat.HTML -> htmlLauncher.launch(fileName)
+                ExportFormat.PDF -> pdfLauncher.launch(fileName)
+                ExportFormat.IMAGE -> pngLauncher.launch(fileName)
+            }
+        } else {
+            Toast.makeText(context, AppStrings.reportNoData(lang), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // vm.message 里的提示（别处操作留下的）在这一页也消费掉并弹成 Toast；
+    // 本页自己的导出结果直接弹 Toast，不往 vm.message 里写，避免两条消息互相覆盖。
+    val vmMessage = vm.message.collectAsStateWithLifecycle()
+    LaunchedEffect(vmMessage.value) {
+        vmMessage.value?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            vm.consumeMessage()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -291,6 +553,15 @@ fun StatsScreen(
             }
         }
 
+        // ==================== v1.7 环比对比 + 智能洞察 ====================
+        Spacer(Modifier.height(14.dp))
+        ComparisonCard(comparison = state.comparison, year = state.yearSummary.year)
+
+        if (state.insights.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            InsightCard(insights = state.insights)
+        }
+
         // ==================== 专注 ====================
         Spacer(Modifier.height(24.dp))
         Text(
@@ -461,6 +732,44 @@ fun StatsScreen(
             }
         }
 
+        // ==================== v1.7 月报导出 ====================
+        // 三份导出各自走一次系统文件选择器；这个月没数据时不弹选择器，只提示
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = AppStrings.reportMonthlyTitle(lang, formatMonthLabel(state.month, lang))) {
+            Text(
+                text = StatsStrings.reportExportHint(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(10.dp))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { startExport(ExportFormat.IMAGE) },
+                    enabled = !exporting
+                ) { Text(AppStrings.reportExportImage(lang)) }
+                OutlinedButton(
+                    onClick = { startExport(ExportFormat.HTML) },
+                    enabled = !exporting
+                ) { Text(AppStrings.reportExportHtml(lang)) }
+                OutlinedButton(
+                    onClick = { startExport(ExportFormat.PDF) },
+                    enabled = !exporting
+                ) { Text(AppStrings.reportExportPdf(lang)) }
+            }
+            if (exporting) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = AppStrings.reportGenerating(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -516,9 +825,142 @@ private fun InterruptedTag(text: String) {
     )
 }
 
-/** 「标签 —— 金额」一行：金额靠右，长金额省略而不是撑破卡片 */
+private fun insightEmoji(kind: InsightKind): String = when (kind) {
+    InsightKind.SPENT_MORE -> "🔥"
+    InsightKind.SPENT_LESS -> "🍃"
+    InsightKind.NO_RECORD_DAYS -> "📝"
+    InsightKind.TOP_CATEGORY -> "🏆"
+    InsightKind.BUDGET_LEFT -> "🎯"
+}
+
+/**
+ * 涨跌小标签：支出变多偏暖（琥珀），变少偏冷（品牌绿），持平用弱色。
+ * 没有可比基数（percent 为 null）时干脆不画，金额本身照样显示。
+ */
 @Composable
-private fun AmountRow(label: String, value: String, color: Color) {
+private fun ChangeChip(percent: Int?) {
+    val lang = LocalLang.current
+    if (percent == null) return
+    val color = when {
+        percent > 0 -> MaterialTheme.colorScheme.secondary
+        percent < 0 -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(
+        text = StatsStrings.compareDelta(lang, percent),
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        modifier = Modifier
+            .background(color.copy(alpha = 0.14f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+    )
+}
+
+/**
+ * 环比对比：本月 vs 上月（支出 / 收入），今年 vs 去年（支出）。
+ *
+ * 上面三行是「这个数是多少、比之前涨跌多少」，涨跌标签由 [ChangeChip] 画；
+ * 下面三行是三个对比基准本身，用弱色显示，方便看清涨跌是从哪个数算出来的。
+ * 上月和去年都还是空的时候没什么可比的，只给一句说明。
+ */
+@Composable
+private fun ComparisonCard(comparison: Comparison, year: Int) {
+    val lang = LocalLang.current
+    val hasBase = comparison.lastMonthExpense > 0L ||
+        comparison.lastMonthIncome > 0L ||
+        comparison.lastYearExpense > 0L
+
+    SectionCard(title = StatsStrings.comparisonTitle(lang)) {
+        if (!hasBase) {
+            HintText(StatsStrings.comparisonNoBase(lang))
+        } else {
+            val stats = listOf(
+                CompareStat(
+                    "${StatsStrings.thisMonthExpense(lang)} · ${AppStrings.vsLastMonth(lang)}",
+                    "¥${formatAmount(comparison.monthExpense)}",
+                    comparison.monthExpensePercent(),
+                    expenseColor()
+                ),
+                CompareStat(
+                    "${StatsStrings.thisMonthIncome(lang)} · ${AppStrings.vsLastMonth(lang)}",
+                    "¥${formatAmount(comparison.monthIncome)}",
+                    comparison.monthIncomePercent(),
+                    incomeColor()
+                ),
+                CompareStat(
+                    "${StatsStrings.yearSummaryTitle(lang, year)} · ${AppStrings.vsLastYear(lang)}",
+                    "¥${formatAmount(comparison.yearExpense)}",
+                    comparison.yearExpensePercent(),
+                    expenseColor()
+                )
+            )
+            stats.forEachIndexed { index, stat ->
+                if (index > 0) Spacer(Modifier.height(10.dp))
+                AmountRow(
+                    label = stat.label,
+                    value = stat.amountText,
+                    color = stat.amountColor,
+                    suffix = { ChangeChip(stat.percent) }
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            AmountRow(
+                label = StatsStrings.lastMonthExpense(lang),
+                value = "¥${formatAmount(comparison.lastMonthExpense)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            AmountRow(
+                label = StatsStrings.lastMonthIncome(lang),
+                value = "¥${formatAmount(comparison.lastMonthIncome)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            AmountRow(
+                label = StatsStrings.lastYearExpense(lang),
+                value = "¥${formatAmount(comparison.lastYearExpense)}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** 智能洞察：最多 4 条（数据层已经截断），每条前面挂一个小图标 */
+@Composable
+private fun InsightCard(insights: List<Insight>) {
+    val lang = LocalLang.current
+    val lines = insights
+        .map { insightEmoji(it.kind) to insightLine(it, lang) }
+        .filter { it.second.isNotBlank() }
+
+    SectionCard(title = StatsStrings.insightTitle(lang)) {
+        if (lines.isEmpty()) {
+            HintText(StatsStrings.insightNoData(lang))
+        } else {
+            lines.forEachIndexed { index, (emoji, text) ->
+                if (index > 0) Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(text = emoji, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 「标签 —— 金额」一行：金额靠右，长金额省略而不是撑破卡片；[suffix] 用来挂涨跌小标签 */
+@Composable
+private fun AmountRow(
+    label: String,
+    value: String,
+    color: Color,
+    suffix: (@Composable () -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -529,15 +971,24 @@ private fun AmountRow(label: String, value: String, color: Color) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleMedium,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f)
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.End
+        ) {
+            if (suffix != null) {
+                suffix()
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End
+            )
+        }
     }
 }
 

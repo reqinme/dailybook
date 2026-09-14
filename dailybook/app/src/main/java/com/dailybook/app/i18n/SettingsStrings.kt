@@ -187,6 +187,22 @@ object SettingsStrings {
     fun removeCategoryLabel(lang: Lang, name: String) =
         pickf(lang, "删除分类 %s", "刪除分類 %s", "Remove category %s", "カテゴリ %s を削除", name)
 
+    // ---- 周期记账 ----
+    // 标题 / 说明 / 空状态 / 「下次 %s」在 AppStrings 里（记账页也用得到），
+    // 这里只放设置页独有的那几句。规则名走 RepeatRule.label，分类名和账户名是数据。
+    /** 记账卡片上的副标题：已建了几条周期记账 */
+    fun recurringCount(lang: Lang, count: Int) =
+        pickf(lang, "%d 条", "%d 條", "%d rules", "%d 件", count)
+    fun recurringAdd(lang: Lang) = pick(lang, "新增周期记账", "新增週期記帳", "Add recurring entry", "定期的な記録を追加")
+    fun recurringKindLabel(lang: Lang) = pick(lang, "类型", "類型", "Type", "種類")
+    fun recurringEnabled(lang: Lang) =
+        pick(lang, "已启用（到日子自动记一笔）", "已啟用（到日子自動記一筆）", "Active — recorded on its due date", "有効（期日に自動で記録）")
+    fun recurringPaused(lang: Lang) = pick(lang, "已暂停", "已暫停", "Paused", "一時停止中")
+    fun recurringFirstDue(lang: Lang) =
+        pick(lang, "首次记账日期", "首次記帳日期", "First due date", "最初の記録日")
+    fun recurringAmountRequired(lang: Lang) =
+        pick(lang, "请先填写大于 0 的金额", "請先填寫大於 0 的金額", "Enter an amount greater than 0", "0 より大きい金額を入力してください")
+
     // ---- CSV 导入 ----
     fun importCsvTitle(lang: Lang) =
         pick(lang, "导入记账 CSV？", "匯入記帳 CSV？", "Import ledger CSV?", "記録 CSV を取り込みますか？")

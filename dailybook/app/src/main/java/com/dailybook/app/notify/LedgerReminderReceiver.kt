@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.dailybook.app.data.AppDatabase
+import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.util.toLocalDate
 import kotlinx.coroutines.CoroutineScope
@@ -12,9 +13,10 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
- * 晚上到点：按开关分别做两件事，然后把下一次排上
- * 1. 记账提醒：提醒记录当天的收支
- * 2. 专注目标：今天番茄数没达标时提醒一次
+ * 晚上到点：做三件事，然后把下一次排上
+ * 1. 补记到期的周期记账（即使下面两个开关都关着也照做，固定支出不能漏）
+ * 2. 记账提醒：提醒记录当天的收支
+ * 3. 专注目标：今天番茄数没达标时提醒一次
  */
 class LedgerReminderReceiver : BroadcastReceiver() {
 
@@ -22,11 +24,13 @@ class LedgerReminderReceiver : BroadcastReceiver() {
         val store = SettingsStore.get(context)
         val reminderOn = store.ledgerReminderEnabled.value
         val goal = store.focusGoal.value
-        if (!reminderOn && goal <= 0) return
 
         val result = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                // 到期的周期记账先落成真实记录，再把下次日期往后推
+                DailyRepository(context).materializeRecurring()
+
                 val notifier = Notifier(context)
                 if (reminderOn) notifier.notifyLedgerReminder()
                 if (goal > 0) {

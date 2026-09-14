@@ -115,4 +115,60 @@ object TodoStrings {
     fun setFocusTarget(lang: Lang) = pick(lang, "设为专注目标", "設為專注目標", "Set as focus goal", "集中目標に設定")
     fun unsetFocusTarget(lang: Lang) = pick(lang, "取消专注目标", "取消專注目標", "Unset focus goal", "集中目標を解除")
     fun important(lang: Lang) = pick(lang, "重要", "重要", "Important", "重要")
+
+    // ---- 子任务 / 清单 ----
+    /** 编辑弹窗里子任务小节的标题，带 x/y 进度 */
+    fun subtaskSection(lang: Lang, done: Int, total: Int) = pickf(
+        lang, "子任务（%d/%d）", "子任務（%d/%d）",
+        "Checklist (%d/%d)", "サブタスク（%d/%d）", done, total
+    )
+
+    /** 列表行上的子任务进度提示 */
+    fun subtaskProgress(lang: Lang, done: Int, total: Int) = pickf(
+        lang, "子任务 %d/%d", "子任務 %d/%d",
+        "Subtasks %d/%d", "サブタスク %d/%d", done, total
+    )
+
+    fun subtaskPlaceholder(lang: Lang) = pick(
+        lang, "添加子任务…", "新增子任務…", "Add a subtask…", "サブタスクを追加…"
+    )
+    fun subtaskAdd(lang: Lang) = pick(lang, "添加子任务", "新增子任務", "Add subtask", "サブタスクを追加")
+    fun subtaskDelete(lang: Lang) = pick(lang, "删除子任务", "刪除子任務", "Delete subtask", "サブタスクを削除")
+
+    // ---- 优先级 ----
+    /** 编辑弹窗里的优先级小节标题（四级：低 / 普通 / 高 / 紧急） */
+    fun priorityLabel(lang: Lang) = pick(lang, "优先级", "優先級", "Priority", "優先度")
+
+    /** 行上优先级角标点开下拉的无障碍描述（角标本身只显示符号） */
+    fun prioritySet(lang: Lang) = pick(lang, "设置优先级", "設定優先級", "Set priority", "優先度を設定")
+
+    /** 角标内容：符号 + 级别名；普通级别没有符号，调用方会退回 [prioritySet] */
+    @Suppress("UNUSED_PARAMETER")
+    fun priorityBadge(lang: Lang, marker: String, label: String) = "$marker $label"
+
+    // ---- 视图切换（列表 / 看板）----
+    fun viewList(lang: Lang) = pick(lang, "列表", "清單", "List", "リスト")
+    fun viewKanban(lang: Lang) = pick(lang, "看板", "看板", "Kanban", "かんばん")
+
+    /** 看板分组标题，带条数 */
+    fun kanbanSectionTitle(lang: Lang, label: String, count: Int) = pickf(
+        lang, "%s（%d）", "%s（%d）",
+        "%s (%d)", "%s（%d）", label, count
+    )
+
+    // ---- 拖拽排序的提示 ----
+    fun dragHintList(lang: Lang) = pick(
+        lang, "长按待办可以上下拖动排序", "長按待辦可以上下拖曳排序",
+        "Long-press a to-do to drag and reorder", "ToDo を長押しするとドラッグで並べ替えできます"
+    )
+
+    fun dragHintNoSearch(lang: Lang) = pick(
+        lang, "搜索时不能拖动排序", "搜尋時不能拖曳排序",
+        "Reordering is off while searching", "検索中は並べ替えできません"
+    )
+
+    fun dragHintNoFilter(lang: Lang) = pick(
+        lang, "「只看已完成」下不能拖动排序", "「只看已完成」下不能拖曳排序",
+        "Reordering is off with the completed filter", "「完了のみ」では並べ替えできません"
+    )
 }

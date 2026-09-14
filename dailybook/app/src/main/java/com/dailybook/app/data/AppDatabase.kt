@@ -11,9 +11,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         TransactionEntity::class,
         TodoEntity::class,
-        FocusSessionEntity::class
+        FocusSessionEntity::class,
+        SubtaskEntity::class,
+        RecurringEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,6 +23,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun transactionDao(): TransactionDao
     abstract fun todoDao(): TodoDao
     abstract fun focusSessionDao(): FocusSessionDao
+    abstract fun subtaskDao(): SubtaskDao
+    abstract fun recurringDao(): RecurringDao
 
     companion object {
         /** v1.1 → v1.2：新增专注记录表（老用户的记账/待办数据完整保留） */
@@ -81,6 +85,39 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v1.5 → v1.6：待办新增优先级与手动排序，并新建子任务表、周期记账表 */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `todos` ADD COLUMN `priority` TEXT NOT NULL DEFAULT 'NORMAL'"
+                )
+                db.execSQL("ALTER TABLE `todos` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `subtasks` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`todoId` INTEGER NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`done` INTEGER NOT NULL, " +
+                        "`sortOrder` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `recurring_tx` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`amountCents` INTEGER NOT NULL, " +
+                        "`typeName` TEXT NOT NULL, " +
+                        "`category` TEXT NOT NULL, " +
+                        "`account` TEXT NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`tags` TEXT NOT NULL DEFAULT '', " +
+                        "`rule` TEXT NOT NULL, " +
+                        "`nextDueMillis` INTEGER NOT NULL, " +
+                        "`enabled` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -91,7 +128,13 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dailybook.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6
+                    )
                     .build()
                     .also { instance = it }
             }

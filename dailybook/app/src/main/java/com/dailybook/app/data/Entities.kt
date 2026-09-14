@@ -7,6 +7,7 @@ import com.dailybook.app.i18n.Lang
 import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 /** 收支类型 */
 enum class TxType {
@@ -119,6 +120,28 @@ enum class RepeatRule {
     }
 }
 
+/** 待办优先级 */
+enum class TodoPriority {
+    LOW,
+    NORMAL,
+    HIGH,
+    URGENT;
+
+    fun label(lang: Lang): String = when (this) {
+        LOW -> AppStrings.priorityLow(lang)
+        NORMAL -> AppStrings.priorityNormal(lang)
+        HIGH -> AppStrings.priorityHigh(lang)
+        URGENT -> AppStrings.priorityUrgent(lang)
+    }
+
+    fun emoji(): String = when (this) {
+        LOW -> "▽"
+        NORMAL -> ""
+        HIGH -> "▲"
+        URGENT -> "🔥"
+    }
+}
+
 /** 一条待办 */
 @Entity(tableName = "todos")
 data class TodoEntity(
@@ -130,18 +153,29 @@ data class TodoEntity(
     val dueMillis: Long? = null,
     /** 存枚举名，避免依赖 Room 的枚举转换 */
     val repeatRule: String = RepeatRule.NONE.name,
+    /** 优先级，老数据默认普通 */
+    val priority: String = TodoPriority.NORMAL.name,
+    /** 手动排序用的次序（越小越靠前），0 表示还没排过 */
+    val sortOrder: Long = 0L,
     val createdAt: Long
 ) {
     val repeat: RepeatRule
         get() = runCatching { RepeatRule.valueOf(repeatRule) }.getOrDefault(RepeatRule.NONE)
 
     val repeats: Boolean get() = repeat != RepeatRule.NONE
+
+    val priorityLevel: TodoPriority
+        get() = runCatching { TodoPriority.valueOf(priority) }.getOrDefault(TodoPriority.NORMAL)
 }
 
 /**
  * 依据重复规则算出下一次到期日。
  * 长期没打开 App 时（例如「每天」的任务放了 10 天），会一路顺延到未来，
- * 不会补出一串过期任务；guard 只是防止极端参数下的死循环。
+ * 不会补出一串过期任务。
+ *
+ * 实现上先按天 / 周 / 月**大步快进**到今天附近，再用小循环校正到「严格晚于今天」。
+ * 这一点很关键：早期版本只用一个 400 次的循环上限保护，遇到很多年前的「每天」规则
+ * 会在 400 次后停下，把结果留在**过去**——那会让周期记账每次打开 App 都判定为到期而重复记账。
  */
 fun nextDueMillisOf(
     baseMillis: Long,
@@ -150,6 +184,25 @@ fun nextDueMillisOf(
 ): Long? {
     if (rule == RepeatRule.NONE) return null
     var date = baseMillis.toLocalDate()
+
+    // 第一步：大步跳到今天附近（最多差一个周期），避免从很多年前一天天推进
+    when (rule) {
+        RepeatRule.DAILY -> {
+            val days = ChronoUnit.DAYS.between(date, today)
+            if (days > 0) date = date.plusDays(days)
+        }
+        RepeatRule.WEEKLY -> {
+            val weeks = ChronoUnit.WEEKS.between(date, today)
+            if (weeks > 0) date = date.plusWeeks(weeks)
+        }
+        RepeatRule.MONTHLY -> {
+            val months = ChronoUnit.MONTHS.between(date, today)
+            if (months > 0) date = date.plusMonths(months)
+        }
+        RepeatRule.NONE -> return null
+    }
+
+    // 第二步：小步校正到严格晚于今天（月末对齐等情况下需要多走一两步）
     var guard = 0
     do {
         date = when (rule) {

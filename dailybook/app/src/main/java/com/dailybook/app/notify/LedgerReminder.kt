@@ -21,7 +21,13 @@ object LedgerReminder {
     /** 只设了专注目标、没开记账提醒时，用这个点检查目标达成情况 */
     private const val DEFAULT_GOAL_HOUR = 21
 
-    /** 按当前设置重排：关掉开关（且没设专注目标）就把闹钟撤掉，改时间就排到新的时间点 */
+    /**
+     * 按当前设置重排。
+     *
+     * 这个每日闹钟**始终保留**：即使记账提醒和专注目标都关着，也要靠它每天补一次
+     * 到期的周期记账（固定支出不能因为用户关了提醒就漏记）。两个开关都关时，
+     * 它只干活、不发通知。
+     */
     fun sync(context: Context) {
         val store = SettingsStore.get(context)
         val am = context.getSystemService(AlarmManager::class.java) ?: return
@@ -29,10 +35,7 @@ object LedgerReminder {
         am.cancel(pi)
 
         val reminderOn = store.ledgerReminderEnabled.value
-        // 专注目标也搭这趟车：没开记账提醒但设了目标时，固定 21:00 检查一次
-        val goalOn = store.focusGoal.value > 0
-        if (!reminderOn && !goalOn) return
-
+        // 记账提醒开着就按用户设的时间；否则固定 21:00 做每日补记 / 检查专注目标
         val hour = if (reminderOn) store.ledgerReminderHour.value else DEFAULT_GOAL_HOUR
         val minute = if (reminderOn) store.ledgerReminderMinute.value else 0
         am.setAndAllowWhileIdle(

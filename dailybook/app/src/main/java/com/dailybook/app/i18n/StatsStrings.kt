@@ -286,4 +286,169 @@ object StatsStrings {
     fun sessionInterrupted(lang: Lang) = pick(
         lang, "中断", "中斷", "Interrupted", "中断"
     )
+
+    // ==================== v1.7：环比对比 ====================
+
+    fun comparisonTitle(lang: Lang) = pick(
+        lang, "环比对比", "環比對比",
+        "Month on month", "前月・前年との比較"
+    )
+
+    /** 上月 / 去年都还没有记录时，环比卡片不硬报百分比，改说这句 */
+    fun comparisonNoBase(lang: Lang) = pick(
+        lang, "还没有上个月或去年的记录可以对比", "還沒有上個月或去年的記錄可以對比",
+        "Nothing from last month or last year to compare with yet",
+        "先月・昨年の記録がまだないため比較できません"
+    )
+
+    /** 环比行里「当前值」的标签：「本月支出」 */
+    fun thisMonthExpense(lang: Lang) = pick(
+        lang, "本月支出", "本月支出",
+        "This month", "今月の支出"
+    )
+
+    fun thisMonthIncome(lang: Lang) = pick(
+        lang, "本月收入", "本月收入",
+        "This month", "今月の収入"
+    )
+
+    /** 环比行里「对比基准」的标签：「上月支出」 */
+    fun lastMonthExpense(lang: Lang) = pick(
+        lang, "上月支出", "上月支出",
+        "Last month", "先月の支出"
+    )
+
+    fun lastMonthIncome(lang: Lang) = pick(
+        lang, "上月收入", "上月收入",
+        "Last month", "先月の収入"
+    )
+
+    /** 今年 / 去年支出直接复用 [AppStrings.yearExpense]，这里只补「去年」这一侧 */
+    fun lastYearExpense(lang: Lang) = pick(
+        lang, "去年支出", "去年支出",
+        "Last year", "昨年の支出"
+    )
+
+    /**
+     * 涨跌文案：没有可比基数（去年 / 上月为 0）时给「基本持平」。
+     * 界面层只管把百分比传进来，正负号与四语说法都在这里收口。
+     */
+    fun compareDelta(lang: Lang, percent: Int?): String = when {
+        percent == null -> AppStrings.comparisonFlat(lang)
+        percent > 0 -> AppStrings.comparisonUp(lang, percent)
+        percent < 0 -> AppStrings.comparisonDown(lang, -percent)
+        else -> AppStrings.comparisonFlat(lang)
+    }
+
+    // ==================== v1.7：智能洞察 ====================
+
+    fun insightTitle(lang: Lang) = pick(
+        lang, "智能洞察", "智慧洞察",
+        "Insights", "インサイト"
+    )
+
+    /** 有洞察条目但都拼不出句子时的兜底文案 */
+    fun insightNoData(lang: Lang) = pick(
+        lang, "这个月还看不出什么趋势", "這個月還看不出什麼趨勢",
+        "Not enough data for insights this month", "今月はまだ傾向を出せるだけのデータがありません"
+    )
+
+    /**
+     * 「比上月多花了 …，主要在…」在没有具体分类时的说法。
+     * 数据层只在「多花的钱能落到某个分类」时才填 category，
+     * 所以这句是 [AppStrings.insightSpentMore] 的兜底版本，不是重复文案。
+     */
+    fun insightSpentMoreNoCategory(lang: Lang, amount: String) = pickf(
+        lang, "比上月多花了 ¥%s", "比上月多花了 ¥%s",
+        "Spent ¥%s more than last month", "先月より ¥%s 多く使いました",
+        amount
+    )
+
+    // ==================== v1.7：月报导出 ====================
+
+    /** 月报小节标题：概览 */
+    fun reportSummarySection(lang: Lang) = pick(
+        lang, "本月概览", "本月概覽",
+        "Monthly summary", "今月の概要"
+    )
+
+    /** 概览下面是哪个月的哪一份收入支出 */
+    fun reportSummaryLine(lang: Lang, yearMonth: String) = pickf(
+        lang, "%s 的收入与支出", "%s 的收入與支出",
+        "Income and spending for %s", "%s の収入と支出",
+        yearMonth
+    )
+
+    fun reportCategorySection(lang: Lang) = pick(
+        lang, "支出分类", "支出分類",
+        "Spending by category", "支出カテゴリ"
+    )
+
+    fun reportDailySection(lang: Lang) = pick(
+        lang, "每日支出", "每日支出",
+        "Daily spending", "日別の支出"
+    )
+
+    /** 每日柱状图每一根柱子下面的说明 */
+    fun reportDailyBar(lang: Lang, day: Int, amount: String) = pickf(
+        lang, "%1\$d 日 · ¥%2\$s", "%1\$d 日 · ¥%2\$s",
+        "Day %1\$d · ¥%2\$s", "%1\$d日 · ¥%2\$s",
+        day, amount
+    )
+
+    fun reportTopCategoryLabel(lang: Lang) = pick(
+        lang, "花得最多", "花得最多",
+        "Top category", "最多カテゴリ"
+    )
+
+    fun reportFocusSection(lang: Lang) = pick(
+        lang, "专注统计", "專注統計",
+        "Focus", "集中"
+    )
+
+    /** 月报里的专注时长与次数：「本月 12 次 · 共 300 分钟」 */
+    fun reportFocusLine(lang: Lang, count: Int, minutes: Int) = pickf(
+        lang,
+        "本月 %1\$d 次 · 共 %2\$d 分钟", "本月 %1\$d 次 · 共 %2\$d 分鐘",
+        "%1\$d sessions this month · %2\$d minutes in total",
+        "今月 %1\$d 回 · 合計 %2\$d 分",
+        count, minutes
+    )
+
+    fun reportInsightSection(lang: Lang) = pick(
+        lang, "智能洞察", "智慧洞察",
+        "Insights", "インサイト"
+    )
+
+    fun reportCompareSection(lang: Lang) = pick(
+        lang, "环比变化", "環比變化",
+        "Compared with before", "前期間との比較"
+    )
+
+    /** 月报里没有图表数据时的兜底说明 */
+    fun reportEmptySection(lang: Lang) = pick(
+        lang, "这个月没有相关记录", "這個月沒有相關記錄",
+        "No records for this month", "今月は該当する記録がありません"
+    )
+
+    /** 导出卡片里的一句说明：文件落到用户自己挑的位置，App 不申请存储权限 */
+    fun reportExportHint(lang: Lang) = pick(
+        lang,
+        "导出的文件会保存到你选择的位置，App 不申请任何存储权限；HTML 与图片都是离线可读的。",
+        "匯出的檔案會儲存到你選擇的位置，App 不申請任何儲存權限；HTML 與圖片都是離線可讀的。",
+        "The file is saved wherever you choose — the app needs no storage permission. The HTML and image versions work offline.",
+        "書き出したファイルは選んだ場所に保存されます。アプリはストレージ権限を必要としません。HTML と画像はオフラインでも閲覧できます。"
+    )
+
+    /** 导出失败时的提示语；成功用 [AppStrings.reportSaved] */
+    fun reportExportFailed(lang: Lang, reason: String) = pickf(
+        lang,
+        "月报导出失败：%s", "月報匯出失敗：%s",
+        "Could not export the report: %s", "レポートを書き出せませんでした：%s",
+        reason
+    )
+
+    /** 月报落盘时的默认文件名（不含扩展名），英文名不带空格方便分享 */
+    fun reportFileName(lang: Lang, appName: String, yearMonth: String): String =
+        if (lang == Lang.EN) "$appName-report-$yearMonth" else "$appName-月报-$yearMonth"
 }

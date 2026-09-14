@@ -321,4 +321,85 @@ object AppStrings {
         "A recap is sent Sunday 20:00 or on the 1st at 10:00 — skipped when there is nothing to report.",
         "日曜 20:00 または毎月 1 日 10:00 にまとめを送ります。データが無いときは送りません。"
     )
+
+    // ---- 待办优先级 ----
+    fun priorityLow(lang: Lang) = pick(lang, "低", "低", "Low", "低")
+    fun priorityNormal(lang: Lang) = pick(lang, "普通", "普通", "Normal", "ふつう")
+    fun priorityHigh(lang: Lang) = pick(lang, "高", "高", "High", "高")
+    fun priorityUrgent(lang: Lang) = pick(lang, "紧急", "緊急", "Urgent", "緊急")
+
+    // ---- 看板分组 ----
+    fun kanbanToday(lang: Lang) = pick(lang, "今天到期", "今天到期", "Due today", "今日が期限")
+    fun kanbanThisWeek(lang: Lang) = pick(lang, "本周内", "本週內", "This week", "今週中")
+    fun kanbanLater(lang: Lang) = pick(lang, "以后", "以後", "Later", "それ以降")
+    fun kanbanNoDate(lang: Lang) = pick(lang, "没有日期", "沒有日期", "No due date", "期限なし")
+    fun kanbanDone(lang: Lang) = pick(lang, "已完成", "已完成", "Completed", "完了")
+
+    // ---- 环比 ----
+    fun vsLastMonth(lang: Lang) = pick(lang, "比上月", "比上月", "vs last month", "先月比")
+    fun vsLastYear(lang: Lang) = pick(lang, "比去年", "比去年", "vs last year", "昨年比")
+    fun comparisonUp(lang: Lang, percent: Int) = pickf(
+        lang, "多 %d%%", "多 %d%%", "up %d%%", "%d%% 増", percent
+    )
+    fun comparisonDown(lang: Lang, percent: Int) = pickf(
+        lang, "少 %d%%", "少 %d%%", "down %d%%", "%d%% 減", percent
+    )
+    fun comparisonFlat(lang: Lang) = pick(lang, "基本持平", "基本持平", "about the same", "ほぼ同じ")
+
+    // ---- 智能洞察 ----
+    fun insightSpentMore(lang: Lang, amount: String, category: String) = pickf(
+        lang, "比上月多花了 ¥%1\$s，主要在%2\$s", "比上月多花了 ¥%1\$s，主要在%2\$s",
+        "Spent ¥%1\$s more than last month, mostly on %2\$s",
+        "先月より ¥%1\$s 多く使いました。主に%2\$s", amount, category
+    )
+    fun insightSpentLess(lang: Lang, amount: String) = pickf(
+        lang, "比上月少花了 ¥%s，保持住", "比上月少花了 ¥%s，保持住",
+        "Spent ¥%s less than last month — keep it up", "先月より ¥%s 節約できました", amount
+    )
+    fun insightNoRecord(lang: Lang, days: Int) = pickf(
+        lang, "已经 %d 天没有记账了", "已經 %d 天沒有記帳了",
+        "No entries recorded for %d days", "%d 日間、記録がありません", days
+    )
+    fun insightTopCategory(lang: Lang, category: String, amount: String) = pickf(
+        lang, "本月花得最多的是%1\$s，共 ¥%2\$s", "本月花得最多的是%1\$s，共 ¥%2\$s",
+        "Biggest category this month is %1\$s at ¥%2\$s", "今月の最大項目は%1\$s（¥%2\$s）",
+        category, amount
+    )
+    fun insightBudgetLeft(lang: Lang, amount: String) = pickf(
+        lang, "本月预算还剩 ¥%s", "本月預算還剩 ¥%s",
+        "¥%s left in this month's budget", "今月の予算は残り ¥%s", amount
+    )
+
+    // ---- 月报导出 ----
+    fun reportMonthlyTitle(lang: Lang, yearMonth: String) = pickf(
+        lang, "%s 月报", "%s 月報", "%s report", "%s レポート", yearMonth
+    )
+    fun reportExportImage(lang: Lang) = pick(lang, "导出月报图片", "匯出月報圖片", "Export report image", "レポート画像を書き出す")
+    fun reportExportHtml(lang: Lang) = pick(lang, "导出 HTML 月报", "匯出 HTML 月報", "Export HTML report", "HTML レポートを書き出す")
+    fun reportExportPdf(lang: Lang) = pick(lang, "导出 PDF 月报", "匯出 PDF 月報", "Export PDF report", "PDF レポートを書き出す")
+    fun reportSaved(lang: Lang) = pick(lang, "月报已导出", "月報已匯出", "Report exported", "レポートを書き出しました")
+    fun reportNoData(lang: Lang) = pick(
+        lang, "这个月还没有数据，没法生成月报", "這個月還沒有資料，沒法生成月報",
+        "No data for this month yet — nothing to report", "今月はまだデータがなく、レポートを作れません"
+    )
+    fun reportGenerating(lang: Lang) = pick(lang, "正在生成…", "正在生成…", "Generating…", "生成中…")
+
+    // ---- 周期记账 ----
+    fun recurringTitle(lang: Lang) =
+        pick(lang, "周期记账", "週期記帳", "Recurring entries", "定期的な記録")
+
+    fun recurringHint(lang: Lang) = pick(
+        lang, "房租、订阅这类固定支出，到日子自动记一笔；打开 App 或每晚提醒时补记，不会漏也不会重复。",
+        "房租、訂閱這類固定支出，到日子自動記一筆；打開 App 或每晚提醒時補記，不會漏也不會重複。",
+        "Fixed costs like rent or subscriptions are recorded automatically on their due date — filled in when you open the app or at the evening reminder, never twice.",
+        "家賃やサブスクなど固定費を期日に自動記録します。アプリを開いた時や夜のリマインダー時に補い、重複しません。"
+    )
+
+    fun recurringEmpty(lang: Lang) = pick(
+        lang, "还没有周期记账", "還沒有週期記帳", "No recurring entries yet", "定期的な記録はまだありません"
+    )
+
+    fun recurringNext(lang: Lang, date: String) = pickf(
+        lang, "下次 %s", "下次 %s", "Next %s", "次回 %s", date
+    )
 }

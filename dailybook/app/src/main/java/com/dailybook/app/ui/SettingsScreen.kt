@@ -22,16 +22,21 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,17 +56,28 @@ import com.dailybook.app.CategoryBudgetRow
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.backup.Backup
+import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
+import com.dailybook.app.data.RecurringEntity
+import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.SummaryMode
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
+import com.dailybook.app.i18n.LedgerStrings
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.i18n.SettingsStrings
+import com.dailybook.app.i18n.TodoStrings
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.util.formatAmount
+import com.dailybook.app.util.formatDueLabel
 import com.dailybook.app.util.parseAmountToCents
+import com.dailybook.app.util.toDayMillis
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /** 关于卡片里的版本号，「日常本 v1.4」里的 1.4 由它拼出来 */
 private const val APP_VERSION = "1.4"
@@ -114,6 +130,7 @@ fun SettingsScreen(
     var confirmCsvImport by remember { mutableStateOf(false) }
     var showCategoryBudget by remember { mutableStateOf(false) }
     var showCategoryManage by remember { mutableStateOf(false) }
+    var showRecurring by remember { mutableStateOf(false) }
     var showReminderTime by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -261,6 +278,29 @@ fun SettingsScreen(
                     )
                 }
                 TextButton(onClick = { showCategoryManage = true }) { Text(AppStrings.manage(lang)) }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            // 周期记账：房租、订阅这类固定支出，到日子自动记一笔
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(AppStrings.recurringTitle(lang), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = if (state.recurring.isEmpty()) {
+                            AppStrings.recurringEmpty(lang)
+                        } else {
+                            SettingsStrings.recurringCount(lang, state.recurring.size)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { showRecurring = true }) { Text(AppStrings.manage(lang)) }
             }
 
             Spacer(Modifier.height(4.dp))
@@ -559,6 +599,29 @@ fun SettingsScreen(
         )
     }
 
+    if (showRecurring) {
+        RecurringDialog(
+            items = state.recurring,
+            expenseCategories = state.expenseCategories,
+            incomeCategories = state.incomeCategories,
+            onAdd = { amountCents, type, category, account, note, rule, nextDueMillis ->
+                vm.addRecurring(
+                    amountCents = amountCents,
+                    type = type,
+                    category = category,
+                    account = account,
+                    note = note,
+                    tags = emptyList(),
+                    rule = rule,
+                    nextDueMillis = nextDueMillis
+                )
+            },
+            onToggle = { vm.toggleRecurring(it) },
+            onDelete = { vm.deleteRecurring(it) },
+            onDismiss = { showRecurring = false }
+        )
+    }
+
     if (showReminderTime) {
         ReminderTimeDialog(
             hour = reminderHour,
@@ -852,4 +915,292 @@ private fun CategoryManageDialog(
             TextButton(onClick = onDismiss) { Text(SettingsStrings.categoryManageDone(lang)) }
         }
     )
+}
+
+/**
+ * 周期记账管理：上半是已有的规则（可以暂停 / 删除），下半是新增。
+ *
+ * 新增只用「打开对话框时」的状态，加完就清空；首次记账日期默认今天，
+ * 需要改就点日期胶囊翻日历（复用待办那边的 DatePickerDialog 写法）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RecurringDialog(
+    items: List<RecurringEntity>,
+    expenseCategories: List<String>,
+    incomeCategories: List<String>,
+    onAdd: (
+        amountCents: Long,
+        type: TxType,
+        category: String,
+        account: String,
+        note: String,
+        rule: RepeatRule,
+        nextDueMillis: Long
+    ) -> Unit,
+    onToggle: (RecurringEntity) -> Unit,
+    onDelete: (RecurringEntity) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val lang = LocalLang.current
+
+    var amountText by remember { mutableStateOf("") }
+    var type by remember { mutableStateOf(TxType.EXPENSE) }
+    var category by remember { mutableStateOf("") }
+    var account by remember { mutableStateOf(Accounts.DEFAULT) }
+    var note by remember { mutableStateOf("") }
+    var rule by remember { mutableStateOf(RepeatRule.MONTHLY) }
+    var firstDue by remember { mutableStateOf(LocalDate.now()) }
+    var rejected by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+
+    // 分类列表跟着收 / 支切换；当前分类在新列表里就保留，换类型时退回第一个
+    val categories = if (type == TxType.EXPENSE) expenseCategories else incomeCategories
+    val selectedCategory = if (categories.contains(category)) category else categories.firstOrNull().orEmpty()
+    val amountCents = parseAmountToCents(amountText)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppStrings.recurringTitle(lang)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                // ---- 已有规则 ----
+                if (items.isEmpty()) {
+                    Text(
+                        text = AppStrings.recurringEmpty(lang),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(4.dp))
+                } else {
+                    Text(
+                        text = SettingsStrings.recurringCount(lang, items.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    items.forEach { item ->
+                        val itemType = item.type
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                // 类型名是 AppStrings / TxType 里的文案
+                                Text(
+                                    text = itemType.label(lang) + " · " + formatAmount(item.amountCents),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (item.enabled) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                // 分类名和账户名是数据，不翻译；规则名用 RepeatRule.label
+                                Text(
+                                    text = item.category + " · " + item.account + " · " + item.repeat.label(lang),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    // 日期用项目自己的格式化（今天 / 明天 / 9月20日），不打印时间戳
+                                    text = AppStrings.recurringNext(
+                                        lang,
+                                        formatDueLabel(item.nextDueMillis, lang)
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = if (item.enabled) SettingsStrings.recurringEnabled(lang) else SettingsStrings.recurringPaused(lang),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(checked = item.enabled, onCheckedChange = { onToggle(item) })
+                            IconButton(onClick = { onDelete(item) }) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = SettingsStrings.removeCategoryLabel(lang, item.category),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
+
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = AppStrings.recurringHint(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // ---- 新增 ----
+                Spacer(Modifier.height(14.dp))
+                Text(SettingsStrings.recurringAdd(lang), style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { input ->
+                        if (input.count { it == '.' } <= 1 &&
+                            input.all { it.isDigit() || it == '.' } &&
+                            input.length <= 10
+                        ) {
+                            amountText = input
+                            rejected = false
+                        }
+                    },
+                    label = { Text(SettingsStrings.amount(lang)) },
+                    prefix = { Text("¥") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (rejected) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = SettingsStrings.recurringAmountRequired(lang),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+                FieldLabel(SettingsStrings.recurringKindLabel(lang))
+                Spacer(Modifier.height(6.dp))
+                ChipFlow {
+                    TxType.entries.forEach { entry ->
+                        FilterChip(
+                            selected = type == entry,
+                            onClick = { type = entry },
+                            label = { Text(entry.label(lang)) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                FieldLabel(LedgerStrings.categoryLabel(lang))
+                Spacer(Modifier.height(6.dp))
+                ChipFlow {
+                    categories.forEach { item ->
+                        FilterChip(
+                            selected = selectedCategory == item,
+                            onClick = { category = item },
+                            // 分类名是数据（预置或用户自己起的），不翻译
+                            label = { Text(item) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                FieldLabel(LedgerStrings.accountLabel(lang))
+                Spacer(Modifier.height(6.dp))
+                ChipFlow {
+                    Accounts.PRESETS.forEach { item ->
+                        FilterChip(
+                            selected = account == item,
+                            onClick = { account = item },
+                            // 账户名是数据，不翻译
+                            label = { Text("${Accounts.emojiOf(item)} $item") }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { if (it.length <= 40) note = it },
+                    label = { Text(LedgerStrings.noteOptional(lang)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(Modifier.height(10.dp))
+                FieldLabel(TodoStrings.repeatLabel(lang))
+                Spacer(Modifier.height(6.dp))
+                ChipFlow {
+                    // 周期记账不用「不重复」，所以只给每周 / 每月
+                    listOf(RepeatRule.WEEKLY, RepeatRule.MONTHLY).forEach { entry ->
+                        FilterChip(
+                            selected = rule == entry,
+                            onClick = { rule = entry },
+                            label = { Text(entry.label(lang)) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // 日期靠一行的「选择」按钮翻日历；小屏放得下，不用挤成两行
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = SettingsStrings.recurringFirstDue(lang),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = AppStrings.monthDay(lang, firstDue.monthValue, firstDue.dayOfMonth),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    TextButton(onClick = { showPicker = true }) { Text(AppStrings.select(lang)) }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (selectedCategory.isNotEmpty()) {
+                        onAdd(
+                            amountCents ?: 0L,
+                            type,
+                            selectedCategory,
+                            account,
+                            note.trim(),
+                            rule,
+                            firstDue.toDayMillis()
+                        )
+                        // 加完清空，方便连着加第二条
+                        amountText = ""
+                        note = ""
+                        rejected = false
+                    }
+                }
+            ) { Text(AppStrings.add(lang)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
+        }
+    )
+
+    if (showPicker) {
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = firstDue.toDayMillis()
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    // DatePicker 给的是 UTC 当天 00:00，先按 UTC 取回日期，再本地化到当天 00:00
+                    pickerState.selectedDateMillis?.let {
+                        firstDue = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate()
+                    }
+                    showPicker = false
+                }) { Text(AppStrings.confirm(lang)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPicker = false }) { Text(AppStrings.cancel(lang)) }
+            }
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
 }

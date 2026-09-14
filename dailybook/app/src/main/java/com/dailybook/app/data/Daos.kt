@@ -62,6 +62,14 @@ interface TodoDao {
     @Query("DELETE FROM todos WHERE done = 1")
     suspend fun clearCompleted()
 
+    /** 手工排序：把某条待办挪到新的次序 */
+    @Query("UPDATE todos SET sortOrder = :order WHERE id = :id")
+    suspend fun updateSortOrder(id: Long, order: Long)
+
+    /** 优先级 */
+    @Query("UPDATE todos SET priority = :priority WHERE id = :id")
+    suspend fun updatePriority(id: Long, priority: String)
+
     @Query("DELETE FROM todos")
     suspend fun clearAll()
 

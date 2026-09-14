@@ -15,6 +15,9 @@ import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.SummaryMode
 import com.dailybook.app.data.TodoEntity
+import com.dailybook.app.data.TodoPriority
+import com.dailybook.app.data.RecurringEntity
+import com.dailybook.app.data.SubtaskEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
@@ -37,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 
 enum class TodoFilter {
     ALL,
@@ -97,6 +101,62 @@ data class DayBar(val day: Int, val cents: Long)
 /** 专注天数（柱状图） */
 @Immutable
 data class FocusDay(val date: LocalDate, val count: Int)
+
+/** 看板分组 */
+enum class TodoBucket { TODAY, THIS_WEEK, LATER, NO_DATE, DONE }
+
+/**
+ * 看板分组规则（抽成纯函数，方便直接测边界）：
+ * 已完成的单独一堆；已过期和今天到期都算「今天到期」；7 天内算「本周内」；
+ * 再往后算「以后」；没日期的单独一堆。
+ */
+fun bucketOf(todo: TodoEntity, today: LocalDate): TodoBucket = when {
+    todo.done -> TodoBucket.DONE
+    todo.dueMillis == null -> TodoBucket.NO_DATE
+    else -> {
+        val due = todo.dueMillis.toLocalDate()
+        when {
+            !due.isAfter(today) -> TodoBucket.TODAY
+            due.isBefore(today.plusDays(7)) -> TodoBucket.THIS_WEEK
+            else -> TodoBucket.LATER
+        }
+    }
+}
+
+@Immutable
+data class TodoSection(val bucket: TodoBucket, val items: List<TodoEntity>)
+
+/** 环比：本月 / 上月、今年 / 去年 */
+@Immutable
+data class Comparison(
+    val monthExpense: Long = 0L,
+    val lastMonthExpense: Long = 0L,
+    val monthIncome: Long = 0L,
+    val lastMonthIncome: Long = 0L,
+    val yearExpense: Long = 0L,
+    val lastYearExpense: Long = 0L
+) {
+    /** 变化百分比；上月为 0 时返回 null（没有可比基数） */
+    fun monthExpensePercent(): Int? = percentOf(lastMonthExpense, monthExpense)
+    fun monthIncomePercent(): Int? = percentOf(lastMonthIncome, monthIncome)
+    fun yearExpensePercent(): Int? = percentOf(lastYearExpense, yearExpense)
+
+    private fun percentOf(base: Long, now: Long): Int? {
+        if (base <= 0L) return null
+        return (((now - base).toDouble() / base.toDouble()) * 100).toInt()
+    }
+}
+
+/** 智能洞察：只给结构化数据，句子在界面层按语言拼 */
+enum class InsightKind { SPENT_MORE, SPENT_LESS, NO_RECORD_DAYS, TOP_CATEGORY, BUDGET_LEFT }
+
+@Immutable
+data class Insight(
+    val kind: InsightKind,
+    val amountCents: Long = 0L,
+    val category: String = "",
+    val days: Int = 0
+)
 
 /** 日历视图里的一天 */
 @Immutable
@@ -188,6 +248,16 @@ data class UiState(
     val pendingReimbursementCents: Long = 0L,
     val pendingReimbursementCount: Int = 0,
     val reimbursedCents: Long = 0L,
+    /** 每条待办下的子任务 */
+    val subtasksByTodo: Map<Long, List<SubtaskEntity>> = emptyMap(),
+    /** 看板分组（今天 / 本周 / 以后 / 没日期 / 已完成） */
+    val kanbanSections: List<TodoSection> = emptyList(),
+    /** 周期记账规则 */
+    val recurring: List<RecurringEntity> = emptyList(),
+    /** 环比数据 */
+    val comparison: Comparison = Comparison(),
+    /** 智能洞察（最多 4 条） */
+    val insights: List<Insight> = emptyList(),
     /** 本月支出按账户分布 */
     val accountSlices: List<AccountSlice> = emptyList(),
     /** 设了预算的分类，按使用比例从高到低 */
@@ -265,7 +335,9 @@ private data class CategoryInputs(val expense: List<String>, val income: List<St
 private data class TodoInputs(
     val all: List<TodoEntity>,
     val filter: TodoFilter,
-    val query: String
+    val query: String,
+    val subtasks: List<SubtaskEntity>,
+    val recurring: List<RecurringEntity>
 )
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -331,9 +403,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val todoInputs = combine(
         repo.todos,
         todoFilter,
-        todoQuery
-    ) { todos, filter, query ->
-        TodoInputs(todos, filter, query)
+        todoQuery,
+        repo.subtasks,
+        repo.recurring
+    ) { todos, filter, query, subtasks, recurring ->
+        TodoInputs(todos, filter, query, subtasks, recurring)
     }
 
     val uiState: StateFlow<UiState> = combine(
@@ -353,6 +427,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun consumeMessage() { _message.value = null }
 
     init {
+        // 打开 App 先把到期的周期记账补成真实记录（补完会把下次日期往后推，不会重复记）
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { repo.materializeRecurring() }
+        }
         // 待办一变就重排提醒：完成 / 删除 / 改期都会自动撤销或顺延，不会留下幽灵提醒
         viewModelScope.launch {
             repo.todos.collect { todos ->
@@ -413,6 +491,58 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun removeCategory(type: TxType, name: String) = categories.remove(type, name)
 
     fun resetCategories(type: TxType) = categories.reset(type)
+
+    // ---- 子任务 ----
+
+    fun addSubtask(todoId: Long, title: String) {
+        viewModelScope.launch { repo.addSubtask(todoId, title) }
+    }
+
+    fun toggleSubtask(item: SubtaskEntity) {
+        viewModelScope.launch { repo.setSubtaskDone(item, !item.done) }
+    }
+
+    fun deleteSubtask(item: SubtaskEntity) {
+        viewModelScope.launch { repo.deleteSubtask(item) }
+    }
+
+    // ---- 优先级与排序 ----
+
+    fun setTodoPriority(item: TodoEntity, priority: TodoPriority) {
+        viewModelScope.launch { repo.updateTodo(item.copy(priority = priority.name)) }
+    }
+
+    /** 列表拖动结束后按新顺序重排 */
+    fun reorderTodos(ordered: List<TodoEntity>) {
+        viewModelScope.launch { repo.reorderTodos(ordered) }
+    }
+
+    // ---- 周期记账 ----
+
+    fun addRecurring(
+        amountCents: Long,
+        type: TxType,
+        category: String,
+        account: String,
+        note: String,
+        tags: List<String>,
+        rule: RepeatRule,
+        nextDueMillis: Long
+    ) {
+        viewModelScope.launch {
+            repo.addRecurring(amountCents, type, category, account, note, tags, rule, nextDueMillis)
+            withContext(Dispatchers.IO) { repo.materializeRecurring() }
+        }
+    }
+
+    fun deleteRecurring(item: RecurringEntity) {
+        viewModelScope.launch { repo.deleteRecurring(item) }
+    }
+
+    /** 暂停 / 继续一条周期记账 */
+    fun toggleRecurring(item: RecurringEntity) {
+        viewModelScope.launch { repo.updateRecurring(item.copy(enabled = !item.enabled)) }
+    }
 
     fun setTodoFilter(filter: TodoFilter) { todoFilter.value = filter }
 
@@ -966,6 +1096,92 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val pendingReimbursementCents = pendingReimbursement.sumOf { it.amountCents }
         val reimbursedCents = reimbursable.filter { it.reimbursed }.sumOf { it.amountCents }
 
+        // ---- 环 比：本月 / 上月、今年 / 去年 ----
+        val lastMonth = month.minusMonths(1)
+        val lastMonthTx = ledger.all.filter {
+            YearMonth.from(it.dateMillis.toLocalDate()) == lastMonth
+        }
+        val lastMonthExpense = lastMonthTx.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
+        val lastMonthIncome = lastMonthTx.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
+        val thisYearForComparison = month.year
+        val comparisonYearExpense = ledger.all
+            .filter { it.type == TxType.EXPENSE && it.dateMillis.toLocalDate().year == thisYearForComparison }
+            .sumOf { it.amountCents }
+        val lastYearExpense = ledger.all.filter {
+            it.type == TxType.EXPENSE && it.dateMillis.toLocalDate().year == thisYearForComparison - 1
+        }.sumOf { it.amountCents }
+
+        val comparison = Comparison(
+            monthExpense = monthExpense,
+            lastMonthExpense = lastMonthExpense,
+            monthIncome = monthIncome,
+            lastMonthIncome = lastMonthIncome,
+            yearExpense = comparisonYearExpense,
+            lastYearExpense = lastYearExpense
+        )
+
+        // ---- 智能洞察：先说「断更」，再说钱的趋势 ----
+        val insights = buildList {
+            val today = LocalDate.now()
+            val lastDate = ledger.all.maxOfOrNull { it.dateMillis.toLocalDate() }
+            if (lastDate != null) {
+                val gap = ChronoUnit.DAYS.between(lastDate, today).toInt()
+                if (gap >= 3) add(Insight(InsightKind.NO_RECORD_DAYS, days = gap))
+            }
+
+            val diff = monthExpense - lastMonthExpense
+            if (lastMonthExpense > 0L && diff != 0L) {
+                if (diff > 0L) {
+                    // 找出「这个月比上个月多花最多」的分类，指出钱花哪了
+                    val nowByCategory = monthTx.filter { it.type == TxType.EXPENSE }
+                        .groupBy { it.category }.mapValues { entry -> entry.value.sumOf { it.amountCents } }
+                    val beforeByCategory = lastMonthTx.filter { it.type == TxType.EXPENSE }
+                        .groupBy { it.category }.mapValues { entry -> entry.value.sumOf { it.amountCents } }
+                    val topGrowth = nowByCategory.entries
+                        .map { (category, cents) -> category to (cents - (beforeByCategory[category] ?: 0L)) }
+                        .maxByOrNull { it.second }
+                    add(
+                        Insight(
+                            kind = InsightKind.SPENT_MORE,
+                            amountCents = diff,
+                            category = topGrowth?.takeIf { it.second > 0L }?.first.orEmpty()
+                        )
+                    )
+                } else {
+                    add(Insight(InsightKind.SPENT_LESS, amountCents = -diff))
+                }
+            }
+
+            val topCategory = monthTx.filter { it.type == TxType.EXPENSE }
+                .groupBy { it.category }
+                .mapValues { entry -> entry.value.sumOf { it.amountCents } }
+                .maxByOrNull { it.value }
+            if (topCategory != null && topCategory.value > 0L) {
+                add(
+                    Insight(
+                        kind = InsightKind.TOP_CATEGORY,
+                        amountCents = topCategory.value,
+                        category = topCategory.key
+                    )
+                )
+            }
+
+            val left = ledger.budgetCents - monthExpense
+            if (ledger.budgetCents > 0L && left > 0L) {
+                add(Insight(InsightKind.BUDGET_LEFT, amountCents = left))
+            }
+        }.take(4)
+
+        // ---- 子任务与看板 ----
+        val subtasksByTodo = todo.subtasks.groupBy { it.todoId }
+        val todayDate = LocalDate.now()
+        val kanbanSections = TodoBucket.entries
+            .map { bucket -> bucket to todo.all.filter { bucketOf(it, todayDate) == bucket } }
+            .filter { it.second.isNotEmpty() }
+            .map { (bucket, items) ->
+                TodoSection(bucket, items.sortedWith(compareByDescending<TodoEntity> { it.important }))
+            }
+
         return UiState(
             month = month,
             monthGroups = groups,
@@ -992,6 +1208,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             pendingReimbursementCents = pendingReimbursementCents,
             pendingReimbursementCount = pendingReimbursement.size,
             reimbursedCents = reimbursedCents,
+            subtasksByTodo = subtasksByTodo,
+            kanbanSections = kanbanSections,
+            recurring = todo.recurring,
+            comparison = comparison,
+            insights = insights,
             accountSlices = accountSlices,
             categoryBudgets = categoryBudgetRows,
             visibleTodos = visible,

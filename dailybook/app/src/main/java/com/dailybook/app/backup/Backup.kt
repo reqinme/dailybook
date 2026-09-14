@@ -6,7 +6,9 @@ import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Currencies
 import com.dailybook.app.data.DbSnapshot
 import com.dailybook.app.data.FocusSessionEntity
+import com.dailybook.app.data.RecurringEntity
 import com.dailybook.app.data.RepeatRule
+import com.dailybook.app.data.SubtaskEntity
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
@@ -37,9 +39,10 @@ object Backup {
      * 1：记账 / 待办 / 专注记录 + 预算
      * 2：记账多了「账户」，待办多了「重复规则」
      * 3：记账多了「标签 / 待报销 / 多币种」，专注记录多了「中断」
+     * 4：多了「子任务」与「周期记账」，待办多了「优先级 / 手动排序」
      * 读取时兼容更旧的版本（缺字段就取默认值），比当前版本更新的才拒绝。
      */
-    const val FORMAT = 3
+    const val FORMAT = 4
 
     // ---------- 导出 ----------
 
@@ -85,6 +88,8 @@ object Backup {
                     // org.json 的 put(key, null) 是「删掉这个键」，所以空值要写 JSONObject.NULL
                     put("dueMillis", todo.dueMillis ?: JSONObject.NULL)
                     put("repeatRule", todo.repeatRule)
+                    put("priority", todo.priority)
+                    put("sortOrder", todo.sortOrder)
                     put("createdAt", todo.createdAt)
                 })
             }
@@ -104,7 +109,42 @@ object Backup {
             }
         })
 
+        appendExtras(root, snapshot)
+
         return root.toString(2)
+    }
+
+    /** 子任务与周期记账是 v1.7 新增的表，单独拼一段，避免把上面的函数撑得太长 */
+    private fun appendExtras(root: JSONObject, snapshot: DbSnapshot) {
+        root.put("subtasks", JSONArray().apply {
+            snapshot.subtasks.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("todoId", item.todoId)
+                    put("title", item.title)
+                    put("done", item.done)
+                    put("sortOrder", item.sortOrder)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("recurring", JSONArray().apply {
+            snapshot.recurring.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("amountCents", item.amountCents)
+                    put("typeName", item.typeName)
+                    put("category", item.category)
+                    put("account", item.account)
+                    put("note", item.note)
+                    put("tags", item.tags)
+                    put("rule", item.rule)
+                    put("nextDueMillis", item.nextDueMillis)
+                    put("enabled", item.enabled)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
     }
 
     /**
@@ -176,7 +216,34 @@ object Backup {
             snapshot = DbSnapshot(
                 transactions = transactions,
                 todos = todos.filter { it.title.isNotBlank() },
-                focusSessions = sessions
+                focusSessions = sessions,
+                subtasks = root.optJSONArray("subtasks").mapObjects { o ->
+                    SubtaskEntity(
+                        id = o.optLong("id", 0L),
+                        todoId = o.optLong("todoId", 0L),
+                        title = o.optString("title", ""),
+                        done = o.optBoolean("done", false),
+                        sortOrder = o.optLong("sortOrder", 0L),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.title.isNotBlank() && it.todoId > 0L },
+                recurring = root.optJSONArray("recurring").mapObjects { o ->
+                    RecurringEntity(
+                        id = o.optLong("id", 0L),
+                        amountCents = o.optLong("amountCents", 0L),
+                        typeName = o.optString("typeName", TxType.EXPENSE.name),
+                        category = o.optString("category", "其他"),
+                        account = o.optString("account", Accounts.DEFAULT)
+                            .ifBlank { Accounts.DEFAULT },
+                        note = o.optString("note", ""),
+                        tags = o.optString("tags", ""),
+                        rule = runCatching { RepeatRule.valueOf(o.optString("rule")) }
+                            .getOrDefault(RepeatRule.MONTHLY).name,
+                        nextDueMillis = o.optLong("nextDueMillis", 0L),
+                        enabled = o.optBoolean("enabled", true),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.amountCents > 0L },
             ),
             budgetCents = root.optLong("budgetCents", 0L).coerceAtLeast(0L)
         )

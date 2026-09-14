@@ -14,8 +14,6 @@ fun LocalDate.toDayMillis(): Long = atStartOfDay(ZONE).toInstant().toEpochMilli(
 
 fun Long.toLocalDate(): LocalDate = Instant.ofEpochMilli(this).atZone(ZONE).toLocalDate()
 
-fun todayMillis(): Long = LocalDate.now().toDayMillis()
-
 /** 分 → "1234.56" */
 fun formatAmount(cents: Long): String {
     val negative = cents < 0
@@ -50,8 +48,6 @@ fun formatDateHeader(date: LocalDate): String {
 }
 
 fun formatMonthLabel(month: YearMonth): String = "${month.year}年${month.monthValue}月"
-
-fun formatDayShort(date: LocalDate): String = "${date.monthValue}/${date.dayOfMonth}"
 
 /** 到期日文案：今天到期 / 明天到期 / 已逾期 3 天 / 9月20日 */
 fun formatDueLabel(dueMillis: Long, today: LocalDate = LocalDate.now()): String {

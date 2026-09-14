@@ -4,7 +4,5 @@ package com.dailybook.app.timer
 enum class Phase(val label: String) {
     FOCUS("专注"),
     SHORT_BREAK("短休息"),
-    LONG_BREAK("长休息");
-
-    val isBreak: Boolean get() = this != FOCUS
+    LONG_BREAK("长休息")
 }

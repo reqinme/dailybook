@@ -5,8 +5,9 @@ import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dailybook.app.data.AppSettings
+import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.FocusRepository
-import com.dailybook.app.data.FocusStats
+import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.notify.Notifier
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,7 +26,8 @@ data class TimerUiState(
     /** 本轮循环里已完成的专注次数 */
     val focusInCycle: Int = 0,
     val settings: AppSettings = AppSettings(),
-    val stats: FocusStats = FocusStats()
+    /** 当前选中的专注目标（待办标题），空表示未选择 */
+    val focusTaskTitle: String = ""
 ) {
     val progress: Float
         get() = if (totalMillis <= 0L) 0f
@@ -41,6 +43,8 @@ data class TimerUiState(
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo = FocusRepository(application)
+    private val dailyRepo = DailyRepository(application)
+    private val settingsStore = SettingsStore.get(application)
     private val notifier = Notifier(application)
 
     private val _state = MutableStateFlow(TimerUiState())
@@ -71,7 +75,9 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch {
-            repo.stats.collect { stats -> _state.update { it.copy(stats = stats) } }
+            settingsStore.focusTaskTitle.collect { title ->
+                _state.update { it.copy(focusTaskTitle = title) }
+            }
         }
     }
 
@@ -131,7 +137,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setKeepScreenOn(v: Boolean) { viewModelScope.launch { repo.setKeepScreenOn(v) } }
 
-    fun clearStats() { viewModelScope.launch { repo.resetStats() } }
+    fun clearFocusTask() = settingsStore.clearFocusTask()
 
     private fun stopTicker() {
         ticker?.cancel()
@@ -162,7 +168,15 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
         val finished = snapshot.phase
 
         if (countFocus && finished == Phase.FOCUS) {
-            repo.recordCompletedFocus()
+            // 写入专注记录表（统计页的「今日/连续/累计」由这张表派生）
+            val durationMillis = snapshot.settings.durationMillisFor(Phase.FOCUS)
+            val now = System.currentTimeMillis()
+            dailyRepo.recordFocusSession(
+                startedAtMillis = now - durationMillis,
+                endedAtMillis = now,
+                minutes = (durationMillis / 60_000L).toInt(),
+                taskTitle = settingsStore.focusTaskTitle.value
+            )
         }
 
         val finishedFocus = finished == Phase.FOCUS

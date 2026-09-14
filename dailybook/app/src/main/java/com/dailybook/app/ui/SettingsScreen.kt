@@ -10,60 +10,60 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
-import com.dailybook.app.timer.TimerUiState
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.theme.ThemeMode
-import kotlin.math.roundToInt
+import com.dailybook.app.util.formatAmount
+import com.dailybook.app.util.parseAmountToCents
 
 private enum class ClearTarget(val label: String, val message: String) {
     TRANSACTIONS("清除所有记账记录", "所有收支记录都会被删除，且无法恢复。"),
     TODOS("清除所有待办", "所有待办事项都会被删除，且无法恢复。"),
-    FOCUS_STATS("清除专注统计", "专注次数和连续天数会被清零，且无法恢复。"),
-    EVERYTHING("清空全部数据", "记账记录、待办和专注统计都会被删除，且无法恢复。")
+    FOCUS_STATS("清除专注记录", "专注次数、连续天数和时段明细都会被清零，且无法恢复。"),
+    EVERYTHING("清空全部数据", "记账记录、待办和专注记录都会被删除，且无法恢复。")
 }
 
 @Composable
 fun SettingsScreen(
     state: UiState,
-    timerState: TimerUiState,
     vm: MainViewModel,
     timerVm: TimerViewModel,
     modifier: Modifier = Modifier
 ) {
     val themeMode by vm.settings.themeMode.collectAsStateWithLifecycle()
     val dynamicColor by vm.settings.dynamicColor.collectAsStateWithLifecycle()
-    var clearing by remember { mutableStateOf<ClearTarget?>(null) }
 
+    var clearing by remember { mutableStateOf<ClearTarget?>(null) }
+    var showBudgetDialog by remember { mutableStateOf(false) }
+    var budgetText by remember { mutableStateOf("") }
+
+    val timerState by timerVm.state.collectAsStateWithLifecycle()
     val focusSettings = timerState.settings
 
     Column(
@@ -78,40 +78,68 @@ fun SettingsScreen(
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(16.dp))
 
-        SettingCard("外观") {
-            Text("主题", style = MaterialTheme.typography.bodyMedium)
+        SectionCard(title = "外观") {
+            FieldLabel("主题")
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ChipFlow {
                 ThemeChip("跟随系统", ThemeMode.SYSTEM, themeMode) { vm.setThemeMode(it) }
                 ThemeChip("浅色", ThemeMode.LIGHT, themeMode) { vm.setThemeMode(it) }
                 ThemeChip("深色", ThemeMode.DARK, themeMode) { vm.setThemeMode(it) }
             }
-            Spacer(Modifier.height(12.dp))
-            SwitchRow("动态取色（Android 12+）", dynamicColor) { vm.setDynamicColor(it) }
+            Spacer(Modifier.height(10.dp))
+            LabeledSwitch("动态取色（Android 12+）", dynamicColor) { vm.setDynamicColor(it) }
         }
 
-        SettingCard("专注计时") {
-            DurationSlider(
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "记账") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text("月度预算", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = if (state.hasBudget) "¥${formatAmount(state.budgetCents)}"
+                        else "未设置（不显示预算进度）",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = {
+                    budgetText = if (state.hasBudget) formatAmount(state.budgetCents) else ""
+                    showBudgetDialog = true
+                }) { Text("设置") }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "专注计时") {
+            LabeledSlider(
                 label = "专注时长",
                 value = focusSettings.focusMinutes,
                 range = 5..90,
+                valueText = "%d 分钟",
                 onChange = { timerVm.setFocusMinutes(it) }
             )
-            DurationSlider(
+            LabeledSlider(
                 label = "短休息",
                 value = focusSettings.shortBreakMinutes,
                 range = 1..30,
+                valueText = "%d 分钟",
                 onChange = { timerVm.setShortBreakMinutes(it) }
             )
-            DurationSlider(
+            LabeledSlider(
                 label = "长休息",
                 value = focusSettings.longBreakMinutes,
                 range = 5..45,
+                valueText = "%d 分钟",
                 onChange = { timerVm.setLongBreakMinutes(it) }
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(6.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -157,157 +185,111 @@ fun SettingsScreen(
                 }
             }
             Spacer(Modifier.height(10.dp))
-            SwitchRow("阶段结束震动提醒", focusSettings.vibrate) { timerVm.setVibrate(it) }
-            SwitchRow("自动开始下一阶段", focusSettings.autoStartNext) { timerVm.setAutoStart(it) }
-            SwitchRow("计时中保持屏幕常亮", focusSettings.keepScreenOn) { timerVm.setKeepScreenOn(it) }
+            LabeledSwitch("阶段结束震动提醒", focusSettings.vibrate) { timerVm.setVibrate(it) }
+            LabeledSwitch("自动开始下一阶段", focusSettings.autoStartNext) { timerVm.setAutoStart(it) }
+            LabeledSwitch("计时中保持屏幕常亮", focusSettings.keepScreenOn) { timerVm.setKeepScreenOn(it) }
         }
 
-        SettingCard("数据") {
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "数据") {
             Text(
                 text = "本月 ${state.monthCount} 笔记录 · ${state.pendingCount + state.doneCount} 条待办 · " +
-                    "今日 ${timerState.stats.todayCount} 个专注",
+                    "今日 ${state.focusStats.todayCount} 个专注",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { clearing = ClearTarget.TRANSACTIONS },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(ClearTarget.TRANSACTIONS.label) }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { clearing = ClearTarget.TODOS },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(ClearTarget.TODOS.label) }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { clearing = ClearTarget.FOCUS_STATS },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(ClearTarget.FOCUS_STATS.label) }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = { clearing = ClearTarget.EVERYTHING },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text(ClearTarget.EVERYTHING.label) }
+            ClearTarget.entries.forEach { target ->
+                OutlinedButton(
+                    onClick = { clearing = target },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(target.label) }
+                Spacer(Modifier.height(8.dp))
+            }
         }
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 14.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(Modifier.padding(18.dp)) {
-                Text(
-                    text = "日常本 v1.1",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "记账 + 待办 + 专注计时，三合一。数据全部存在手机本地" +
-                        "（记账/待办用 Room 数据库，专注记录用本地偏好存储），" +
-                        "不联网、不上传。只有专注计时的通知和震动需要系统权限。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+        Spacer(Modifier.height(14.dp))
+        SectionCard {
+            Text(
+                text = "日常本 v1.2",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "记账 + 待办 + 专注计时，三合一。数据全部存在手机本地，不联网、不上传，" +
+                    "只有专注计时的通知和震动需要系统权限。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(28.dp))
     }
 
     clearing?.let { target ->
+        ConfirmDialog(
+            title = "确认${target.label}？",
+            text = target.message,
+            confirmText = "确定清除",
+            onConfirm = {
+                when (target) {
+                    ClearTarget.TRANSACTIONS -> vm.clearTransactions()
+                    ClearTarget.TODOS -> vm.clearTodos()
+                    ClearTarget.FOCUS_STATS -> vm.clearFocusStats()
+                    ClearTarget.EVERYTHING -> vm.clearAll()
+                }
+            },
+            onDismiss = { clearing = null }
+        )
+    }
+
+    if (showBudgetDialog) {
         AlertDialog(
-            onDismissRequest = { clearing = null },
-            title = { Text("确认${target.label}？") },
-            text = { Text(target.message) },
+            onDismissRequest = { showBudgetDialog = false },
+            title = { Text("设置月度预算") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = budgetText,
+                        onValueChange = { input ->
+                            if (input.count { it == '.' } <= 1 &&
+                                input.all { it.isDigit() || it == '.' } &&
+                                input.length <= 10
+                            ) {
+                                budgetText = input
+                            }
+                        },
+                        label = { Text("金额") },
+                        prefix = { Text("¥") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "每月支出接近预算时，记账页会显示进度条；超支会标红。留空或填 0 表示不设置。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    when (target) {
-                        ClearTarget.TRANSACTIONS -> vm.clearTransactions()
-                        ClearTarget.TODOS -> vm.clearTodos()
-                        ClearTarget.FOCUS_STATS -> timerVm.clearStats()
-                        ClearTarget.EVERYTHING -> {
-                            vm.clearAll()
-                            timerVm.clearStats()
-                        }
-                    }
-                    clearing = null
-                }) { Text("确定清除") }
+                    vm.setMonthlyBudget(parseAmountToCents(budgetText) ?: 0L)
+                    showBudgetDialog = false
+                }) { Text("保存") }
             },
             dismissButton = {
-                TextButton(onClick = { clearing = null }) { Text("取消") }
+                Row {
+                    TextButton(onClick = {
+                        vm.setMonthlyBudget(0L)
+                        showBudgetDialog = false
+                    }) { Text("清除") }
+                    TextButton(onClick = { showBudgetDialog = false }) { Text("取消") }
+                }
             }
         )
-    }
-}
-
-@Composable
-private fun SettingCard(title: String, content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 14.dp),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(12.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun DurationSlider(
-    label: String,
-    value: Int,
-    range: IntRange,
-    onChange: (Int) -> Unit
-) {
-    var local by remember(value) { mutableFloatStateOf(value.toFloat()) }
-
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text(
-                text = "${local.roundToInt()} 分钟",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-        Slider(
-            value = local,
-            onValueChange = { local = it },
-            valueRange = range.first.toFloat()..range.last.toFloat(),
-            onValueChangeFinished = { onChange(local.roundToInt()) }
-        )
-    }
-}
-
-@Composable
-private fun SwitchRow(title: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f)
-        )
-        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,8 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,26 +24,34 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dailybook.app.CategorySlice
 import com.dailybook.app.DayBar
+import com.dailybook.app.FocusDay
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.data.Categories
-import com.dailybook.app.data.DayCount
-import com.dailybook.app.timer.TimerUiState
+import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
+import java.time.Instant
 import java.time.YearMonth
+import java.time.ZoneId
 import kotlin.math.roundToInt
 
 private val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
 
+private fun clockText(millis: Long): String {
+    val time = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
+    return "%02d:%02d".format(time.hour, time.minute)
+}
+
 @Composable
 fun StatsScreen(
     state: UiState,
-    timerState: TimerUiState,
     vm: MainViewModel,
     modifier: Modifier = Modifier
 ) {
+    val focus = state.focusStats
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -59,7 +64,7 @@ fun StatsScreen(
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
 
         MonthSwitcher(
             label = state.monthLabel,
@@ -70,14 +75,9 @@ fun StatsScreen(
         )
 
         // ==================== 记账 ====================
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Row(modifier = Modifier.padding(vertical = 18.dp)) {
+        Spacer(Modifier.height(8.dp))
+        SectionCard {
+            Row {
                 StatBlock("支出", "¥${formatAmount(state.monthExpense)}", expenseColor(), Modifier.weight(1f))
                 StatBlock("收入", "¥${formatAmount(state.monthIncome)}", incomeColor(), Modifier.weight(1f))
                 StatBlock(
@@ -89,129 +89,78 @@ fun StatsScreen(
             }
         }
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 14.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(Modifier.padding(18.dp)) {
-                Text(
-                    text = "支出分类占比",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(14.dp))
-                if (state.expenseSlices.isEmpty()) {
-                    HintText("本月还没有支出记录")
-                } else {
-                    state.expenseSlices.forEachIndexed { index, slice ->
-                        if (index > 0) Spacer(Modifier.height(12.dp))
-                        SliceRow(slice, expenseColor())
-                    }
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "支出分类占比") {
+            if (state.expenseSlices.isEmpty()) {
+                HintText("本月还没有支出记录")
+            } else {
+                state.expenseSlices.forEachIndexed { index, slice ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    SliceRow(slice, expenseColor())
                 }
             }
         }
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 14.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(Modifier.padding(18.dp)) {
-                Text(
-                    text = "每日支出",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(16.dp))
-                if (state.maxDayCents <= 0L) {
-                    HintText("本月还没有支出记录")
-                } else {
-                    DailyChart(state.dayBars, state.maxDayCents)
-                }
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "每日支出") {
+            if (state.maxDayCents <= 0L) {
+                HintText("本月还没有支出记录")
+            } else {
+                Spacer(Modifier.height(4.dp))
+                DailyChart(state.dayBars, state.maxDayCents)
             }
         }
 
         if (state.incomeSlices.isNotEmpty()) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 14.dp),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(Modifier.padding(18.dp)) {
-                    Text(
-                        text = "收入来源占比",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    state.incomeSlices.forEachIndexed { index, slice ->
-                        if (index > 0) Spacer(Modifier.height(12.dp))
-                        SliceRow(slice, incomeColor())
-                    }
+            Spacer(Modifier.height(14.dp))
+            SectionCard(title = "收入来源占比") {
+                state.incomeSlices.forEachIndexed { index, slice ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    SliceRow(slice, incomeColor())
                 }
             }
         }
 
         // ==================== 专注 ====================
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
         Text(
             text = "专注",
             style = MaterialTheme.typography.titleLarge,
             color = MaterialTheme.colorScheme.onBackground
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(8.dp))
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Row(modifier = Modifier.padding(vertical = 18.dp)) {
-                StatBlock(
-                    "今日",
-                    timerState.stats.todayCount.toString(),
-                    MaterialTheme.colorScheme.primary,
-                    Modifier.weight(1f)
-                )
-                StatBlock(
-                    "连续",
-                    timerState.stats.streak.toString(),
-                    MaterialTheme.colorScheme.secondary,
-                    Modifier.weight(1f)
-                )
-                StatBlock(
-                    "累计",
-                    timerState.stats.totalCount.toString(),
-                    MaterialTheme.colorScheme.onSurface,
-                    Modifier.weight(1f)
+        SectionCard {
+            Row {
+                StatBlock("今日", focus.todayCount.toString(), MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                StatBlock("连续", "${focus.streak}", MaterialTheme.colorScheme.secondary, Modifier.weight(1f))
+                StatBlock("累计", focus.totalCount.toString(), MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+            }
+            if (focus.todayCount > 0) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "今日专注 ${focus.todayMinutes} 分钟",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 14.dp),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(Modifier.padding(18.dp)) {
-                Text(
-                    text = "最近 7 天完成的专注",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(16.dp))
-                FocusWeekChart(timerState.stats.recentDays)
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "最近 7 天完成的专注") {
+            Spacer(Modifier.height(4.dp))
+            FocusWeekChart(focus.recentDays)
+        }
+
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "今日专注明细") {
+            if (focus.todaySessions.isEmpty()) {
+                HintText("今天还没有完成的专注")
+            } else {
+                focus.todaySessions.forEachIndexed { index, session ->
+                    if (index > 0) Spacer(Modifier.height(10.dp))
+                    SessionRow(session)
+                }
             }
         }
 
@@ -220,18 +169,32 @@ fun StatsScreen(
 }
 
 @Composable
-private fun StatBlock(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(text = value, style = MaterialTheme.typography.titleLarge, color = color)
+private fun SessionRow(session: FocusSessionEntity) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${clockText(session.startedAtMillis)} - ${clockText(session.endedAtMillis)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "${session.minutes} 分钟",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        if (session.taskTitle.isNotBlank()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "🎯 ${session.taskTitle}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -260,19 +223,7 @@ private fun SliceRow(slice: CategorySlice, color: Color) {
                 )
             }
             Spacer(Modifier.height(6.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(3.dp))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(slice.ratio.coerceIn(0f, 1f))
-                        .fillMaxHeight()
-                        .background(color, RoundedCornerShape(3.dp))
-                )
-            }
+            ThinProgressBar(ratio = slice.ratio, color = color, height = 6.dp)
         }
     }
 }
@@ -320,7 +271,7 @@ private fun DailyChart(bars: List<DayBar>, maxCents: Long) {
 }
 
 @Composable
-private fun FocusWeekChart(days: List<DayCount>) {
+private fun FocusWeekChart(days: List<FocusDay>) {
     val maxCount = (days.maxOfOrNull { it.count } ?: 0).coerceAtLeast(1)
     val maxBarHeight = 108.dp
 

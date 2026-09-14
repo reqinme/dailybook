@@ -50,6 +50,10 @@ interface TodoDao {
     @Delete
     suspend fun delete(item: TodoEntity)
 
+    /** 批量清除已完成 */
+    @Query("DELETE FROM todos WHERE done = 1")
+    suspend fun clearCompleted()
+
     @Query("DELETE FROM todos")
     suspend fun clearAll()
 }

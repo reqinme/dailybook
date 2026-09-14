@@ -1,5 +1,6 @@
 package com.dailybook.app.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,16 +12,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.TodoFilter
 import com.dailybook.app.UiState
+import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.util.formatDueLabel
@@ -59,8 +61,10 @@ import com.dailybook.app.util.isOverdue
 import com.dailybook.app.util.toDayMillis
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoScreen(
     state: UiState,
@@ -69,6 +73,7 @@ fun TodoScreen(
 ) {
     var newTitle by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<TodoEntity?>(null) }
+    var confirmClearDone by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
     fun submit() {
@@ -84,17 +89,29 @@ fun TodoScreen(
             .padding(horizontal = 16.dp)
     ) {
         Spacer(Modifier.height(14.dp))
-        Text(
-            text = "待办",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = "待完成 ${state.pendingCount} 项 · 已完成 ${state.doneCount} 项",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "待办",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "待完成 ${state.pendingCount} 项 · 已完成 ${state.doneCount} 项",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (state.doneCount > 0) {
+                TextButton(onClick = { confirmClearDone = true }) {
+                    Text("清除已完成")
+                }
+            }
+        }
 
         Spacer(Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -110,11 +127,19 @@ fun TodoScreen(
             Spacer(Modifier.width(10.dp))
             FilledIconButton(
                 onClick = { submit() },
-                enabled = newTitle.isNotBlank()
+                enabled = newTitle.isNotBlank(),
+                modifier = Modifier.heightIn(min = 52.dp)
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "添加")
             }
         }
+
+        Spacer(Modifier.height(12.dp))
+        SearchField(
+            value = state.todoQuery,
+            onValueChange = vm::setTodoQuery,
+            placeholder = "搜索待办"
+        )
 
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -130,19 +155,16 @@ fun TodoScreen(
 
         if (state.visibleTodos.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "✅", style = MaterialTheme.typography.displaySmall)
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = when (state.todoFilter) {
-                            TodoFilter.ALL -> "还没有待办，添加一条试试"
-                            TodoFilter.PENDING -> "没有未完成的待办，很棒！"
-                            TodoFilter.DONE -> "还没有完成任何待办"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                EmptyHint(
+                    emoji = "✅",
+                    title = when {
+                        state.todoQuery.isNotBlank() -> "没有匹配的待办"
+                        state.todoFilter == TodoFilter.PENDING -> "没有未完成的待办，很棒！"
+                        state.todoFilter == TodoFilter.DONE -> "还没有完成任何待办"
+                        else -> "还没有待办，添加一条试试"
+                    },
+                    subtitle = if (state.todoQuery.isNotBlank()) "换个关键词试试" else null
+                )
             }
         } else {
             LazyColumn(
@@ -153,14 +175,25 @@ fun TodoScreen(
                 items(items = state.visibleTodos, key = { it.id }) { todo ->
                     TodoRow(
                         todo = todo,
+                        isFocusTarget = state.focusTaskId == todo.id,
                         onToggle = { vm.toggleTodoDone(todo) },
                         onStar = { vm.toggleTodoImportant(todo) },
-                        onDelete = { vm.deleteTodo(todo) },
+                        onFocusTarget = { vm.toggleFocusTask(todo) },
                         onEdit = { editing = todo }
                     )
                 }
             }
         }
+    }
+
+    if (confirmClearDone) {
+        ConfirmDialog(
+            title = "清除 ${state.doneCount} 条已完成待办？",
+            text = "已完成的待办会被删除，且无法恢复。",
+            confirmText = "确定清除",
+            onConfirm = { vm.clearCompletedTodos() },
+            onDismiss = { confirmClearDone = false }
+        )
     }
 
     editing?.let { item ->
@@ -182,15 +215,22 @@ fun TodoScreen(
 @Composable
 private fun TodoRow(
     todo: TodoEntity,
+    isFocusTarget: Boolean,
     onToggle: () -> Unit,
     onStar: () -> Unit,
-    onDelete: () -> Unit,
+    onFocusTarget: () -> Unit,
     onEdit: () -> Unit
 ) {
+    val container by animateColorAsState(
+        targetValue = if (isFocusTarget) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        else MaterialTheme.colorScheme.surface,
+        label = "todoContainer"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .background(container, Shapes.card)
             .clickable { onEdit() }
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -205,30 +245,44 @@ private fun TodoRow(
                 else MaterialTheme.colorScheme.onSurface,
                 textDecoration = if (todo.done) TextDecoration.LineThrough else TextDecoration.None
             )
-            todo.dueMillis?.let { due ->
-                val overdue = !todo.done && isOverdue(due)
+            if (isFocusTarget || todo.dueMillis != null) {
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    text = formatDueLabel(due),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (overdue) expenseColor() else MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isFocusTarget) {
+                        Text(
+                            text = "🎯 专注目标",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (todo.dueMillis != null) Spacer(Modifier.width(8.dp))
+                    }
+                    todo.dueMillis?.let { due ->
+                        val overdue = !todo.done && isOverdue(due)
+                        Text(
+                            text = formatDueLabel(due),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (overdue) expenseColor()
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 
+        IconButton(onClick = onFocusTarget) {
+            Icon(
+                imageVector = Icons.Filled.CenterFocusStrong,
+                contentDescription = if (isFocusTarget) "取消专注目标" else "设为专注目标",
+                tint = if (isFocusTarget) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
         IconButton(onClick = onStar) {
             Icon(
                 imageVector = if (todo.important) Icons.Filled.Star else Icons.Filled.StarBorder,
                 contentDescription = "重要",
                 tint = if (todo.important) MaterialTheme.colorScheme.secondary
                 else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        IconButton(onClick = onDelete) {
-            Icon(
-                imageVector = Icons.Filled.DeleteOutline,
-                contentDescription = "删除",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -245,7 +299,11 @@ private fun EditTodoDialog(
     var title by remember { mutableStateOf(item.title) }
     var important by remember { mutableStateOf(item.important) }
     var dueDate by remember {
-        mutableStateOf(item.dueMillis?.let { Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate() })
+        mutableStateOf(
+            item.dueMillis?.let {
+                Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDate()
+            }
+        )
     }
     var showPicker by remember { mutableStateOf(false) }
 

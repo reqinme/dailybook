@@ -1,0 +1,29 @@
+# 构建产物
+build/
+*/build/
+.gradle/
+*/.gradle/
+.kotlin/
+*/.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 本机配置与密钥（绝对不要提交）
+local.properties
+keystore.properties
+*.jks
+*.keystore
+keystore/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 临时
+*.log

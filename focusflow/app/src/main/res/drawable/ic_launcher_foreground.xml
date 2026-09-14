@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 计时圆环 -->
+    <path
+        android:fillColor="#FF8A5C"
+        android:fillType="evenOdd"
+        android:pathData="M54,24 a30,30 0 1,0 0.01,0 Z M54,35 a19,19 0 1,1 -0.01,0 Z" />
+
+    <!-- 指针 -->
+    <path
+        android:pathData="M54,44 L54,58 L67,58"
+        android:strokeColor="#FF8A5C"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- 顶部旋钮 -->
+    <path
+        android:pathData="M54,16 L54,24"
+        android:strokeColor="#FF8A5C"
+        android:strokeWidth="6"
+        android:strokeLineCap="round" />
+</vector>

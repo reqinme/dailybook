@@ -250,6 +250,37 @@ fun StatsScreen(
             }
         }
 
+        // 待报销：统计全部时间里标记为「待报销」的记录，与上面选的月份无关
+        if (state.hasReimbursement) {
+            Spacer(Modifier.height(14.dp))
+            SectionCard(title = StatsStrings.reimbursementTitle(lang)) {
+                AmountRow(
+                    label = StatsStrings.pendingReimbursementLabel(lang),
+                    value = StatsStrings.reimbursementAmountWithCount(
+                        lang,
+                        formatAmount(state.pendingReimbursementCents),
+                        state.pendingReimbursementCount
+                    ),
+                    color = expenseColor()
+                )
+                Spacer(Modifier.height(8.dp))
+                AmountRow(
+                    label = StatsStrings.reimbursedLabel(lang),
+                    value = StatsStrings.reimbursementAmount(
+                        lang,
+                        formatAmount(state.reimbursedCents)
+                    ),
+                    color = incomeColor()
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = StatsStrings.reimbursementNote(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         if (state.incomeSlices.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
             SectionCard(title = StatsStrings.incomeSourceTitle(lang)) {
@@ -448,11 +479,18 @@ private fun SessionRow(session: FocusSessionEntity) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = StatsStrings.sessionMinutes(lang, session.minutes),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = StatsStrings.sessionMinutes(lang, session.minutes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                // 中途停止 / 跳过的记录挂一个淡色小标签，正常走完的什么都不加
+                if (session.interrupted) {
+                    Spacer(Modifier.width(6.dp))
+                    InterruptedTag(StatsStrings.sessionInterrupted(lang))
+                }
+            }
         }
         if (session.taskTitle.isNotBlank()) {
             Spacer(Modifier.height(2.dp))
@@ -462,6 +500,44 @@ private fun SessionRow(session: FocusSessionEntity) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+/** 淡色的「中断」小标签 */
+@Composable
+private fun InterruptedTag(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp)
+    )
+}
+
+/** 「标签 —— 金额」一行：金额靠右，长金额省略而不是撑破卡片 */
+@Composable
+private fun AmountRow(label: String, value: String, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 

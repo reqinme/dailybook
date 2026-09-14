@@ -68,4 +68,44 @@ object CommonStrings {
         "结束后需手动开始下一阶段", "結束後需手動開始下一階段",
         "Next phase needs a manual start", "終了後、次のフェーズは手動で開始"
     )
+
+    // ---- 计时页：计时模式（番茄钟 / 正计时）----
+
+    /** 模式胶囊：番茄钟 */
+    fun timerModePomodoro(lang: Lang) = pick(
+        lang, "番茄钟", "番茄鐘", "Pomodoro", "ポモドーロ"
+    )
+
+    /** 模式胶囊：正计时 */
+    fun timerModeStopwatch(lang: Lang) = pick(
+        lang, "正计时", "正計時", "Stopwatch", "ストップウォッチ"
+    )
+
+    /** 圆环中间的「进行中」文案（正计时） */
+    fun stopwatchRunning(lang: Lang) = pick(
+        lang, "正计时中", "正計時中", "Counting up", "計測中"
+    )
+
+    /** 圆环下方的短提示：正计时不自动结束 */
+    fun stopwatchHint(lang: Lang) = pick(
+        lang,
+        "不自动结束，点「完成」记一次专注",
+        "不會自動結束，點「完成」記一次專注",
+        "No auto stop — tap Finish to log a session",
+        "自動では終わりません。「完了」で集中を記録"
+    )
+
+    /** 正计时页面底部的说明：不足 1 分钟不记录 */
+    fun stopwatchNote(lang: Lang) = pick(
+        lang,
+        "「完成」按已过去的整分钟记一次专注；不足 1 分钟不记录。",
+        "「完成」按已過去的整分鐘記一次專注；不足 1 分鐘不記錄。",
+        "Finish logs one focus session using the whole minutes elapsed; under 1 minute is not recorded.",
+        "「完了」は経過した整数分を集中として記録します。1分未満は記録しません。"
+    )
+
+    /** 正计时的结束按钮 */
+    fun finish(lang: Lang) = pick(
+        lang, "完成", "完成", "Finish", "完了"
+    )
 }

@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dailybook.app.backup.Backup
 import com.dailybook.app.data.Accounts
+import com.dailybook.app.data.CategoryStore
+import com.dailybook.app.data.Currencies
 import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.data.RepeatRule
@@ -96,6 +98,15 @@ data class DayBar(val day: Int, val cents: Long)
 @Immutable
 data class FocusDay(val date: LocalDate, val count: Int)
 
+/** 日历视图里的一天 */
+@Immutable
+data class CalendarDay(
+    val date: LocalDate,
+    val expenseCents: Long,
+    val incomeCents: Long,
+    val count: Int
+)
+
 /** 某个待办累计投入的专注时间 */
 @Immutable
 data class TodoFocus(val title: String, val minutes: Int, val count: Int)
@@ -161,6 +172,22 @@ data class UiState(
     val accounts: List<String> = emptyList(),
     /** 记账页当前选中的账户筛选，null 表示全部 */
     val accountFilter: String? = null,
+    /** 标签筛选，null 表示全部 */
+    val tagFilter: String? = null,
+    /** 日历里点选的某一天，null 表示不按天过滤 */
+    val dayFilter: LocalDate? = null,
+    /** 数据里出现过的全部标签（按出现次数排序） */
+    val allTags: List<String> = emptyList(),
+    /** 可选分类：用户自定义清单 ∪ 数据里出现过的分类 */
+    val expenseCategories: List<String> = emptyList(),
+    val incomeCategories: List<String> = emptyList(),
+    /** 当月日历（只含当月天） */
+    val calendarDays: List<CalendarDay> = emptyList(),
+    val maxCalendarExpense: Long = 0L,
+    /** 待报销 / 已报销汇总（全部时间口径） */
+    val pendingReimbursementCents: Long = 0L,
+    val pendingReimbursementCount: Int = 0,
+    val reimbursedCents: Long = 0L,
     /** 本月支出按账户分布 */
     val accountSlices: List<AccountSlice> = emptyList(),
     /** 设了预算的分类，按使用比例从高到低 */
@@ -198,6 +225,15 @@ data class UiState(
     /** 有没有设过分类预算 */
     val hasCategoryBudget: Boolean get() = categoryBudgets.isNotEmpty()
 
+    /** 有历史数据里出现过的标签 */
+    val hasTags: Boolean get() = allTags.isNotEmpty()
+
+    val hasReimbursement: Boolean get() = pendingReimbursementCount > 0 || reimbursedCents > 0L
+
+    /** 记账页是否处于「筛选后」的状态 */
+    val isLedgerFiltered: Boolean
+        get() = isSearching || accountFilter != null || tagFilter != null || dayFilter != null
+
     /** 有史以来的净结余 */
     val totalBalance: Long get() = totalIncomeCents - totalExpenseCents
 }
@@ -209,14 +245,21 @@ private data class LedgerInputs(
     val query: String,
     val budgetCents: Long,
     val accountFilter: String?,
+    val tagFilter: String?,
+    val dayFilter: LocalDate?,
     val categoryBudgets: Map<String, Long>
 )
 
-/** 只跟筛选有关的两个设置项，单独拼一层，避免 combine 超过 5 个参数 */
+/** 只跟筛选有关的设置项，单独拼一层，避免 combine 超过 5 个参数 */
 private data class LedgerFilters(
     val account: String?,
-    val categoryBudgets: Map<String, Long>
+    val categoryBudgets: Map<String, Long>,
+    val tag: String?,
+    val day: LocalDate?
 )
+
+/** 用户自定义的分类清单 */
+private data class CategoryInputs(val expense: List<String>, val income: List<String>)
 
 /** 待办侧的输入聚合 */
 private data class TodoInputs(
@@ -229,6 +272,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val repo = DailyRepository(app)
 
+    /** 用户可自定义的分类清单 */
+    val categories: CategoryStore = CategoryStore.get(app)
+
     /** 全局共享的设置存储（与 TimerViewModel 拿到的是同一个实例） */
     val settings: SettingsStore = SettingsStore.get(app)
 
@@ -237,12 +283,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val ledgerQuery = MutableStateFlow("")
     private val todoQuery = MutableStateFlow("")
     private val ledgerAccount = MutableStateFlow<String?>(null)
+    private val ledgerTag = MutableStateFlow<String?>(null)
+    private val ledgerDay = MutableStateFlow<LocalDate?>(null)
 
     private val ledgerFilters = combine(
         ledgerAccount,
-        settings.categoryBudgets
-    ) { account, budgets ->
-        LedgerFilters(account, budgets)
+        settings.categoryBudgets,
+        ledgerTag,
+        ledgerDay
+    ) { account, budgets, tag, day ->
+        LedgerFilters(account, budgets, tag, day)
     }
 
     private val ledgerInputs = combine(
@@ -258,8 +308,24 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             query = query,
             budgetCents = budget,
             accountFilter = filters.account,
+            tagFilter = filters.tag,
+            dayFilter = filters.day,
             categoryBudgets = filters.categoryBudgets
         )
+    }
+
+    private val categoryInputs = combine(
+        categories.expense,
+        categories.income
+    ) { expense, income ->
+        CategoryInputs(expense, income)
+    }
+
+    private val settingsInputs = combine(
+        settings.focusTaskId,
+        settings.focusTaskTitle
+    ) { id, title ->
+        id to title
     }
 
     private val todoInputs = combine(
@@ -274,10 +340,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         ledgerInputs,
         todoInputs,
         repo.focusSessions,
-        settings.focusTaskId,
-        settings.focusTaskTitle
-    ) { ledger, todos, sessions, taskId, taskTitle ->
-        buildState(ledger, todos, sessions, taskId, taskTitle)
+        settingsInputs,
+        categoryInputs
+    ) { ledger, todos, sessions, task, cats ->
+        buildState(ledger, todos, sessions, task.first, task.second, cats)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
 
     /** 操作结果提示（导出成功、导入失败之类），界面弹完即清空 */
@@ -327,6 +393,27 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 记账页按账户筛选；传 null 表示看全部 */
     fun setAccountFilter(account: String?) { ledgerAccount.value = account }
 
+    /** 按标签筛选 */
+    fun setTagFilter(tag: String?) { ledgerTag.value = if (ledgerTag.value == tag) null else tag }
+
+    /** 日历里点选某天（再点一次取消） */
+    fun setDayFilter(day: LocalDate?) {
+        ledgerDay.value = if (day != null && ledgerDay.value == day) null else day
+    }
+
+    /** 标记一笔是否已报销 */
+    fun toggleReimbursed(item: TransactionEntity) {
+        viewModelScope.launch { repo.setReimbursed(item, !item.reimbursed) }
+    }
+
+    // ---- 自定义分类 ----
+
+    fun addCategory(type: TxType, name: String): Boolean = categories.add(type, name)
+
+    fun removeCategory(type: TxType, name: String) = categories.remove(type, name)
+
+    fun resetCategories(type: TxType) = categories.reset(type)
+
     fun setTodoFilter(filter: TodoFilter) { todoFilter.value = filter }
 
     fun setTodoQuery(query: String) { todoQuery.value = query }
@@ -339,10 +426,27 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         category: String,
         note: String,
         dateMillis: Long,
-        account: String = Accounts.DEFAULT
+        account: String = Accounts.DEFAULT,
+        tags: List<String> = emptyList(),
+        reimbursable: Boolean = false,
+        currency: String = Currencies.BASE,
+        foreignAmountCents: Long = 0L,
+        rateScaled: Long = Currencies.RATE_SCALE
     ) {
         viewModelScope.launch {
-            repo.addTransaction(amountCents, type, category, note, dateMillis, account)
+            repo.addTransaction(
+                amountCents = amountCents,
+                type = type,
+                category = category,
+                note = note,
+                dateMillis = dateMillis,
+                account = account,
+                tags = tags,
+                reimbursable = reimbursable,
+                currency = currency,
+                foreignAmountCents = foreignAmountCents,
+                rateScaled = rateScaled
+            )
             // 记完一笔顺手看一眼预算，越过预警线就提醒一次
             if (type == TxType.EXPENSE) withContext(Dispatchers.IO) { checkBudgetAlert() }
         }
@@ -356,10 +460,28 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         category: String,
         note: String,
         dateMillis: Long,
-        account: String = item.account
+        account: String = item.account,
+        tags: List<String> = item.tagList,
+        reimbursable: Boolean = item.reimbursable,
+        currency: String = item.currency,
+        foreignAmountCents: Long = item.foreignAmountCents,
+        rateScaled: Long = item.rateScaled
     ) {
         viewModelScope.launch {
-            repo.updateTransaction(item, amountCents, type, category, note, dateMillis, account)
+            repo.updateTransaction(
+                item = item,
+                amountCents = amountCents,
+                type = type,
+                category = category,
+                note = note,
+                dateMillis = dateMillis,
+                account = account,
+                tags = tags,
+                reimbursable = reimbursable,
+                currency = currency,
+                foreignAmountCents = foreignAmountCents,
+                rateScaled = rateScaled
+            )
         }
     }
 
@@ -536,8 +658,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /** 从备份文件恢复：会覆盖当前全部数据 */
-    fun importBackup(uri: Uri) = runFileTask {
-        val parsed = Backup.parse(Backup.readText(app, uri))
+    fun importBackup(uri: Uri) = runFileTask {        val parsed = Backup.parse(Backup.readText(app, uri))
         repo.restore(parsed.snapshot)
         settings.setMonthlyBudget(parsed.budgetCents)
         AppStrings.backupRestored(
@@ -548,9 +669,26 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * 导入记账 CSV。
+     * 用「日期 + 金额 + 类型 + 分类 + 账户 + 备注」当指纹去重，
+     * 所以同一份文件重复导入不会翻倍；解析不了的行在解析阶段就被丢掉了。
+     */
+    fun importLedgerCsv(uri: Uri) = runFileTask {
+        val lang = settings.lang.value
+        val rows = Backup.parseCsv(Backup.readText(app, uri), lang)
+        if (rows.isEmpty()) throw IllegalStateException(AppStrings.nothingToImport(lang))
+
+        val seen = repo.snapshot().transactions.map { Backup.fingerprint(it) }.toMutableSet()
+        val fresh = rows.filter { seen.add(Backup.fingerprint(it)) }
+        if (fresh.isEmpty()) return@runFileTask AppStrings.importNothingNew(lang)
+
+        repo.insertTransactions(fresh)
+        AppStrings.importedCsv(lang, fresh.size, rows.size - fresh.size)
+    }
+
     /** 文件读写放到 IO 线程，结果统一以提示语回到界面 */
-    private fun runFileTask(block: suspend () -> String) {
-        viewModelScope.launch {
+    private fun runFileTask(block: suspend () -> String) {        viewModelScope.launch {
             val result = runCatching { withContext(Dispatchers.IO) { block() } }
             _message.value = result.getOrElse {
                 AppStrings.actionFailed(
@@ -593,7 +731,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         todo: TodoInputs,
         sessions: List<FocusSessionEntity>,
         focusTaskId: Long,
-        focusTaskTitle: String
+        focusTaskTitle: String,
+        cats: CategoryInputs
     ): UiState {
         val today = LocalDate.now()
         val month = ledger.month
@@ -604,10 +743,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             tx.category.contains(query, ignoreCase = true) ||
                 tx.note.contains(query, ignoreCase = true)
         }
-        // 账户筛选只影响列表（和搜索一样），上方的月度汇总是整月的口径
+        // 账户 / 标签 / 某一天这三个筛选只影响列表（和搜索一样），上方汇总是整月口径
         val accountFilter = ledger.accountFilter
-        val listed = if (accountFilter == null) searched
-        else searched.filter { it.account == accountFilter }
+        val tagFilter = ledger.tagFilter
+        val dayFilter = ledger.dayFilter
+        val listed = searched
+            .filter { accountFilter == null || it.account == accountFilter }
+            .filter { tagFilter == null || it.tagList.contains(tagFilter) }
+            .filter { dayFilter == null || it.dateMillis.toLocalDate() == dayFilter }
 
         val groups = listed
             .groupBy { it.dateMillis.toLocalDate() }
@@ -788,6 +931,41 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val allIncome = ledger.all.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
         val allExpense = ledger.all.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
 
+        // ---- 标签 / 分类清单 ----
+        val allTags = ledger.all
+            .flatMap { it.tagList }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+
+        val usedCategories = ledger.all.groupBy { it.type }.mapValues { entry ->
+            entry.value.map { it.category }.distinct()
+        }
+        val expenseCategories = (cats.expense + usedCategories[TxType.EXPENSE].orEmpty()).distinct()
+        val incomeCategories = (cats.income + usedCategories[TxType.INCOME].orEmpty()).distinct()
+
+        // ---- 当月日历 ----
+        val byDay = monthTx.groupBy { it.dateMillis.toLocalDate() }
+        val calendarDays = (1..month.lengthOfMonth()).map { dayOfMonth ->
+            val date = month.atDay(dayOfMonth)
+            val items = byDay[date].orEmpty()
+            CalendarDay(
+                date = date,
+                expenseCents = items.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents },
+                incomeCents = items.filter { it.type == TxType.INCOME }.sumOf { it.amountCents },
+                count = items.size
+            )
+        }
+        val maxCalendarExpense = calendarDays.maxOfOrNull { it.expenseCents } ?: 0L
+
+        // ---- 待报销 ----
+        val reimbursable = ledger.all.filter { it.reimbursable }
+        val pendingReimbursement = reimbursable.filter { !it.reimbursed }
+        val pendingReimbursementCents = pendingReimbursement.sumOf { it.amountCents }
+        val reimbursedCents = reimbursable.filter { it.reimbursed }.sumOf { it.amountCents }
+
         return UiState(
             month = month,
             monthGroups = groups,
@@ -804,6 +982,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             budgetCents = ledger.budgetCents,
             accounts = accounts,
             accountFilter = accountFilter,
+            tagFilter = tagFilter,
+            dayFilter = dayFilter,
+            allTags = allTags,
+            expenseCategories = expenseCategories,
+            incomeCategories = incomeCategories,
+            calendarDays = calendarDays,
+            maxCalendarExpense = maxCalendarExpense,
+            pendingReimbursementCents = pendingReimbursementCents,
+            pendingReimbursementCount = pendingReimbursement.size,
+            reimbursedCents = reimbursedCents,
             accountSlices = accountSlices,
             categoryBudgets = categoryBudgetRows,
             visibleTodos = visible,

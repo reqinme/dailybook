@@ -123,9 +123,9 @@ class I18nTest {
         allLangs.forEach { lang ->
             val csv = Backup.toCsv(listOf(tx), lang)
             val header = csv.trim().split("\r\n")[0].removePrefix("\uFEFF")
-            assertEquals("语言 $lang 的 CSV 表头列数不对：$header", 6, header.split(",").size)
+            assertEquals("语言 $lang 的 CSV 表头列数不对：$header", 7, header.split(",").size)
             val row = csv.trim().split("\r\n")[1]
-            assertEquals("语言 $lang 的数据行列数不对：$row", 6, row.split(",").size)
+            assertEquals("语言 $lang 的数据行列数不对：$row", 7, row.split(",").size)
             // 类型列必须是该语言的译文
             assertTrue(row.contains(TxType.EXPENSE.label(lang)))
         }

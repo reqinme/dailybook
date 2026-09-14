@@ -23,6 +23,7 @@ enum class TxType {
 @Entity(tableName = "transactions")
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    /** 折成人民币后的金额（分）。所有统计口径都用它，多币种只是多存一份原始信息 */
     val amountCents: Long,
     /** 存枚举名，避免依赖 Room 的枚举转换 */
     val typeName: String,
@@ -30,12 +31,60 @@ data class TransactionEntity(
     /** 账户（现金 / 微信 / 支付宝 / 银行卡，或自定义），老数据默认「现金」 */
     val account: String = Accounts.DEFAULT,
     val note: String = "",
+    /** 标签，逗号分隔（存字符串，方便导出与旧数据兼容） */
+    val tags: String = "",
+    /** 待报销 / 已报销：两笔独立的标记，统计里能把待报销的钱单拎出来 */
+    val reimbursable: Boolean = false,
+    val reimbursed: Boolean = false,
+    /** 币种；CNY 为本位币 */
+    val currency: String = Currencies.BASE,
+    /** 原币金额（分）；本位币记录等于 amountCents */
+    val foreignAmountCents: Long = 0L,
+    /** 汇率 ×[Currencies.RATE_SCALE]（1 外币 = rate / RATE_SCALE 元）；本位币为 RATE_SCALE */
+    val rateScaled: Long = Currencies.RATE_SCALE,
     /** 记账日期（当天 00:00 的毫秒时间戳） */
     val dateMillis: Long,
     val createdAt: Long
 ) {
     val type: TxType
         get() = runCatching { TxType.valueOf(typeName) }.getOrDefault(TxType.EXPENSE)
+
+    val tagList: List<String>
+        get() = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** 是否是外币记录（需要用原币展示） */
+    val isForeign: Boolean get() = currency != Currencies.BASE && foreignAmountCents > 0L
+
+    companion object {
+        fun joinTags(tags: List<String>): String =
+            tags.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(",")
+    }
+}
+
+/** 币种：本位币是人民币，其余按用户填的汇率折算 */
+object Currencies {
+    const val BASE = "CNY"
+
+    /** 汇率放大倍数：汇率存整数，1 外币 = rate / RATE_SCALE 元 */
+    const val RATE_SCALE = 10_000L
+
+    val PRESETS = listOf("CNY", "USD", "JPY", "EUR", "HKD", "GBP")
+
+    fun symbolOf(code: String): String = when (code) {
+        "CNY" -> "¥"
+        "USD" -> "$"
+        "JPY" -> "¥"
+        "EUR" -> "€"
+        "HKD" -> "HK$"
+        "GBP" -> "£"
+        else -> ""
+    }
+
+    /** 用原币金额与汇率算人民币金额（分），四舍五入 */
+    fun toBaseCents(foreignCents: Long, rateScaled: Long): Long {
+        if (rateScaled <= 0L) return foreignCents
+        return (foreignCents * rateScaled + RATE_SCALE / 2) / RATE_SCALE
+    }
 }
 
 /** 账户：预置几个常用渠道，也允许用户自己写 */

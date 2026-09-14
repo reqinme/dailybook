@@ -242,4 +242,48 @@ object StatsStrings {
         lang, "%1\$d 分钟 · %2\$d 次", "%1\$d 分鐘 · %2\$d 次",
         "%1\$d min · %2\$d sessions", "%1\$d 分 · %2\$d 回", minutes, count
     )
+
+    // ---- 待报销（全部时间，与当前月份无关）----
+
+    fun reimbursementTitle(lang: Lang) = pick(
+        lang, "待报销", "待報銷", "Reimbursement", "精算"
+    )
+
+    fun pendingReimbursementLabel(lang: Lang) = pick(
+        lang, "待报销合计", "待報銷合計", "Pending total", "精算待ちの合計"
+    )
+
+    fun reimbursedLabel(lang: Lang) = pick(
+        lang, "已报销", "已報銷", "Reimbursed", "精算済み"
+    )
+
+    /** 待报销金额与笔数：「¥320.00（3 笔）」，金额由调用方 formatAmount 后传入 */
+    fun reimbursementAmountWithCount(lang: Lang, amount: String, count: Int) = pickf(
+        lang,
+        "¥%1\$s（%2\$d 笔）", "¥%1\$s（%2\$d 筆）",
+        "¥%1\$s (%2\$d entries)", "¥%1\$s（%2\$d 件）",
+        amount, count
+    )
+
+    /** 已报销金额：「¥320.00」 */
+    fun reimbursementAmount(lang: Lang, amount: String) = pickf(
+        lang, "¥%s", "¥%s", "¥%s", "¥%s",
+        amount
+    )
+
+    /** 说明：统计口径是「全部时间」，且已报销的不再计入待报销合计 */
+    fun reimbursementNote(lang: Lang) = pick(
+        lang,
+        "统计全部时间（不限本月）里标记为「待报销」的记录；已经报销掉的部分只算进「已报销」，不再计入合计。",
+        "統計全部時間（不限本月）裡標記為「待報銷」的記錄；已經報銷掉的部分只算進「已報銷」，不再計入合計。",
+        "Counts every entry flagged for reimbursement across all time, not just this month. Already reimbursed entries are counted only under \"Reimbursed\".",
+        "今月に限らず全期間の「精算待ち」を集計します。精算済みの分は「精算済み」にのみ含まれ、合計には入りません。"
+    )
+
+    // ---- 专注明细：中断标记 ----
+
+    /** 中途停止 / 跳过的专注记录后面挂的小标签 */
+    fun sessionInterrupted(lang: Lang) = pick(
+        lang, "中断", "中斷", "Interrupted", "中断"
+    )
 }

@@ -262,6 +262,32 @@ object AppStrings {
     fun nothingToExport(lang: Lang) =
         pick(lang, "还没有记账记录可导出", "還沒有記帳紀錄可匯出", "No ledger entries to export yet", "書き出せる記録がありません")
 
+    // ---- CSV 导入 ----
+    fun importCsv(lang: Lang) = pick(lang, "导入记账 CSV", "匯入記帳 CSV", "Import ledger CSV", "記録 CSV を取り込む")
+
+    fun importCsvHint(lang: Lang) = pick(
+        lang, "支持本 App 导出的 CSV（5 / 6 / 7 列都可以）；日期与金额相同的行会自动跳过，重复导入不会翻倍。",
+        "支援本 App 匯出的 CSV（5 / 6 / 7 欄都可以）；日期與金額相同的行會自動略過，重複匯入不會翻倍。",
+        "Accepts CSV exported by this app (5, 6 or 7 columns). Rows matching an existing record are skipped, so importing twice is safe.",
+        "本アプリが書き出した CSV（5 / 6 / 7 列）に対応。既存の記録と一致する行は自動で飛ばすので、二重取り込みになりません。"
+    )
+
+    fun nothingToImport(lang: Lang) = pick(
+        lang, "这个文件里没有可导入的记账记录", "這個檔案裡沒有可匯入的記帳紀錄",
+        "No importable ledger rows in that file", "取り込める記録がこのファイルにありません"
+    )
+
+    fun importNothingNew(lang: Lang) = pick(
+        lang, "这些记录都已经在了，没有新增", "這些紀錄都已經在了，沒有新增",
+        "All of those rows already exist — nothing new", "すべて既に存在します。新規はありません"
+    )
+
+    fun importedCsv(lang: Lang, added: Int, skipped: Int) = pickf(
+        lang, "已导入 %1\$d 笔（跳过 %2\$d 笔重复）", "已匯入 %1\$d 筆（略過 %2\$d 筆重複）",
+        "Imported %1\$d rows (%2\$d duplicates skipped)",
+        "%1\$d 件を取り込み（重複 %2\$d 件はスキップ）", added, skipped
+    )
+
     fun backupFileName(lang: Lang) =
         pick(lang, "日常本备份", "日常本備份", "DailyBook-backup", "日常本バックアップ")
 

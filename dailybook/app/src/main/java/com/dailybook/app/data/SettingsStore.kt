@@ -154,6 +154,15 @@ class SettingsStore private constructor(context: Context) {
         _budgetAlert.value = enabled
     }
 
+    /** 某个币种最近用过的汇率（×RATE_SCALE），下次记同一币种不用重填 */
+    fun currencyRate(code: String): Long =
+        prefs.getLong(KEY_RATE_PREFIX + code, Currencies.RATE_SCALE)
+
+    fun setCurrencyRate(code: String, rateScaled: Long) {
+        if (code.isBlank() || rateScaled <= 0L) return
+        prefs.edit().putLong(KEY_RATE_PREFIX + code, rateScaled).apply()
+    }
+
     /** 某个预警是否已经发过（按月 + 阈值去重，避免每记一笔都提醒） */
     fun isBudgetWarned(key: String): Boolean = warnedKeys().contains(key)
 
@@ -217,6 +226,7 @@ class SettingsStore private constructor(context: Context) {
         private const val KEY_SUMMARY = "periodic_summary_mode"
         private const val KEY_BUDGET_ALERT = "budget_alert_enabled"
         private const val KEY_BUDGET_WARNED = "budget_warned_keys"
+        private const val KEY_RATE_PREFIX = "currency_rate_"
         private const val KEY_FOCUS_TASK_ID = "focus_task_id"
         private const val KEY_FOCUS_TASK_TITLE = "focus_task_title"
         private const val KEY_REMINDED = "reminded_keys"

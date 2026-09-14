@@ -3,17 +3,22 @@ package com.dailybook.app.backup
 import android.content.Context
 import android.net.Uri
 import com.dailybook.app.data.Accounts
+import com.dailybook.app.data.Currencies
 import com.dailybook.app.data.DbSnapshot
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
+import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.util.formatAmount
+import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
 import org.json.JSONArray
 import org.json.JSONObject
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 /** 备份文件解析结果 */
@@ -29,11 +34,12 @@ object Backup {
 
     /**
      * 备份格式版本。
-     * 1：只有记账 / 待办 / 专注记录 + 预算
+     * 1：记账 / 待办 / 专注记录 + 预算
      * 2：记账多了「账户」，待办多了「重复规则」
+     * 3：记账多了「标签 / 待报销 / 多币种」，专注记录多了「中断」
      * 读取时兼容更旧的版本（缺字段就取默认值），比当前版本更新的才拒绝。
      */
-    const val FORMAT = 2
+    const val FORMAT = 3
 
     // ---------- 导出 ----------
 
@@ -57,6 +63,12 @@ object Backup {
                     put("category", tx.category)
                     put("account", tx.account)
                     put("note", tx.note)
+                    put("tags", tx.tags)
+                    put("reimbursable", tx.reimbursable)
+                    put("reimbursed", tx.reimbursed)
+                    put("currency", tx.currency)
+                    put("foreignAmountCents", tx.foreignAmountCents)
+                    put("rateScaled", tx.rateScaled)
                     put("dateMillis", tx.dateMillis)
                     put("createdAt", tx.createdAt)
                 })
@@ -86,6 +98,7 @@ object Backup {
                     put("endedAtMillis", s.endedAtMillis)
                     put("minutes", s.minutes)
                     put("taskTitle", s.taskTitle)
+                    put("interrupted", s.interrupted)
                     put("createdAt", s.createdAt)
                 })
             }
@@ -121,6 +134,13 @@ object Backup {
                 category = o.optString("category", "其他"),
                 account = o.optString("account", Accounts.DEFAULT).ifBlank { Accounts.DEFAULT },
                 note = o.optString("note", ""),
+                tags = o.optString("tags", ""),
+                reimbursable = o.optBoolean("reimbursable", false),
+                reimbursed = o.optBoolean("reimbursed", false),
+                currency = o.optString("currency", Currencies.BASE).ifBlank { Currencies.BASE },
+                foreignAmountCents = o.optLong("foreignAmountCents", 0L),
+                rateScaled = o.optLong("rateScaled", Currencies.RATE_SCALE)
+                    .takeIf { it > 0L } ?: Currencies.RATE_SCALE,
                 dateMillis = o.optLong("dateMillis", 0L),
                 createdAt = o.optLong("createdAt", 0L)
             )
@@ -147,6 +167,7 @@ object Backup {
                 endedAtMillis = o.optLong("endedAtMillis", 0L),
                 minutes = o.optInt("minutes", 0),
                 taskTitle = o.optString("taskTitle", ""),
+                interrupted = o.optBoolean("interrupted", false),
                 createdAt = o.optLong("createdAt", 0L)
             )
         }
@@ -172,10 +193,10 @@ object Backup {
         sb.append('\uFEFF')
         sb.append(
             when (lang) {
-                Lang.ZH_CN -> "日期,类型,分类,账户,金额,备注"
-                Lang.ZH_TW -> "日期,類型,分類,帳戶,金額,備註"
-                Lang.EN -> "Date,Type,Category,Account,Amount,Note"
-                Lang.JA -> "日付,種別,カテゴリ,口座,金額,メモ"
+                Lang.ZH_CN -> "日期,类型,分类,账户,金额,备注,标签"
+                Lang.ZH_TW -> "日期,類型,分類,帳戶,金額,備註,標籤"
+                Lang.EN -> "Date,Type,Category,Account,Amount,Note,Tags"
+                Lang.JA -> "日付,種別,カテゴリ,口座,金額,メモ,タグ"
             }
         ).append("\r\n")
         transactions
@@ -186,10 +207,127 @@ object Backup {
                 sb.append(csvCell(tx.category)).append(',')
                 sb.append(csvCell(tx.account)).append(',')
                 sb.append(csvCell(formatAmount(tx.amountCents))).append(',')
-                sb.append(csvCell(tx.note))
+                sb.append(csvCell(tx.note)).append(',')
+                sb.append(csvCell(tx.tags))
                 sb.append("\r\n")
             }
         return sb.toString()
+    }
+
+    // ---------- 导入 CSV ----------
+
+    /**
+     * 解析记账 CSV。兼容本 App 导出的三种列数：
+     * 5 列（v1.3：日期,类型,分类,金额,备注）、6 列（多「账户」）、7 列（多「标签」）。
+     * 表头行自动跳过；解析不了的行直接忽略，所以脏数据不会让整次导入失败。
+     */
+    fun parseCsv(text: String, lang: Lang = Lang.DEFAULT): List<TransactionEntity> {
+        val rows = mutableListOf<TransactionEntity>()
+        val now = System.currentTimeMillis()
+        text.removePrefix("\uFEFF").split('\n').forEach { raw ->
+            val line = raw.trimEnd('\r')
+            if (line.isBlank()) return@forEach
+            val cells = splitCsvLine(line)
+            if (cells.size < 5) return@forEach
+
+            val date = runCatching { LocalDate.parse(cells[0].trim()) }.getOrNull() ?: return@forEach
+            val type = typeOfCell(cells[1], lang)
+            val category = cells[2].trim().ifBlank { "其他" }
+
+            // 列数不同，金额 / 备注 / 标签的位置也不同
+            val account: String
+            val amountCell: String
+            val note: String
+            val tags: String
+            if (cells.size >= 7) {
+                account = cells[3].trim().ifBlank { Accounts.DEFAULT }
+                amountCell = cells[4]
+                note = cells[5].trim()
+                tags = cells[6].trim()
+            } else if (cells.size == 6) {
+                account = cells[3].trim().ifBlank { Accounts.DEFAULT }
+                amountCell = cells[4]
+                note = cells[5].trim()
+                tags = ""
+            } else {
+                account = Accounts.DEFAULT
+                amountCell = cells[3]
+                note = cells[4].trim()
+                tags = ""
+            }
+
+            val cents = centsOf(amountCell) ?: return@forEach
+            rows += TransactionEntity(
+                amountCents = cents,
+                typeName = type.name,
+                category = category,
+                account = account,
+                note = note,
+                tags = tags,
+                currency = Currencies.BASE,
+                foreignAmountCents = cents,
+                rateScaled = Currencies.RATE_SCALE,
+                dateMillis = date.toDayMillis(),
+                createdAt = now
+            )
+        }
+        return rows
+    }
+
+    /**
+     * 导入去重用的指纹：日期 + 金额 + 类型 + 分类 + 账户 + 备注。
+     * 故意不含 id（导入的记录 id 是新的）与创建时间（同一笔两次导入会不同），
+     * 这样「同一份文件重复导入」能稳定识别成重复，而金额或日期不同的真实新记录不会误判。
+     */
+    fun fingerprint(tx: TransactionEntity): String = listOf(
+        tx.dateMillis.toString(),
+        tx.amountCents.toString(),
+        tx.typeName,
+        tx.category,
+        tx.account,
+        tx.note
+    ).joinToString("|")
+
+    /** 按行拆 CSV，支持引号包裹与转义的双引号 */    private fun splitCsvLine(line: String): List<String> {
+        val cells = mutableListOf<String>()
+        val sb = StringBuilder()
+        var inQuotes = false
+        var i = 0
+        while (i < line.length) {
+            val c = line[i]
+            when {
+                inQuotes && c == '"' && i + 1 < line.length && line[i + 1] == '"' -> {
+                    sb.append('"')
+                    i++
+                }
+                c == '"' -> inQuotes = !inQuotes
+                c == ',' && !inQuotes -> {
+                    cells += sb.toString()
+                    sb.clear()
+                }
+                else -> sb.append(c)
+            }
+            i++
+        }
+        cells += sb.toString()
+        return cells
+    }
+
+    private fun centsOf(raw: String): Long? {
+        val text = raw.trim().replace(",", "").replace("¥", "").replace("$", "").replace("€", "")
+        if (text.isEmpty()) return null
+        return runCatching {
+            BigDecimal(text).movePointRight(2).setScale(0, RoundingMode.HALF_UP).toLong()
+        }.getOrNull()?.takeIf { it > 0L }
+    }
+
+    /** 类型列可能是四种语言里任意一种（导出时是本地化的），也可能是枚举名 */
+    private fun typeOfCell(raw: String, lang: Lang): TxType {
+        val value = raw.trim()
+        runCatching { TxType.valueOf(value.uppercase()) }.getOrNull()?.let { return it }
+        val incomeLabels = Lang.entries.map { AppStrings.txIncome(it) }
+        return if (incomeLabels.any { it.equals(value, ignoreCase = true) }) TxType.INCOME
+        else TxType.EXPENSE
     }
 
     private fun csvCell(raw: String): String {

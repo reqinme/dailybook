@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TodoEntity::class,
         FocusSessionEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -56,6 +56,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v1.4 → v1.5：记账新增标签 / 待报销 / 多币种列，专注记录新增「中断」列 */
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `tags` TEXT NOT NULL DEFAULT ''")
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `reimbursable` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `reimbursed` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `currency` TEXT NOT NULL DEFAULT 'CNY'"
+                )
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `foreignAmountCents` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `rateScaled` INTEGER NOT NULL DEFAULT 10000"
+                )
+                db.execSQL(
+                    "ALTER TABLE `focus_sessions` ADD COLUMN `interrupted` INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -66,7 +91,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dailybook.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { instance = it }
             }

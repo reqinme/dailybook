@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -39,6 +41,7 @@ import com.dailybook.app.i18n.CommonStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.timer.Phase
+import com.dailybook.app.timer.TimerMode
 import com.dailybook.app.timer.TimerUiState
 import com.dailybook.app.timer.TimerViewModel
 
@@ -56,6 +59,12 @@ private fun runningPhaseName(lang: Lang, phase: Phase): String = when (phase) {
     Phase.LONG_BREAK -> CommonStrings.longBreakRunning(lang)
 }
 
+/** 计时模式名（番茄钟 / 正计时） */
+private fun modeName(lang: Lang, mode: TimerMode): String = when (mode) {
+    TimerMode.POMODORO -> CommonStrings.timerModePomodoro(lang)
+    TimerMode.STOPWATCH -> CommonStrings.timerModeStopwatch(lang)
+}
+
 /** 专注（番茄钟）页 */
 @Composable
 fun TimerScreen(
@@ -65,10 +74,15 @@ fun TimerScreen(
     modifier: Modifier = Modifier
 ) {
     val lang = LocalLang.current
-    val accent = when (state.phase) {
-        Phase.FOCUS -> MaterialTheme.colorScheme.primary
-        Phase.SHORT_BREAK -> MaterialTheme.colorScheme.secondary
-        Phase.LONG_BREAK -> MaterialTheme.colorScheme.tertiary
+    // 正计时没有阶段，统一用主色
+    val accent = if (state.isStopwatch) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        when (state.phase) {
+            Phase.FOCUS -> MaterialTheme.colorScheme.primary
+            Phase.SHORT_BREAK -> MaterialTheme.colorScheme.secondary
+            Phase.LONG_BREAK -> MaterialTheme.colorScheme.tertiary
+        }
     }
     val longEvery = state.settings.longBreakEvery
     val cyclePosition = (state.focusInCycle % longEvery) + 1
@@ -85,16 +99,30 @@ fun TimerScreen(
                 .padding(horizontal = 20.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 阶段选择
+            // 计时模式：番茄钟 / 正计时（切换会先停表并重置当前这一轮）
             ChipFlow {
-                Phase.entries.forEach { phase ->
+                TimerMode.entries.forEach { mode ->
                     FilterChip(
-                        selected = state.phase == phase,
-                        onClick = { vm.selectPhase(phase) },
-                        label = {
-                            Text("${phaseName(lang, phase)} ${state.settings.durationMillisFor(phase) / 60_000}′")
-                        }
+                        selected = state.mode == mode,
+                        onClick = { vm.setMode(mode) },
+                        label = { Text(modeName(lang, mode)) }
                     )
+                }
+            }
+
+            // 阶段选择：只有番茄钟才分阶段
+            if (!state.isStopwatch) {
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    Phase.entries.forEach { phase ->
+                        FilterChip(
+                            selected = state.phase == phase,
+                            onClick = { vm.selectPhase(phase) },
+                            label = {
+                                Text("${phaseName(lang, phase)} ${state.settings.durationMillisFor(phase) / 60_000}′")
+                            }
+                        )
+                    }
                 }
             }
 
@@ -125,12 +153,17 @@ fun TimerScreen(
             RingTimer(
                 progress = state.progress,
                 timeText = state.timeText,
-                phaseLabel = if (state.isRunning) {
-                    runningPhaseName(lang, state.phase)
-                } else {
-                    phaseName(lang, state.phase)
+                phaseLabel = when {
+                    state.isStopwatch && state.isRunning -> CommonStrings.stopwatchRunning(lang)
+                    state.isStopwatch -> modeName(lang, TimerMode.STOPWATCH)
+                    state.isRunning -> runningPhaseName(lang, state.phase)
+                    else -> phaseName(lang, state.phase)
                 },
-                hint = CommonStrings.pomodoroProgress(lang, cyclePosition, longEvery),
+                hint = if (state.isStopwatch) {
+                    CommonStrings.stopwatchHint(lang)
+                } else {
+                    CommonStrings.pomodoroProgress(lang, cyclePosition, longEvery)
+                },
                 accent = accent,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 modifier = Modifier.size(ringSize)
@@ -167,11 +200,33 @@ fun TimerScreen(
                     )
                 }
 
-                FilledTonalIconButton(
-                    onClick = { vm.skip() },
-                    modifier = Modifier.size(50.dp)
+                // 番茄钟才有「跳过阶段」；正计时没有阶段可跳
+                if (!state.isStopwatch) {
+                    FilledTonalIconButton(
+                        onClick = { vm.skip() },
+                        modifier = Modifier.size(50.dp)
+                    ) {
+                        Icon(Icons.Filled.SkipNext, contentDescription = CommonStrings.skip(lang))
+                    }
+                }
+            }
+
+            // 正计时：整行宽的「完成」，把已经过去的时间记一次专注并回到 00:00
+            if (state.isStopwatch) {
+                Spacer(Modifier.height(12.dp))
+                FilledTonalButton(
+                    onClick = { vm.finishStopwatch() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp),
+                    shape = Shapes.pill
                 ) {
-                    Icon(Icons.Filled.SkipNext, contentDescription = CommonStrings.skip(lang))
+                    Icon(Icons.Filled.Check, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = CommonStrings.finish(lang),
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
             }
 
@@ -188,10 +243,11 @@ fun TimerScreen(
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = if (state.settings.autoStartNext) {
-                    CommonStrings.autoStartNext(lang)
-                } else {
-                    CommonStrings.manualStartNext(lang)
+                text = when {
+                    // 正计时没有「下一阶段」，换成完成规则说明
+                    state.isStopwatch -> CommonStrings.stopwatchNote(lang)
+                    state.settings.autoStartNext -> CommonStrings.autoStartNext(lang)
+                    else -> CommonStrings.manualStartNext(lang)
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

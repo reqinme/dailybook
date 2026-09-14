@@ -27,6 +27,11 @@ class DailyRepository(context: Context) {
         note: String,
         dateMillis: Long,
         account: String = Accounts.DEFAULT,
+        tags: List<String> = emptyList(),
+        reimbursable: Boolean = false,
+        currency: String = Currencies.BASE,
+        foreignAmountCents: Long = 0L,
+        rateScaled: Long = Currencies.RATE_SCALE,
         nowMillis: Long = System.currentTimeMillis()
     ) {
         txDao.insert(
@@ -36,6 +41,11 @@ class DailyRepository(context: Context) {
                 category = category,
                 account = account.ifBlank { Accounts.DEFAULT },
                 note = note,
+                tags = TransactionEntity.joinTags(tags),
+                reimbursable = reimbursable,
+                currency = currency,
+                foreignAmountCents = if (foreignAmountCents > 0L) foreignAmountCents else amountCents,
+                rateScaled = rateScaled,
                 dateMillis = dateMillis,
                 createdAt = nowMillis
             )
@@ -49,7 +59,12 @@ class DailyRepository(context: Context) {
         category: String,
         note: String,
         dateMillis: Long,
-        account: String = item.account
+        account: String = item.account,
+        tags: List<String> = item.tagList,
+        reimbursable: Boolean = item.reimbursable,
+        currency: String = item.currency,
+        foreignAmountCents: Long = item.foreignAmountCents,
+        rateScaled: Long = item.rateScaled
     ) {
         txDao.update(
             item.copy(
@@ -58,12 +73,27 @@ class DailyRepository(context: Context) {
                 category = category,
                 account = account.ifBlank { Accounts.DEFAULT },
                 note = note,
+                tags = TransactionEntity.joinTags(tags),
+                reimbursable = reimbursable,
+                currency = currency,
+                foreignAmountCents = if (foreignAmountCents > 0L) foreignAmountCents else amountCents,
+                rateScaled = rateScaled,
                 dateMillis = dateMillis
             )
         )
     }
 
+    /** 标记一笔是否已经报销 */
+    suspend fun setReimbursed(item: TransactionEntity, reimbursed: Boolean) =
+        txDao.update(item.copy(reimbursed = reimbursed))
+
     suspend fun deleteTransaction(item: TransactionEntity) = txDao.delete(item)
+
+    /** 批量写入（CSV 导入用） */
+    suspend fun insertTransactions(items: List<TransactionEntity>) {
+        if (items.isEmpty()) return
+        txDao.insertAll(items)
+    }
 
     suspend fun clearTransactions() = txDao.clearAll()
 
@@ -124,6 +154,7 @@ class DailyRepository(context: Context) {
         endedAtMillis: Long,
         minutes: Int,
         taskTitle: String,
+        interrupted: Boolean = false,
         nowMillis: Long = System.currentTimeMillis()
     ) {
         sessionDao.insert(
@@ -132,6 +163,7 @@ class DailyRepository(context: Context) {
                 endedAtMillis = endedAtMillis,
                 minutes = minutes,
                 taskTitle = taskTitle,
+                interrupted = interrupted,
                 createdAt = nowMillis
             )
         )

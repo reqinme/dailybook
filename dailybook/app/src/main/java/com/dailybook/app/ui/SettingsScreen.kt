@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -52,6 +53,7 @@ import com.dailybook.app.UiState
 import com.dailybook.app.backup.Backup
 import com.dailybook.app.data.Categories
 import com.dailybook.app.data.SummaryMode
+import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LocalLang
@@ -109,7 +111,9 @@ fun SettingsScreen(
     var showBudgetDialog by remember { mutableStateOf(false) }
     var budgetText by remember { mutableStateOf("") }
     var confirmImport by remember { mutableStateOf(false) }
+    var confirmCsvImport by remember { mutableStateOf(false) }
     var showCategoryBudget by remember { mutableStateOf(false) }
+    var showCategoryManage by remember { mutableStateOf(false) }
     var showReminderTime by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -121,7 +125,7 @@ fun SettingsScreen(
         }
     }
 
-    // 三个文件选择器：导出备份 / 导出 CSV 用「新建文件」，恢复用「打开文件」。
+    // 文件选择器：导出备份 / 导出 CSV 用「新建文件」，恢复备份 / 导入 CSV 用「打开文件」。
     // 位置由用户在系统界面里挑，所以 App 不需要任何存储权限。
     val backupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -134,6 +138,12 @@ fun SettingsScreen(
     val restoreLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { vm.importBackup(it) } }
+
+    // CSV 导入跟恢复备份一样用「打开文件」：先弹二次确认，再让用户挑 csv。
+    // 文件里的记录与现有记录完全相同时会跳过，重复导入不会翻倍。
+    val csvImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> uri?.let { vm.importLedgerCsv(it) } }
 
     val timerState by timerVm.state.collectAsStateWithLifecycle()
     val focusSettings = timerState.settings
@@ -229,6 +239,28 @@ fun SettingsScreen(
                     )
                 }
                 TextButton(onClick = { showCategoryBudget = true }) { Text(AppStrings.manage(lang)) }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(SettingsStrings.categoryManage(lang), style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = SettingsStrings.categoryManageSubtitle(
+                            lang,
+                            state.expenseCategories.size,
+                            state.incomeCategories.size
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { showCategoryManage = true }) { Text(AppStrings.manage(lang)) }
             }
 
             Spacer(Modifier.height(4.dp))
@@ -411,6 +443,17 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text(SettingsStrings.exportCsv(lang)) }
             Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { confirmCsvImport = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(AppStrings.importCsv(lang)) }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = AppStrings.importCsvHint(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
             Text(
                 text = SettingsStrings.backupExplain1(lang) + SettingsStrings.backupExplain2(lang),
                 style = MaterialTheme.typography.bodySmall,
@@ -474,6 +517,37 @@ fun SettingsScreen(
                 restoreLauncher.launch(arrayOf("application/json", "*/*"))
             },
             onDismiss = { confirmImport = false }
+        )
+    }
+
+    if (confirmCsvImport) {
+        ConfirmDialog(
+            title = SettingsStrings.importCsvTitle(lang),
+            text = SettingsStrings.importCsvConfirmText(lang),
+            confirmText = SettingsStrings.pickCsvFile(lang),
+            onConfirm = {
+                confirmCsvImport = false
+                csvImportLauncher.launch(
+                    arrayOf(
+                        "text/csv",
+                        "text/comma-separated-values",
+                        "application/vnd.ms-excel",
+                        "*/*"
+                    )
+                )
+            },
+            onDismiss = { confirmCsvImport = false }
+        )
+    }
+
+    if (showCategoryManage) {
+        CategoryManageDialog(
+            expenseCategories = state.expenseCategories,
+            incomeCategories = state.incomeCategories,
+            onAdd = { type, name -> vm.addCategory(type, name) },
+            onRemove = { type, name -> vm.removeCategory(type, name) },
+            onReset = { type -> vm.resetCategories(type) },
+            onDismiss = { showCategoryManage = false }
         )
     }
 
@@ -675,6 +749,107 @@ private fun ReminderTimeDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
+        }
+    )
+}
+
+/**
+ * 分类管理：支出 / 收入各一节，可以逐个删、逐个加，也可以一键回到预置分类。
+ *
+ * 删掉的只是「选择器里的一项」：老记录上的分类名照旧保留，也还能从记录里选回来，
+ * 所以这里不需要任何「确认删除」的二次弹窗。
+ */
+@Composable
+private fun CategoryManageDialog(
+    expenseCategories: List<String>,
+    incomeCategories: List<String>,
+    onAdd: (TxType, String) -> Boolean,
+    onRemove: (TxType, String) -> Unit,
+    onReset: (TxType) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val lang = LocalLang.current
+    val drafts = remember { mutableStateMapOf<TxType, String>() }
+    val rejected = remember { mutableStateMapOf<TxType, Boolean>() }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(SettingsStrings.categoryManage(lang)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                // 分类名是数据（要么预置、要么用户自己起的），不翻译
+                TxType.entries.forEach { type ->
+                    val categories = if (type == TxType.EXPENSE) expenseCategories else incomeCategories
+
+                    Text(type.label(lang), style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(6.dp))
+                    ChipFlow {
+                        categories.forEach { category ->
+                            FilterChip(
+                                selected = false,
+                                // 点标签本身或点末尾的 ✕ 都是删除
+                                onClick = { onRemove(type, category) },
+                                label = { Text(category) },
+                                trailingIcon = {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = SettingsStrings.removeCategoryLabel(lang, category),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        OutlinedTextField(
+                            value = drafts[type].orEmpty(),
+                            onValueChange = { input ->
+                                if (input.length <= 8) {
+                                    drafts[type] = input
+                                    rejected[type] = false
+                                }
+                            },
+                            label = { Text(SettingsStrings.newCategoryName(lang)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = {
+                            val name = drafts[type].orEmpty()
+                            // addCategory 返回 false 说明是空名 / 重名 / 超过 8 个字，就只给一行提示，不新增
+                            if (onAdd(type, name)) {
+                                drafts[type] = ""
+                                rejected[type] = false
+                            } else {
+                                rejected[type] = true
+                            }
+                        }) { Text(AppStrings.add(lang)) }
+                    }
+                    if (rejected[type] == true) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = SettingsStrings.addCategoryFailed(lang),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    TextButton(onClick = { onReset(type) }) {
+                        Text(SettingsStrings.resetCategories(lang))
+                    }
+                    Spacer(Modifier.height(14.dp))
+                }
+
+                Text(
+                    text = SettingsStrings.categoryManageHint(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(SettingsStrings.categoryManageDone(lang)) }
         }
     )
 }

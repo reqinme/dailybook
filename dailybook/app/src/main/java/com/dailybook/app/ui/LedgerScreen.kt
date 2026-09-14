@@ -1,13 +1,17 @@
 package com.dailybook.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,7 +28,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -49,14 +56,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.dailybook.app.CalendarDay
 import com.dailybook.app.DayGroup
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
+import com.dailybook.app.data.Currencies
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
@@ -75,6 +88,61 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneOffset
 
+/** 内容区：流水列表 / 月日历 */
+private enum class LedgerView { LIST, CALENDAR }
+
+/** 标签输入里逗号 / 空格 / 顿号 / 分号都当分隔符，跟用户的输入习惯对齐 */
+private val TAG_SEPARATORS = charArrayOf(',', '，', ';', '；', '、', ' ', '\n', '\t')
+
+/** 标签输入框文本 → 标签列表（去空白、去重、忽略空串） */
+private fun parseTagInput(raw: String): List<String> =
+    raw.split(*TAG_SEPARATORS)
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+
+/** 汇率文本 → ×RATE_SCALE 的整数汇率；填不出数就按 1:1 兜底 */
+private fun rateToScaled(text: String): Long {
+    val raw = text.trim()
+    val value = (if (raw.isEmpty()) 1.0 else raw.toDoubleOrNull() ?: 1.0) * Currencies.RATE_SCALE
+    return if (value < 1.0) 1L else value.toLong()
+}
+
+/** 去掉小数末尾多余的 0（7.20 → 7.2，1.00 → 1），让数字输入框读起来自然 */
+private fun trimZeros(text: String): String {
+    if (!text.contains('.')) return text
+    return text.trimEnd('0').trimEnd('.')
+}
+
+/** 汇率（×RATE_SCALE）→ 可编辑文本，如 7.2；没有记录过就按 1 兜底 */
+private fun rateToText(rateScaled: Long): String {
+    if (rateScaled <= 0L) return "1"
+    val exact = trimZeros(formatAmount(rateScaled / 10L))
+    return if (exact.isEmpty() || exact == "0") "1" else exact
+}
+
+/** 某个收支类型下可选的分类：用户自定义清单 ∪ 数据里用过的分类，空清单时退回内置预置 */
+private fun categoryOptions(
+    type: TxType,
+    expense: List<String>,
+    income: List<String>
+): List<String> = when (type) {
+    TxType.EXPENSE -> expense.ifEmpty { Categories.EXPENSE }
+    TxType.INCOME -> income.ifEmpty { Categories.INCOME }
+}
+
+/** 日历格子里的短金额：整元不带小数，大数字用 k 收窄 */
+private fun compactAmount(cents: Long): String {
+    if (cents <= 0L) return ""
+    val yuanExact = cents / 100.0
+    if (yuanExact >= 1000.0) {
+        val thousands = (yuanExact / 100.0).toLong() / 10.0
+        return trimZeros(String.format(java.util.Locale.ROOT, "%.1f", thousands)) + "k"
+    }
+    return if (cents % 100L == 0L) (cents / 100L).toString()
+    else trimZeros(String.format(java.util.Locale.ROOT, "%.1f", yuanExact))
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LedgerScreen(
@@ -84,6 +152,7 @@ fun LedgerScreen(
 ) {
     var sheetOpen by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<TransactionEntity?>(null) }
+    var view by remember { mutableStateOf(LedgerView.LIST) }
     val lang = LocalLang.current
 
     Scaffold(
@@ -132,6 +201,14 @@ fun LedgerScreen(
                 )
             }
 
+            if (state.hasReimbursement) {
+                ReimbursementCard(state = state)
+            }
+
+            if (state.dayFilter != null) {
+                DayFilterCard(state = state, vm = vm)
+            }
+
             SearchField(
                 value = state.ledgerQuery,
                 onValueChange = vm::setLedgerQuery,
@@ -141,74 +218,29 @@ fun LedgerScreen(
 
             // 用过两个以上账户才显示筛选条，只有一个账户时不必占地方
             if (state.accounts.size > 1) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = state.accountFilter == null,
-                        onClick = { vm.setAccountFilter(null) },
-                        label = { Text(LedgerStrings.accountFilterAll(lang)) }
-                    )
-                    state.accounts.forEach { account ->
-                        FilterChip(
-                            selected = state.accountFilter == account,
-                            onClick = {
-                                vm.setAccountFilter(
-                                    if (state.accountFilter == account) null else account
-                                )
-                            },
-                            label = { Text("${Accounts.emojiOf(account)} $account") }
-                        )
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
+                AccountFilterRow(state = state, vm = vm, lang = lang)
             }
 
-            if (!state.hasMonthData) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    val filtered = state.accountFilter != null
-                    EmptyHint(
-                        emoji = when {
-                            state.isSearching -> "🔍"
-                            filtered -> "💳"
-                            else -> "🧾"
-                        },
-                        title = when {
-                            state.isSearching -> LedgerStrings.emptySearchTitle(lang)
-                            filtered -> LedgerStrings.emptyFilteredTitle(lang, state.accountFilter.orEmpty())
-                            else -> LedgerStrings.emptyMonthTitle(lang)
-                        },
-                        subtitle = when {
-                            state.isSearching -> LedgerStrings.emptySearchSubtitle(lang)
-                            filtered -> LedgerStrings.emptyFilteredSubtitle(lang)
-                            else -> LedgerStrings.emptyMonthSubtitle(lang)
-                        }
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 104.dp)
-                ) {
-                    state.monthGroups.forEach { group ->
-                        item(key = "day-${group.date}") { DayHeader(group) }
-                        items(items = group.items, key = { it.id }) { tx ->
-                            TransactionRow(
-                                tx = tx,
-                                onEdit = {
-                                    editing = tx
-                                    sheetOpen = true
-                                },
-                                onDelete = { vm.deleteTransaction(tx) }
-                            )
-                        }
-                    }
-                }
+            if (state.hasTags) {
+                TagFilterRow(state = state, vm = vm, lang = lang)
             }
+
+            LedgerViewToggle(
+                view = view,
+                onSelect = { view = it },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+            )
+
+            LedgerContent(
+                state = state,
+                vm = vm,
+                view = view,
+                lang = lang,
+                onEdit = { tx ->
+                    editing = tx
+                    sheetOpen = true
+                }
+            )
         }
     }
 
@@ -216,21 +248,296 @@ fun LedgerScreen(
         TransactionSheet(
             editing = editing,
             knownAccounts = state.accounts,
+            expenseCategories = state.expenseCategories,
+            incomeCategories = state.incomeCategories,
+            knownTags = state.allTags,
+            rateOf = { code -> vm.settings.currencyRate(code) },
+            onRateChange = { code, rateScaled -> vm.settings.setCurrencyRate(code, rateScaled) },
             onDismiss = {
                 sheetOpen = false
                 editing = null
             },
-            onSave = { amountCents, type, category, note, dayMillis, account ->
+            onSave = {
+                    amountCents, type, category, note, dayMillis, account,
+                    tags, reimbursable, currency, foreignAmountCents, rateScaled ->
                 val target = editing
                 if (target == null) {
-                    vm.addTransaction(amountCents, type, category, note, dayMillis, account)
+                    vm.addTransaction(
+                        amountCents = amountCents,
+                        type = type,
+                        category = category,
+                        note = note,
+                        dateMillis = dayMillis,
+                        account = account,
+                        tags = tags,
+                        reimbursable = reimbursable,
+                        currency = currency,
+                        foreignAmountCents = foreignAmountCents,
+                        rateScaled = rateScaled
+                    )
                 } else {
-                    vm.updateTransaction(target, amountCents, type, category, note, dayMillis, account)
+                    vm.updateTransaction(
+                        item = target,
+                        amountCents = amountCents,
+                        type = type,
+                        category = category,
+                        note = note,
+                        dateMillis = dayMillis,
+                        account = account,
+                        tags = tags,
+                        reimbursable = reimbursable,
+                        currency = currency,
+                        foreignAmountCents = foreignAmountCents,
+                        rateScaled = rateScaled
+                    )
                 }
                 sheetOpen = false
                 editing = null
             }
         )
+    }
+}
+
+/** 内容区：日历视图或流水列表（空态文案会提到当前筛选） */
+@Composable
+private fun ColumnScope.LedgerContent(
+    state: UiState,
+    vm: MainViewModel,
+    view: LedgerView,
+    lang: Lang,
+    onEdit: (TransactionEntity) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+    ) {
+        if (view == LedgerView.CALENDAR) {
+            MonthCalendar(
+                days = state.calendarDays,
+                maxExpense = state.maxCalendarExpense,
+                selected = state.dayFilter,
+                lang = lang,
+                onPick = { date -> vm.setDayFilter(date) }
+            )
+        }
+
+        if (!state.hasMonthData) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                EmptyHint(
+                    emoji = when {
+                        state.isSearching -> "🔍"
+                        state.tagFilter != null -> "🏷️"
+                        state.dayFilter != null -> "📅"
+                        state.accountFilter != null -> "💳"
+                        else -> "🧾"
+                    },
+                    title = when {
+                        state.isSearching -> LedgerStrings.emptySearchTitle(lang)
+                        state.isLedgerFiltered -> LedgerStrings.emptyNoMatchTitle(lang)
+                        else -> LedgerStrings.emptyMonthTitle(lang)
+                    },
+                    subtitle = when {
+                        state.isSearching -> LedgerStrings.emptySearchSubtitle(lang)
+                        state.isLedgerFiltered -> LedgerStrings.emptyNoMatchHint(lang)
+                        else -> LedgerStrings.emptyMonthSubtitle(lang)
+                    }
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 104.dp)
+            ) {
+                state.monthGroups.forEach { group ->
+                    item(key = "day-${group.date}") { DayHeader(group) }
+                    items(items = group.items, key = { it.id }) { tx ->
+                        TransactionRow(
+                            tx = tx,
+                            onEdit = { onEdit(tx) },
+                            onDelete = { vm.deleteTransaction(tx) },
+                            onToggleReimbursed = { vm.toggleReimbursed(tx) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 账户筛选条：原有行为不变，只把它挪成独立组件 */
+@Composable
+private fun AccountFilterRow(
+    state: UiState,
+    vm: MainViewModel,
+    lang: Lang
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = state.accountFilter == null,
+            onClick = { vm.setAccountFilter(null) },
+            label = { Text(LedgerStrings.accountFilterAll(lang)) }
+        )
+        state.accounts.forEach { account ->
+            FilterChip(
+                selected = state.accountFilter == account,
+                onClick = {
+                    vm.setAccountFilter(
+                        if (state.accountFilter == account) null else account
+                    )
+                },
+                label = { Text("${Accounts.emojiOf(account)} $account") }
+            )
+        }
+    }
+}
+
+/** 标签筛选条：「全部」+ 数据里用过的标签，点一下按标签筛 */
+@Composable
+private fun TagFilterRow(
+    state: UiState,
+    vm: MainViewModel,
+    lang: Lang
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = state.tagFilter == null,
+            onClick = { vm.setTagFilter(null) },
+            label = { Text(LedgerStrings.tagFilterAll(lang)) }
+        )
+        state.allTags.forEach { tag ->
+            FilterChip(
+                selected = state.tagFilter == tag,
+                onClick = { vm.setTagFilter(tag) },
+                label = { Text("#$tag") }
+            )
+        }
+        val active = state.tagFilter
+        if (active != null && active !in state.allTags) {
+            FilterChip(
+                selected = true,
+                onClick = { vm.setTagFilter(active) },
+                label = { Text("#$active") }
+            )
+        }
+    }
+}
+
+/** 列表 / 日历 切换 */
+@Composable
+private fun LedgerViewToggle(
+    view: LedgerView,
+    onSelect: (LedgerView) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val lang = LocalLang.current
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        FilterChip(
+            selected = view == LedgerView.LIST,
+            onClick = { onSelect(LedgerView.LIST) },
+            leadingIcon = { Icon(Icons.Filled.List, contentDescription = null) },
+            label = { Text(LedgerStrings.viewList(lang)) }
+        )
+        FilterChip(
+            selected = view == LedgerView.CALENDAR,
+            onClick = { onSelect(LedgerView.CALENDAR) },
+            leadingIcon = { Icon(Icons.Filled.DateRange, contentDescription = null) },
+            label = { Text(LedgerStrings.viewCalendar(lang)) }
+        )
+    }
+}
+
+/** 当天筛选的小卡片，点 ✕ 取消（再点日历里同一天也会取消） */
+@Composable
+private fun DayFilterCard(state: UiState, vm: MainViewModel) {
+    val lang = LocalLang.current
+    val day = state.dayFilter ?: return
+    val target = state.monthGroups.firstOrNull { it.date == day }
+
+    SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = AppStrings.monthDay(lang, day.monthValue, day.dayOfMonth),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = LedgerStrings.dayFilterSummary(
+                        lang,
+                        target?.items?.size ?: 0,
+                        formatAmount(target?.expense ?: 0L),
+                        formatAmount(target?.income ?: 0L)
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = { vm.setDayFilter(day) }) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = LedgerStrings.clearDayFilter(lang),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReimbursementCard(state: UiState) {
+    val lang = LocalLang.current
+    SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = LedgerStrings.pendingReimbursement(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "¥${formatAmount(state.pendingReimbursementCents)}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = LedgerStrings.reimbursed(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "¥${formatAmount(state.reimbursedCents)}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 
@@ -351,7 +658,8 @@ private fun DayHeader(group: DayGroup) {
 private fun TransactionRow(
     tx: TransactionEntity,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onToggleReimbursed: () -> Unit
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     val lang = LocalLang.current
@@ -371,16 +679,32 @@ private fun TransactionRow(
 
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = tx.category,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = tx.category,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (tx.reimbursable) {
+                    Spacer(Modifier.width(6.dp))
+                    ReimbursementBadge(
+                        reimbursed = tx.reimbursed,
+                        onToggle = onToggleReimbursed
+                    )
+                }
+            }
             val subtitle = buildString {
                 if (tx.account != Accounts.DEFAULT) append("${Accounts.emojiOf(tx.account)} ${tx.account}")
                 if (tx.note.isNotBlank()) {
                     if (isNotEmpty()) append(" · ")
                     append(tx.note)
+                }
+                tx.tagList.forEach { tag ->
+                    if (isNotEmpty()) append(" · ")
+                    append("#$tag")
                 }
                 if (tx.dateMillis.toLocalDate() != LocalDate.now()) {
                     if (isNotEmpty()) append(" · ")
@@ -391,15 +715,36 @@ private fun TransactionRow(
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        Text(
-            text = (if (isExpense) "-" else "+") + "¥${formatAmount(tx.amountCents)}",
-            style = MaterialTheme.typography.titleMedium,
-            color = amountColor
-        )
+
+        Spacer(Modifier.width(8.dp))
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                text = (if (isExpense) "-" else "+") + "¥${formatAmount(tx.amountCents)}",
+                style = MaterialTheme.typography.titleMedium,
+                color = amountColor,
+                maxLines = 1
+            )
+            if (tx.isForeign) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = LedgerStrings.convertedFrom(
+                        lang,
+                        Currencies.symbolOf(tx.currency),
+                        formatAmount(tx.foreignAmountCents),
+                        tx.currency
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
         IconButton(onClick = { confirmDelete = true }) {
             Icon(
                 imageVector = Icons.Filled.DeleteOutline,
@@ -420,6 +765,145 @@ private fun TransactionRow(
     }
 }
 
+/** 待报销 / 已报销 小徽标：自己是一个可点区域，不会触发整行的编辑 */
+@Composable
+private fun ReimbursementBadge(
+    reimbursed: Boolean,
+    onToggle: () -> Unit
+) {
+    val lang = LocalLang.current
+    val text = if (reimbursed) LedgerStrings.reimbursed(lang) else LedgerStrings.pendingReimbursement(lang)
+    val accent = if (reimbursed) MaterialTheme.colorScheme.onSurfaceVariant
+    else MaterialTheme.colorScheme.primary
+
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = accent,
+        maxLines = 1,
+        modifier = Modifier
+            .clip(Shapes.badge)
+            .clickable { onToggle() }
+            .background(accent.copy(alpha = 0.12f), Shapes.badge)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    )
+}
+
+/** 月日历：7 列网格，颜色深浅表示当天支出，点格子按天筛 */
+@Composable
+private fun MonthCalendar(
+    days: List<CalendarDay>,
+    maxExpense: Long,
+    selected: LocalDate?,
+    lang: Lang,
+    onPick: (LocalDate) -> Unit
+) {
+    if (days.isEmpty()) return
+
+    val lead = days.first().date.dayOfWeek.value - 1
+    val cells: List<CalendarDay?> = List(lead) { null } + days
+    val weeks = cells.chunked(7)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            for (index in 0 until 7) {
+                Text(
+                    text = AppStrings.weekday(lang, index),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+
+        weeks.forEach { week ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+            ) {
+                week.forEach { day ->
+                    if (day == null) {
+                        Spacer(Modifier.weight(1f))
+                    } else {
+                        CalendarCell(
+                            day = day,
+                            maxExpense = maxExpense,
+                            selected = selected == day.date,
+                            lang = lang,
+                            onPick = onPick
+                        )
+                    }
+                }
+                // 最后一周补齐空位，保证每格宽度一致
+                repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.CalendarCell(
+    day: CalendarDay,
+    maxExpense: Long,
+    selected: Boolean,
+    lang: Lang,
+    onPick: (LocalDate) -> Unit
+) {
+    val ratio = if (maxExpense <= 0L) 0f
+    else (day.expenseCents.toFloat() / maxExpense.toFloat()).coerceIn(0f, 1f)
+    val fill = when {
+        day.expenseCents > 0L -> MaterialTheme.colorScheme.primary.copy(alpha = 0.15f + 0.55f * ratio)
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+    }
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 2.dp)
+            .height(44.dp)
+            .clip(Shapes.badge)
+            .background(fill, Shapes.badge)
+            .then(
+                if (selected) Modifier.border(
+                    BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                    Shapes.badge
+                ) else Modifier
+            )
+            .clickable { onPick(day.date) },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = if (day.date.dayOfMonth == 1 || day.date.dayOfWeek.value == 7) {
+                    AppStrings.monthDay(lang, day.date.monthValue, day.date.dayOfMonth)
+                } else {
+                    day.date.dayOfMonth.toString()
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = compactAmount(day.expenseCents),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1
+            )
+        }
+    }
+}
+
 /**
  * 记一笔 / 编辑记录 共用的底部弹窗。
  * 内容可滚动 + imePadding，保证小屏或键盘弹出时「保存」按钮依然够得到。
@@ -429,6 +913,11 @@ private fun TransactionRow(
 private fun TransactionSheet(
     editing: TransactionEntity?,
     knownAccounts: List<String>,
+    expenseCategories: List<String>,
+    incomeCategories: List<String>,
+    knownTags: List<String>,
+    rateOf: (String) -> Long,
+    onRateChange: (String, Long) -> Unit,
     onDismiss: () -> Unit,
     onSave: (
         cents: Long,
@@ -436,20 +925,39 @@ private fun TransactionSheet(
         category: String,
         note: String,
         dayMillis: Long,
-        account: String
+        account: String,
+        tags: List<String>,
+        reimbursable: Boolean,
+        currency: String,
+        foreignCents: Long,
+        rateScaled: Long
     ) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var type by remember(editing) { mutableStateOf(editing?.type ?: TxType.EXPENSE) }
+    var currency by remember(editing) { mutableStateOf(editing?.currency ?: Currencies.BASE) }
+    var rateText by remember(editing) {
+        val code = editing?.currency ?: Currencies.BASE
+        mutableStateOf(
+            if (code == Currencies.BASE) "" else rateToText(editing?.rateScaled ?: rateOf(code))
+        )
+    }
     var amountText by remember(editing) {
-        mutableStateOf(editing?.let { formatAmount(it.amountCents) } ?: "")
+        mutableStateOf(
+            editing?.let { item ->
+                if (item.isForeign && item.foreignAmountCents > 0L) formatAmount(item.foreignAmountCents)
+                else formatAmount(item.amountCents)
+            } ?: ""
+        )
     }
     var category by remember(editing) {
         mutableStateOf(editing?.category ?: Categories.EXPENSE.first())
     }
     var account by remember(editing) { mutableStateOf(editing?.account ?: Accounts.DEFAULT) }
     var note by remember(editing) { mutableStateOf(editing?.note ?: "") }
+    var tagsText by remember(editing) { mutableStateOf(editing?.tagList?.joinToString(" ") ?: "") }
+    var reimbursable by remember(editing) { mutableStateOf(editing?.reimbursable ?: false) }
     var selectedDate by remember(editing) {
         mutableStateOf(editing?.dateMillis?.toLocalDate() ?: LocalDate.now())
     }
@@ -461,8 +969,23 @@ private fun TransactionSheet(
         (Accounts.PRESETS + knownAccounts + account).distinct()
     }
 
+    // 分类清单来自用户自己的设置 + 数据里用过的分类，不再只用内置预置
+    val categories = categoryOptions(
+        type = type,
+        expense = expenseCategories,
+        income = incomeCategories
+    )
+    val tagSuggestions = remember(knownTags, tagsText) {
+        val used = parseTagInput(tagsText).toSet()
+        knownTags.filter { it !in used }.take(12)
+    }
+
     val cents = parseAmountToCents(amountText)
-    val categories = Categories.forType(type)
+    val isForeign = currency != Currencies.BASE
+    val rateScaled = if (isForeign) rateToScaled(rateText) else Currencies.RATE_SCALE
+    val baseCents = if (cents == null) null
+    else if (isForeign) Currencies.toBaseCents(cents, rateScaled)
+    else cents
     val today = LocalDate.now()
     val lang = LocalLang.current
 
@@ -494,7 +1017,7 @@ private fun TransactionSheet(
                         selected = type == t,
                         onClick = {
                             type = t
-                            val list = Categories.forType(t)
+                            val list = categoryOptions(t, expenseCategories, incomeCategories)
                             if (category !in list) category = list.first()
                         },
                         label = { Text(t.label(lang)) }
@@ -513,12 +1036,63 @@ private fun TransactionSheet(
                         amountText = input
                     }
                 },
-                label = { Text(LedgerStrings.amountLabel(lang)) },
-                prefix = { Text("¥") },
+                label = {
+                    Text(
+                        if (isForeign) LedgerStrings.amountForeignLabel(lang, currency)
+                        else LedgerStrings.amountLabel(lang)
+                    )
+                },
+                prefix = { Text(Currencies.symbolOf(currency)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth()
             )
+
+            Spacer(Modifier.height(16.dp))
+            FieldLabel(LedgerStrings.currencyLabel(lang))
+            Spacer(Modifier.height(8.dp))
+            ChipFlow {
+                Currencies.PRESETS.forEach { code ->
+                    FilterChip(
+                        selected = currency == code,
+                        onClick = {
+                            currency = code
+                            if (code != Currencies.BASE) rateText = rateToText(rateOf(code))
+                        },
+                        label = { Text("${Currencies.symbolOf(code)} $code") }
+                    )
+                }
+            }
+
+            if (isForeign) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = rateText,
+                    onValueChange = { input ->
+                        if (input.count { it == '.' } <= 1 &&
+                            input.all { it.isDigit() || it == '.' } &&
+                            input.length <= 9
+                        ) {
+                            rateText = input
+                        }
+                    },
+                    label = { Text(LedgerStrings.rateLabel(lang, currency)) },
+                    supportingText = {
+                        Text(LedgerStrings.rateHint(lang, Currencies.symbolOf(currency), currency))
+                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (cents != null && baseCents != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = LedgerStrings.rateConverted(lang, formatAmount(baseCents)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
             FieldLabel(LedgerStrings.categoryLabel(lang))
@@ -585,6 +1159,34 @@ private fun TransactionSheet(
                 )
             }
 
+            Spacer(Modifier.height(16.dp))
+            FieldLabel(LedgerStrings.tagsLabel(lang))
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = tagsText,
+                onValueChange = { if (it.length <= 60) tagsText = it },
+                placeholder = { Text(LedgerStrings.tagsHint(lang)) },
+                supportingText = { Text(LedgerStrings.tagsTip(lang)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (tagSuggestions.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                ChipFlow {
+                    tagSuggestions.forEach { tag ->
+                        FilterChip(
+                            selected = false,
+                            onClick = {
+                                val merged = (parseTagInput(tagsText) + tag).distinct()
+                                tagsText = merged.joinToString(" ")
+                            },
+                            label = { Text("#$tag") }
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(14.dp))
             OutlinedTextField(
                 value = note,
@@ -594,13 +1196,35 @@ private fun TransactionSheet(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            Spacer(Modifier.height(6.dp))
+            LabeledSwitch(
+                title = LedgerStrings.reimbursableLabel(lang),
+                checked = reimbursable,
+                onChange = { reimbursable = it }
+            )
+
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    val value = parseAmountToCents(amountText) ?: return@Button
-                    onSave(value, type, category, note.trim(), selectedDate.toDayMillis(), account)
+                    val foreignValue = parseAmountToCents(amountText) ?: return@Button
+                    val rate = if (isForeign) rateToScaled(rateText) else Currencies.RATE_SCALE
+                    val base = if (isForeign) Currencies.toBaseCents(foreignValue, rate) else foreignValue
+                    if (isForeign) onRateChange(currency, rate)
+                    onSave(
+                        base,
+                        type,
+                        category,
+                        note.trim(),
+                        selectedDate.toDayMillis(),
+                        account,
+                        parseTagInput(tagsText),
+                        reimbursable,
+                        currency,
+                        if (isForeign) foreignValue else base,
+                        rate
+                    )
                 },
-                enabled = cents != null,
+                enabled = baseCents != null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 50.dp),
@@ -608,9 +1232,9 @@ private fun TransactionSheet(
             ) {
                 Text(
                     text = when {
-                        cents == null -> LedgerStrings.enterAmount(lang)
-                        editing == null -> LedgerStrings.saveAmount(lang, formatAmount(cents))
-                        else -> LedgerStrings.saveChangesAmount(lang, formatAmount(cents))
+                        baseCents == null -> LedgerStrings.enterAmount(lang)
+                        editing == null -> LedgerStrings.saveAmount(lang, formatAmount(baseCents))
+                        else -> LedgerStrings.saveChangesAmount(lang, formatAmount(baseCents))
                     },
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold

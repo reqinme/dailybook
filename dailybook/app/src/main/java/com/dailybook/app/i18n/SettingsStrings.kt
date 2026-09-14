@@ -153,4 +153,49 @@ object SettingsStrings {
         "Ledger, to-dos and a focus timer in one app. All data stays on your phone — no network, no uploads. Only notifications, vibration and rescheduling reminders after a reboot need system permission.",
         "家計簿 + ToDo + 集中タイマーの三役アプリ。データはすべて端末内に保存され、通信も送信もありません。システム権限が必要なのは通知・振動・再起動後のリマインダー再設定だけです。"
     )
+
+    // ---- 分类管理 ----
+    fun categoryManage(lang: Lang) = pick(lang, "分类管理", "分類管理", "Categories", "カテゴリ管理")
+    /** 记账卡片上的副标题：支出和收入各有多少个分类可选 */
+    fun categoryManageSubtitle(lang: Lang, expense: Int, income: Int) = pickf(
+        lang,
+        "支出 %d 个 · 收入 %d 个",
+        "支出 %d 個 · 收入 %d 個",
+        "Expense %d · Income %d",
+        "支出 %d 件・収入 %d 件",
+        expense, income
+    )
+    fun categoryManageHint(lang: Lang) = pick(
+        lang,
+        "删除只是把它从选择器里拿掉，已有记录上的分类名照旧保留，也还能继续选到；想回到预置分类，用下面的按钮恢复。",
+        "刪除只是把它從選擇器裡拿掉，既有紀錄上的分類名照舊保留，也還能繼續選到；想回到預設分類，用下面的按鈕還原。",
+        "Deleting a category only removes it from the picker — existing records keep their category name and it stays selectable. Use the button below to bring the built-in list back.",
+        "削除しても選び方から外れるだけで、既存の記録のカテゴリ名はそのまま残り、引き続き選べます。既定のカテゴリには下のボタンで戻せます。"
+    )
+    fun categoryManageDone(lang: Lang) = pick(lang, "完成", "完成", "Done", "完了")
+    fun newCategoryName(lang: Lang) = pick(lang, "新分类名", "新分類名稱", "New category", "新しいカテゴリ名")
+    /** addCategory 返回 false 时的行内提示：空名 / 重名 / 超过 8 个字 */
+    fun addCategoryFailed(lang: Lang) = pick(
+        lang,
+        "名称不能为空、不能跟已有分类重复，最多 8 个字。",
+        "名稱不能為空、不能跟既有分類重複，最多 8 個字。",
+        "The name can't be blank or already in the list, and is limited to 8 characters.",
+        "名前は空欄・重複不可、8 文字までです。"
+    )
+    fun resetCategories(lang: Lang) =
+        pick(lang, "恢复预置分类", "還原預設分類", "Restore default categories", "既定のカテゴリに戻す")
+    fun removeCategoryLabel(lang: Lang, name: String) =
+        pickf(lang, "删除分类 %s", "刪除分類 %s", "Remove category %s", "カテゴリ %s を削除", name)
+
+    // ---- CSV 导入 ----
+    fun importCsvTitle(lang: Lang) =
+        pick(lang, "导入记账 CSV？", "匯入記帳 CSV？", "Import ledger CSV?", "記録 CSV を取り込みますか？")
+    fun importCsvConfirmText(lang: Lang) = pick(
+        lang,
+        "导入不会替换现有数据，只会把文件里的记录追加进来；和现有记录完全相同的行会自动跳过。行数很多时要稍等一会儿。",
+        "匯入不會取代目前資料，只會把檔案裡的紀錄追加進來；和既有紀錄完全相同的行會自動略過。筆數很多時要稍等一下。",
+        "Importing replaces nothing — the rows in the file are added on top of what you have, and rows identical to an existing record are skipped. A big file can take a moment.",
+        "取り込みで既存のデータは置き換わりません。ファイル内の記録が追加され、既存の記録と完全に同じ行は自動でスキップされます。行数が多いと少し時間がかかります。"
+    )
+    fun pickCsvFile(lang: Lang) = pick(lang, "选择 CSV 文件", "選擇 CSV 檔案", "Pick CSV file", "CSV ファイルを選択")
 }

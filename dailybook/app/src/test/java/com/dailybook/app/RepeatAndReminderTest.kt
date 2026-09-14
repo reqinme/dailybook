@@ -5,6 +5,7 @@ import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.data.nextDueMillisOf
+import com.dailybook.app.i18n.Lang
 import com.dailybook.app.notify.LedgerReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.util.toDayMillis
@@ -168,9 +169,9 @@ class CsvExportTest {
         )
         val lines = csv.trim().split("\r\n")
         assertTrue("应以 UTF-8 BOM 开头，Excel 才不会乱码", csv.startsWith("\uFEFF"))
-        assertEquals("日期,类型,分类,账户,金额,备注", lines[0].removePrefix("\uFEFF"))
-        assertEquals("2026-09-14,支出,餐饮,现金,12.34,午饭", lines[1])
-        assertEquals("2026-09-14,收入,工资,现金,500.00,", lines[2])
+        assertEquals("日期,类型,分类,账户,金额,备注,标签", lines[0].removePrefix("\uFEFF"))
+        assertEquals("2026-09-14,支出,餐饮,现金,12.34,午饭,", lines[1])
+        assertEquals("2026-09-14,收入,工资,现金,500.00,,", lines[2])
     }
 
     @Test
@@ -178,7 +179,7 @@ class CsvExportTest {
         val day = LocalDate.of(2026, 9, 14).toDayMillis()
         val csv = Backup.toCsv(listOf(tx(100, "其他", "买书, 附\"签名\"版", day)))
         val row = csv.trim().split("\r\n")[1]
-        assertTrue(row.endsWith("\"买书, 附\"\"签名\"\"版\""))
+        assertTrue(row.endsWith("\"买书, 附\"\"签名\"\"版\","))
     }
 
     @Test
@@ -187,8 +188,55 @@ class CsvExportTest {
         val second = LocalDate.of(2026, 9, 20).toDayMillis()
         val csv = Backup.toCsv(listOf(tx(100, "餐饮", "晚", second), tx(200, "餐饮", "早", first)))
         val lines = csv.trim().split("\r\n")
-        assertEquals("2026-09-01,支出,餐饮,现金,2.00,早", lines[1])
-        assertEquals("2026-09-20,支出,餐饮,现金,1.00,晚", lines[2])
+        assertEquals("2026-09-01,支出,餐饮,现金,2.00,早,", lines[1])
+        assertEquals("2026-09-20,支出,餐饮,现金,1.00,晚,", lines[2])
+    }
+
+    @Test
+    fun csvRoundTripsThroughImport() {
+        val day = LocalDate.of(2026, 9, 14).toDayMillis()
+        val original = listOf(
+            tx(1234, "餐饮", "午饭", day),
+            tx(50000, "工资", "", day, TxType.INCOME)
+        ).mapIndexed { index, item ->
+            if (index == 0) item.copy(tags = "旅行,报销") else item
+        }
+        val parsed = Backup.parseCsv(Backup.toCsv(original), Lang.ZH_CN)
+
+        assertEquals(2, parsed.size)
+        assertEquals(1234L, parsed[0].amountCents)
+        assertEquals(TxType.EXPENSE, parsed[0].type)
+        assertEquals("餐饮", parsed[0].category)
+        assertEquals("现金", parsed[0].account)
+        assertEquals("旅行,报销", parsed[0].tags)
+        assertEquals("午饭", parsed[0].note)
+        assertEquals(TxType.INCOME, parsed[1].type)
+        assertEquals(50_000L, parsed[1].amountCents)
+    }
+
+    @Test
+    fun importsLegacyFiveColumnCsvAndSkipsBadRows() {
+        // v1.3 导出的旧格式（没有账户 / 标签列），外加一行脏数据
+        val csv = "\uFEFF日期,类型,分类,金额,备注\r\n" +
+            "2026-09-14,支出,餐饮,12.34,午饭\r\n" +
+            "不是日期,支出,餐饮,abc,坏行\r\n" +
+            "\r\n"
+        val parsed = Backup.parseCsv(csv, Lang.ZH_CN)
+        assertEquals(1, parsed.size)
+        assertEquals("现金", parsed[0].account)
+        assertEquals(1234L, parsed[0].amountCents)
+        assertEquals("", parsed[0].tags)
+    }
+
+    @Test
+    fun importsEnglishHeadersAndTypeLabels() {
+        val csv = "Date,Type,Category,Account,Amount,Note,Tags\r\n" +
+            "2026-09-14,Income,工资,银行卡,500.00,,奖金\r\n"
+        val parsed = Backup.parseCsv(csv, Lang.EN)
+        assertEquals(1, parsed.size)
+        assertEquals(TxType.INCOME, parsed[0].type)
+        assertEquals("银行卡", parsed[0].account)
+        assertEquals("奖金", parsed[0].tags)
     }
 }
 

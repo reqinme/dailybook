@@ -18,8 +18,8 @@ object LedgerStrings {
     fun emptySearchSubtitle(lang: Lang) = pick(lang, "换个关键词试试", "換個關鍵字試試", "Try another keyword", "別のキーワードを試してください")
     fun emptyFilteredTitle(lang: Lang, account: String) = pickf(
         lang,
-        "$account 这个月没有记录", "$account 這個月沒有紀錄",
-        "No $account entries this month", "$account は今月の記録がありません",
+        "%1\$s 这个月没有记录", "%1\$s 這個月沒有紀錄",
+        "No %1\$s entries this month", "%1\$s は今月の記録がありません",
         account
     )
     fun emptyFilteredSubtitle(lang: Lang) = pick(
@@ -40,7 +40,8 @@ object LedgerStrings {
     fun monthCount(lang: Lang, count: Int) = pickf(
         lang,
         "本月共 %d 笔记录", "本月共 %d 筆紀錄",
-        "%d entries this month", "今月は %d 件"
+        "%d entries this month", "今月は %d 件",
+        count
     )
 
     // ---- 预算卡 ----
@@ -48,40 +49,50 @@ object LedgerStrings {
     fun overBudget(lang: Lang, amount: String) = pickf(
         lang,
         "已超支 ¥%s", "已超支 ¥%s",
-        "Over by ¥%s", "¥%s 超過"
+        "Over by ¥%s", "¥%s 超過",
+        amount
     )
     fun budgetRemaining(lang: Lang, amount: String) = pickf(
         lang,
         "剩余 ¥%s", "剩餘 ¥%s",
-        "¥%s left", "残り ¥%s"
+        "¥%s left", "残り ¥%s",
+        amount
     )
     fun budgetUsed(lang: Lang, used: String, budget: String) = pickf(
         lang,
         "已用 ¥%1\$s / ¥%2\$s", "已用 ¥%1\$s / ¥%2\$s",
-        "¥%1\$s of ¥%2\$s used", "使用済み ¥%1\$s / ¥%2\$s"
+        "¥%1\$s of ¥%2\$s used", "使用済み ¥%1\$s / ¥%2\$s",
+        used, budget
     )
 
     // ---- 日期分组标题 ----
     fun statSpent(lang: Lang, amount: String) = pickf(
         lang,
         "支 ¥%s", "支 ¥%s",
-        "Spent ¥%s", "支出 ¥%s"
+        "Spent ¥%s", "支出 ¥%s",
+        amount
     )
     fun statReceived(lang: Lang, amount: String) = pickf(
         lang,
         "收 ¥%s", "收 ¥%s",
-        "In ¥%s", "収入 ¥%s"
+        "In ¥%s", "収入 ¥%s",
+        amount
     )
 
     // ---- 流水行与删除确认 ----
     fun deleteTitle(lang: Lang) = pick(lang, "删除这条记录？", "刪除這筆紀錄？", "Delete this entry?", "この記録を削除しますか？")
-    fun deleteBody(lang: Lang, category: String, amount: String, note: String) = pickf(
-        lang,
-        if (note.isEmpty()) "$category ¥%s" else "$category ¥%s（$note）",
-        if (note.isEmpty()) "$category ¥%s" else "$category ¥%s（$note）",
-        if (note.isEmpty()) "$category ¥%s" else "$category ¥%s ($note)",
-        if (note.isEmpty()) "$category ¥%s" else "$category ¥%s（$note）"
-    )
+    fun deleteBody(lang: Lang, category: String, amount: String, note: String) =
+        if (note.isEmpty()) pickf(
+            lang,
+            "%1\$s ¥%2\$s", "%1\$s ¥%2\$s",
+            "%1\$s ¥%2\$s", "%1\$s ¥%2\$s",
+            category, amount
+        ) else pickf(
+            lang,
+            "%1\$s ¥%2\$s（%3\$s）", "%1\$s ¥%2\$s（%3\$s）",
+            "%1\$s ¥%2\$s (%3\$s)", "%1\$s ¥%2\$s（%3\$s）",
+            category, amount, note
+        )
 
     // ---- 记一笔 / 编辑记录弹窗 ----
     fun editEntry(lang: Lang) = pick(lang, "编辑记录", "編輯紀錄", "Edit entry", "記録を編集")
@@ -96,12 +107,14 @@ object LedgerStrings {
     fun saveAmount(lang: Lang, amount: String) = pickf(
         lang,
         "保存  ¥%s", "儲存  ¥%s",
-        "Save  ¥%s", "保存  ¥%s"
+        "Save  ¥%s", "保存  ¥%s",
+        amount
     )
     fun saveChangesAmount(lang: Lang, amount: String) = pickf(
         lang,
         "保存修改  ¥%s", "儲存修改  ¥%s",
-        "Save changes  ¥%s", "変更を保存  ¥%s"
+        "Save changes  ¥%s", "変更を保存  ¥%s",
+        amount
     )
 
     // ---- 自定义账户弹窗 ----
@@ -118,5 +131,80 @@ object LedgerStrings {
         "帳戶名稱會跟著紀錄一起儲存，可以隨時依帳戶篩選和統計。",
         "The account name is saved with each entry, so you can filter and total by account at any time.",
         "口座名は記録と一緒に保存され、いつでも口座ごとに絞り込み・集計できます。"
+    )
+
+    // ---- v1.6：标签 ----
+    fun tagFilterAll(lang: Lang) = pick(lang, "全部标签", "全部標籤", "All tags", "すべてのタグ")
+    fun tagsLabel(lang: Lang) = pick(lang, "标签（可选）", "標籤（選填）", "Tags (optional)", "タグ（任意）")
+    fun tagsHint(lang: Lang) = pick(
+        lang,
+        "例如：旅行 报销", "例如：旅行 報銷",
+        "e.g. travel, work", "例：旅行 出張"
+    )
+    fun tagsTip(lang: Lang) = pick(
+        lang,
+        "空格或逗号分开，写几个都行", "空格或逗號分開，寫幾個都行",
+        "Separate with a space or comma, as many as you like", "スペースかカンマで区切って複数書けます"
+    )
+
+    // ---- v1.6：多币种 ----
+    fun currencyLabel(lang: Lang) = pick(lang, "币种", "幣別", "Currency", "通貨")
+    fun amountForeignLabel(lang: Lang, code: String) = pickf(
+        lang,
+        "金额（%s）", "金額（%s）",
+        "Amount (%s)", "金額（%s）",
+        code
+    )
+    fun rateLabel(lang: Lang, code: String) = pickf(
+        lang,
+        "汇率（1 %s = ? 元）", "匯率（1 %s = ? 元）",
+        "Rate (1 %s = ? CNY)", "レート（1 %s = ? 元）",
+        code
+    )
+    fun rateHint(lang: Lang, symbol: String, code: String) = pickf(
+        lang,
+        "填 %s1 %s 折合多少元人民币", "填 %s1 %s 折合多少元人民幣",
+        "How many CNY is %s1 %s worth", "%s1 %s が何元になるか入力",
+        symbol, code
+    )
+    fun rateConverted(lang: Lang, amount: String) = pickf(
+        lang,
+        "折合 ¥%s", "折合 ¥%s",
+        "Equals ¥%s", "¥%s に相当",
+        amount
+    )
+    fun convertedFrom(lang: Lang, symbol: String, amount: String, code: String) = pickf(
+        lang,
+        "%s%s %s", "%s%s %s",
+        "%s%s %s", "%s%s %s",
+        symbol, amount, code
+    )
+
+    // ---- v1.6：报销 ----
+    fun reimbursableLabel(lang: Lang) = pick(lang, "待报销", "待報銷", "Reimbursable", "要精算")
+    fun pendingReimbursement(lang: Lang) = pick(lang, "待报销", "待報銷", "Pending", "精算待ち")
+    fun reimbursed(lang: Lang) = pick(lang, "已报销", "已報銷", "Reimbursed", "精算済み")
+
+    // ---- v1.6：日历视图与当天筛选 ----
+    fun viewList(lang: Lang) = pick(lang, "列表", "列表", "List", "リスト")
+    fun viewCalendar(lang: Lang) = pick(lang, "日历", "日曆", "Calendar", "カレンダー")
+    fun clearDayFilter(lang: Lang) = pick(lang, "取消当天筛选", "取消當天篩選", "Clear day filter", "日付の絞り込みを解除")
+    fun dayFilterSummary(lang: Lang, count: Int, expense: String, income: String) = pickf(
+        lang,
+        "%1\$d 笔 · 支 ¥%2\$s · 收 ¥%3\$s", "%1\$d 筆 · 支 ¥%2\$s · 收 ¥%3\$s",
+        "%1\$d entries · spent ¥%2\$s · in ¥%3\$s", "%1\$d 件 · 支出 ¥%2\$s · 収入 ¥%3\$s",
+        count, expense, income
+    )
+
+    // ---- v1.6：筛选后的空状态（旧的两参数 emptyFilteredTitle 仍在用，这里另起名字） ----
+    fun emptyNoMatchTitle(lang: Lang) = pick(
+        lang,
+        "没有符合当前筛选的记录", "沒有符合目前篩選的紀錄",
+        "No entries match this filter", "現在の絞り込みに合う記録がありません"
+    )
+    fun emptyNoMatchHint(lang: Lang) = pick(
+        lang,
+        "清掉筛选看看全部", "清掉篩選看看全部",
+        "Clear the filters to see everything", "絞り込みを解除するとすべて表示されます"
     )
 }

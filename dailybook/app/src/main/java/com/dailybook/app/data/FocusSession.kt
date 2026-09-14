@@ -18,6 +18,8 @@ data class FocusSessionEntity(
     val minutes: Int,
     /** 这次专注关联的待办标题，没有则为空 */
     val taskTitle: String = "",
+    /** 提前结束（中途停止 / 跳过）的记录，统计里会标出来 */
+    val interrupted: Boolean = false,
     val createdAt: Long
 )
 

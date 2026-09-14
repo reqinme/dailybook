@@ -26,7 +26,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         CreditTargetEntity::class,
         AwardEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -268,6 +268,29 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v1.8 → v1.9：课程新增「上课 / 下课钟点」两列（上课提醒要用它算准点时刻）。
+         *
+         * 两列的声明必须和 Room 由 [CourseEntity] 生成的一模一样：
+         * `Int` 属性 + Kotlin 默认值 → `INTEGER NOT NULL DEFAULT -1`
+         * （**不是** `DEFAULT '-1'`：那是字符串默认值，类型/默认值任一不符，
+         * Room 打开数据库时校验 schema 就会抛异常，App 直接起不来）。
+         *
+         * 先加列、不填值：老数据全部是 -1（= 还没填时间），课表照常显示，
+         * 只是这些课排不出上课提醒 —— 用户在课程里填上时间就自动接上了。
+         * 两列都追加在表尾，Room 的列比对按列名进行，不看顺序。
+         */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `courses` ADD COLUMN `startMinutes` INTEGER NOT NULL DEFAULT -1"
+                )
+                db.execSQL(
+                    "ALTER TABLE `courses` ADD COLUMN `endMinutes` INTEGER NOT NULL DEFAULT -1"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -284,7 +307,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_3_4,
                         MIGRATION_4_5,
                         MIGRATION_5_6,
-                        MIGRATION_6_7
+                        MIGRATION_6_7,
+                        MIGRATION_7_8
                     )
                     .build()
                     .also { instance = it }

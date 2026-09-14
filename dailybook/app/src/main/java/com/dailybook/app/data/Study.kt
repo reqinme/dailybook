@@ -20,6 +20,11 @@ import kotlinx.coroutines.flow.Flow
  * 一节课就是一条记录：星期几 + 第几节到第几节 + 起止周。
  * `weeks` 存成「周次表达式」文本（例如 `1-16`、`1-16单`、`3,5,7-9`），
  * 由 `CourseWeeks` 解析，这样单双周、跳周都能表达，且导出/备份都是纯文本。
+ *
+ * [startMinutes] / [endMinutes] 是**真实钟点**（当天 00:00 起的分钟数），
+ * 和「第几节」是两回事：节次是教学安排（第 1 节可能 8:00 也可能 8:30），
+ * 只有钟点才能算出「提前多少分钟提醒」的准确时刻，所以上课提醒认的是这两个字段。
+ * 老数据（v7 及更早）和没填时间的课都是 -1，此时排不出提醒，课表本身照常显示。
  */
 @Entity(tableName = "courses")
 data class CourseEntity(
@@ -36,6 +41,10 @@ data class CourseEntity(
     val weeks: String = "",
     /** 学期起始日（当天 00:00），用来把「第几周」换算成真实日期 */
     val termStartMillis: Long,
+    /** 上课开始时间：当天 00:00 起的分钟数；-1 = 还没填 */
+    val startMinutes: Int = -1,
+    /** 下课时间：同上；-1 = 还没填 */
+    val endMinutes: Int = -1,
     val colorIndex: Int = 0,
     val note: String = "",
     val createdAt: Long

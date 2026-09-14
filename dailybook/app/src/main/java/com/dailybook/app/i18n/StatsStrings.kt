@@ -451,4 +451,160 @@ object StatsStrings {
     /** 月报落盘时的默认文件名（不含扩展名），英文名不带空格方便分享 */
     fun reportFileName(lang: Lang, appName: String, yearMonth: String): String =
         if (lang == Lang.EN) "$appName-report-$yearMonth" else "$appName-月报-$yearMonth"
+
+    // ==================== v1.8：记录详情页（点标题才打开的那一页） ====================
+    // 统计页只留标题按钮，原始记录列表搬到 StatsDetailScreen。
+    // 这里放那一页自己需要的文案：汇总行、分类 / 每日行、专注记录、待办完成情况、以及各种空态。
+    // 注意：百分比一律由界面层拼好「50%」再当字符串传进来（% 在 pickf 的模板里是格式符）。
+
+    // ---- 记录入口区 ----
+
+    /** 统计页上「记录」区的小标题，下面跟着五个入口按钮 */
+    fun recordsTitle(lang: Lang) = pick(
+        lang, "记录", "紀錄",
+        "Records", "記録"
+    )
+
+    // ---- 本月记录（MONTH_ENTRIES） ----
+
+    /** 本月记录页顶部的汇总行：「共 32 笔 · 支 ¥1,200.00 · 收 ¥3,000.00」 */
+    fun monthEntriesSummary(lang: Lang, count: Int, expense: String, income: String) = pickf(
+        lang,
+        "共 %1\$d 笔 · 支 ¥%2\$s · 收 ¥%3\$s", "共 %1\$d 筆 · 支 ¥%2\$s · 收 ¥%3\$s",
+        "%1\$d entries · spent ¥%2\$s · in ¥%3\$s",
+        "%1\$d 件 · 支出 ¥%2\$s · 収入 ¥%3\$s",
+        count, expense, income
+    )
+
+    fun monthEntriesEmpty(lang: Lang) = pick(
+        lang, "这个月还没有记账记录", "這個月還沒有記帳紀錄",
+        "Nothing recorded this month", "今月はまだ記録がありません"
+    )
+
+    fun monthEntriesEmptyHint(lang: Lang) = pick(
+        lang, "回到记账页记一笔，这里就会有了", "回到記帳頁記一筆，這裡就會有了",
+        "Add an entry on the ledger page and it will show up here",
+        "家計簿ページで記録すると、ここに表示されます"
+    )
+
+    // ---- 分类明细（CATEGORY_ENTRIES） ----
+
+    /** 分类行右边的笔数：「12 笔」 */
+    fun categoryEntryCount(lang: Lang, count: Int) = pickf(
+        lang, "%d 笔", "%d 筆",
+        "%d entries", "%d 件",
+        count
+    )
+
+    /** 分类 / 每日行右边的占比，percent 由界面层算好（整数） */
+    fun categoryShare(lang: Lang, percent: String) = pickf(
+        lang, "占 %s", "佔 %s",
+        "%s of total", "全体の %s",
+        percent
+    )
+
+    fun categoryEntriesEmpty(lang: Lang) = pick(
+        lang, "这个月还没有支出记录", "這個月還沒有支出記錄",
+        "No expenses this month yet", "今月の支出はまだありません"
+    )
+
+    fun incomeByCategoryTitle(lang: Lang) = pick(
+        lang, "收入分类", "收入分類",
+        "Income by category", "収入の内訳"
+    )
+
+    // ---- 每日明细（DAILY_ENTRIES） ----
+
+    /** 每日行的主文案：「9月13日 · 3 笔 · 支 ¥120.00」 */
+    fun dayEntrySummary(lang: Lang, date: String, count: Int, expense: String) = pickf(
+        lang,
+        "%1\$s · %2\$d 笔 · 支 ¥%3\$s", "%1\$s · %2\$d 筆 · 支 ¥%3\$s",
+        "%1\$s · %2\$d entries · spent ¥%3\$s",
+        "%1\$s · %2\$d 件 · 支出 ¥%3\$s",
+        date, count, expense
+    )
+
+    /** 当天有收入时接在后面：「 · 收 ¥80.00」 */
+    fun dayIncomeLine(lang: Lang, income: String) = pickf(
+        lang, "收 ¥%s", "收 ¥%s",
+        "in ¥%s", "収入 ¥%s",
+        income
+    )
+
+    /** 当天的净额：正数是结余，负数是净支出 */
+    fun dayNetLine(lang: Lang, amount: String) = pickf(
+        lang, "净 ¥%s", "淨 ¥%s",
+        "net ¥%s", "差引 ¥%s",
+        amount
+    )
+
+    fun dailyEntriesEmpty(lang: Lang) = pick(
+        lang, "这个月还没有按天的记录", "這個月還沒有按天的紀錄",
+        "No dated entries this month", "今月は日付ごとの記録がありません"
+    )
+
+    // ---- 专注记录（FOCUS_SESSIONS） ----
+
+    /** 专注页顶部：「本月 12 次 · 共 300 分钟」 */
+    fun focusSessionCount(lang: Lang, count: Int, minutes: Int) = pickf(
+        lang,
+        "本月 %1\$d 次 · 共 %2\$d 分钟", "本月 %1\$d 次 · 共 %2\$d 分鐘",
+        "%1\$d sessions this month · %2\$d minutes in total",
+        "今月 %1\$d 回 · 合計 %2\$d 分",
+        count, minutes
+    )
+
+    fun focusSessionsEmpty(lang: Lang) = pick(
+        lang, "本月还没有完成的专注", "本月還沒有完成的專注",
+        "No focus sessions completed this month", "今月はまだ集中の記録がありません"
+    )
+
+    fun focusSessionsEmptyHint(lang: Lang) = pick(
+        lang, "去专注页开一个番茄钟，完成一次就会记在这里",
+        "去專注頁開一個番茄鐘，完成一次就會記在這裡",
+        "Start a pomodoro on the Focus page — finished sessions show up here",
+        "集中ページでポモドーロを始めると、完了した記録がここに並びます"
+    )
+
+    /**
+     * 一句实话：逐日 / 全部专注明细要读焦点记录表，而 UiState 只给到今天的明细与本月汇总，
+     * 所以这一页给的是「本月汇总 + 今日明细」，不硬编造每一天的数字。
+     */
+    fun focusSessionsScopeNote(lang: Lang) = pick(
+        lang,
+        "这里给的是本月汇总和今天的明细；逐日全部明细要读专注记录表，当前状态里没有开放。",
+        "這裡給的是本月彙總和今天的明細；逐日全部明細要讀專注紀錄表，目前狀態裡沒有開放。",
+        "This page shows the month's totals plus today's sessions. A full day-by-day list would need the focus session table, which the current state does not expose.",
+        "ここでは今月の集計と今日の内訳を表示します。日別の全記録は集中記録テーブルが必要で、現在の状態では取得できません。"
+    )
+
+    // ---- 待办完成情况（TODO_SUMMARY） ----
+
+    /** 待办统计里的一项：「待完成 7」 */
+    fun todoCountLine(lang: Lang, label: String, count: Int) = pickf(
+        lang, "%1\$s %2\$d", "%1\$s %2\$d",
+        "%1\$s: %2\$d", "%1\$s %2\$d",
+        label, count
+    )
+
+    fun todoPendingTitle(lang: Lang) = pick(
+        lang, "还没完成的", "還沒完成的",
+        "Still open", "未完了の ToDo"
+    )
+
+    fun todoDoneTitle(lang: Lang) = pick(
+        lang, "已经完成的", "已經完成的",
+        "Completed", "完了した ToDo"
+    )
+
+    fun todoSummaryEmpty(lang: Lang) = pick(
+        lang, "还没有待办", "還沒有待辦",
+        "No to-dos yet", "ToDo はまだありません"
+    )
+
+    fun todoSummaryEmptyHint(lang: Lang) = pick(
+        lang, "去待办页加一条，完成情况会出现在这里", "去待辦頁加一條，完成情況會出現在這裡",
+        "Add one on the Todos page — its status shows up here",
+        "ToDo ページで追加すると、完了状況がここに表示されます"
+    )
 }

@@ -207,4 +207,60 @@ object LedgerStrings {
         "清掉筛选看看全部", "清掉篩選看看全部",
         "Clear the filters to see everything", "絞り込みを解除するとすべて表示されます"
     )
+
+    // ==================== v1.8：年 / 月快速切换（MonthYearPicker） ====================
+    // 这一组是「年份 + 12 个月」选择器与日历视图提示的文案。
+    // 组件放在 ui/MonthYearPicker.kt，记账页与统计页共用，
+    // 所以「上个月 / 下个月 / 回本月」仍复用 CommonStrings，这里只放选择器自己的词。
+
+    /** 选择器标题：「选择年月」 */
+    fun monthYearTitle(lang: Lang) = pick(
+        lang, "选择年月", "選擇年月",
+        "Pick a month", "年月を選択"
+    )
+
+    /** 选择器底部的「回到本月」——比年月条上的短标签「回本月」更完整 */
+    fun monthYearThisMonth(lang: Lang) = pick(
+        lang, "回到本月", "回到本月",
+        "Back to this month", "今月に戻る"
+    )
+
+    /** 年份两侧箭头的无障碍说明 */
+    fun prevYear(lang: Lang) = pick(lang, "上一年", "上一年", "Previous year", "前の年")
+    fun nextYear(lang: Lang) = pick(lang, "下一年", "下一年", "Next year", "次の年")
+
+    /** 月份按钮上的短月份名：「1月」（英文是 Jan） */
+    fun monthShort(lang: Lang, month: Int): String = when (lang) {
+        Lang.EN -> MONTH_SHORT_EN[(month - 1).coerceIn(0, 11)]
+        else -> pickf(lang, "%d月", "%d月", "%d", "%d月", month)
+    }
+
+    /** 手输年份那一栏 */
+    fun yearFieldLabel(lang: Lang) = pick(lang, "年份", "年份", "Year", "年")
+    fun yearFieldHint(lang: Lang) = pick(
+        lang, "例如 2026", "例如 2026",
+        "e.g. 2026", "例：2026"
+    )
+
+    /** 输入范围外的年份时的提示 */
+    fun yearFieldInvalid(lang: Lang, min: Int, max: Int) = pickf(
+        lang,
+        "请输入 %1\$d - %2\$d 之间的年份", "請輸入 %1\$d - %2\$d 之間的年份",
+        "Enter a year between %1\$d and %2\$d", "%1\$d〜%2\$d の年を入力してください",
+        min, max
+    )
+
+    /** 日历视图里的一句提示：日历在列表最上面，下面的流水可以继续往下滚 */
+    fun calendarScrollHint(lang: Lang) = pick(
+        lang,
+        "点某一天按天筛选，下面的流水可以直接往上滑，日历会跟着滚走。",
+        "點某一天依日篩選，下面的流水可以直接往上滑，日曆會跟著捲走。",
+        "Tap a day to filter by date — swipe the list below, the calendar scrolls away with it.",
+        "日をタップすると日付で絞り込めます。下のリストはそのままスクロールでき、カレンダーも一緒に流れます。"
+    )
+
+    private val MONTH_SHORT_EN = listOf(
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    )
 }

@@ -31,6 +31,8 @@ fun DailyBookTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     palette: ThemePalette = ThemePalette.TEAL,
     dynamicColor: Boolean = false,
+    /** 用了自定义背景图时置 true：底与卡片半透明，图才透得出来 */
+    seeThrough: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeMode) {
@@ -45,8 +47,8 @@ fun DailyBookTheme(
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
 
-        darkTheme -> darkSchemeOf(palette.spec())
-        else -> lightSchemeOf(palette.spec())
+        darkTheme -> darkSchemeOf(palette.spec(), seeThrough)
+        else -> lightSchemeOf(palette.spec(), seeThrough)
     }
 
     MaterialTheme(

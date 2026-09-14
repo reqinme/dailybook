@@ -12,6 +12,20 @@ import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.CategoryStore
 import com.dailybook.app.data.Currencies
 import com.dailybook.app.data.DailyRepository
+import com.dailybook.app.data.AwardEntity
+import com.dailybook.app.data.AwardKind
+import com.dailybook.app.data.CourseEntity
+import com.dailybook.app.data.CreditTargetEntity
+import com.dailybook.app.data.DateRepeat
+import com.dailybook.app.data.ExamEntity
+import com.dailybook.app.data.GradeEntity
+import com.dailybook.app.data.HabitEntity
+import com.dailybook.app.data.HabitLogEntity
+import com.dailybook.app.data.ImportantDateEntity
+import com.dailybook.app.data.MemoEntity
+import com.dailybook.app.data.MilestoneEntity
+import com.dailybook.app.data.ScoreKind
+import com.dailybook.app.data.StudyTaskEntity
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.SettingsStore
@@ -20,6 +34,7 @@ import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TodoPriority
 import com.dailybook.app.data.RecurringEntity
 import com.dailybook.app.data.SubtaskEntity
+import com.dailybook.app.widget.CountdownWidgetProvider
 import com.dailybook.app.widget.WidgetProvider
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
@@ -30,7 +45,9 @@ import com.dailybook.app.notify.Notifier
 import com.dailybook.app.notify.SummaryReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.ui.theme.ThemeMode
+import com.dailybook.app.util.Lunar
 import com.dailybook.app.util.formatAmount
+import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -129,6 +146,51 @@ fun bucketOf(todo: TodoEntity, today: LocalDate): TodoBucket = when {
 @Immutable
 data class TodoSection(val bucket: TodoBucket, val items: List<TodoEntity>)
 
+/**
+ * 一条重要日期的「下一次发生」。
+ * [item] 是原始记录，[nextMillis] 是算出来的下一次公历日期（当天 00:00），
+ * [daysLeft] 是距今天的天数（0 = 就是今天）。
+ */
+@Immutable
+data class UpcomingDate(val item: ImportantDateEntity, val nextMillis: Long, val daysLeft: Long)
+
+/**
+ * 阳历重要日期的下一次发生（农历那套走 [Lunar.solarOfNextOccurrence]）。
+ *
+ * [DateRepeat.ONCE] 只认原来那一天：已经过去了就返回 null（不再出现在倒计时列表里）；
+ * YEARLY / MONTHLY / WEEKLY 一律往后滚到「今天或今天之后」的最近一次。
+ * 先按年 / 月 / 周大步快进到今天附近，再用一个小循环校正（月末对齐时可能要再多走一两步）。
+ */
+private fun nextSolarOccurrence(start: LocalDate, rule: DateRepeat, today: LocalDate): LocalDate? {
+    if (rule == DateRepeat.ONCE) return if (start.isBefore(today)) null else start
+    var date = start
+    when (rule) {
+        DateRepeat.YEARLY -> {
+            val years = ChronoUnit.YEARS.between(start, today)
+            if (years > 0) date = start.plusYears(years)
+        }
+        DateRepeat.MONTHLY -> {
+            val months = ChronoUnit.MONTHS.between(start, today)
+            if (months > 0) date = start.plusMonths(months)
+        }
+        DateRepeat.WEEKLY -> {
+            val weeks = ChronoUnit.WEEKS.between(start, today)
+            if (weeks > 0) date = start.plusWeeks(weeks)
+        }
+        DateRepeat.ONCE -> return null
+    }
+    var guard = 0
+    while (date.isBefore(today) && guard++ < 8) {
+        date = when (rule) {
+            DateRepeat.YEARLY -> date.plusYears(1)
+            DateRepeat.MONTHLY -> date.plusMonths(1)
+            DateRepeat.WEEKLY -> date.plusWeeks(1)
+            DateRepeat.ONCE -> return null
+        }
+    }
+    return date
+}
+
 /** 环比：本月 / 上月、今年 / 去年 */
 @Immutable
 data class Comparison(
@@ -209,6 +271,8 @@ data class FocusStats(
     val monthMinutes: Int = 0,
     val recentDays: List<FocusDay> = emptyList(),
     val todaySessions: List<FocusSessionEntity> = emptyList(),
+    /** 选中月份的全部专注记录：统计详情页要按月列出（不只是今天） */
+    val monthSessions: List<FocusSessionEntity> = emptyList(),
     /** 近 12 周热力图：外层是周（列），内层是周一到周日（行） */
     val heatWeeks: List<List<HeatCell>> = emptyList(),
     val heatMaxMinutes: Int = 0,
@@ -276,7 +340,50 @@ data class UiState(
     val yearSummary: YearSummary = YearSummary(),
     val totalIncomeCents: Long = 0L,
     val totalExpenseCents: Long = 0L,
-    val totalCount: Int = 0
+    val totalCount: Int = 0,
+    // ---- 生活模块：备忘录 / 大事记 / 重要日期 / 习惯打卡 ----
+    val memos: List<MemoEntity> = emptyList(),
+    val milestones: List<MilestoneEntity> = emptyList(),
+    val importantDates: List<ImportantDateEntity> = emptyList(),
+    val habits: List<HabitEntity> = emptyList(),
+    val habitLogs: List<HabitLogEntity> = emptyList(),
+    /** 每个习惯今天的完成量：habitId → 今天的打卡数（没打卡 = 0） */
+    val habitToday: Map<Long, Int> = emptyMap(),
+    /** 每个习惯的连续天数：habitId → 连续打卡天数（今天还没打卡则从昨天起算） */
+    val habitStreak: Map<Long, Int> = emptyMap(),
+    /** 每个习惯本周已打卡的天数：habitId → 本周（周一起）打过卡的不同日期数 */
+    val habitWeekDone: Map<Long, Int> = emptyMap(),
+    /** 重要日期的下一次发生，按还剩几天从近到远排 */
+    val upcomingDates: List<UpcomingDate> = emptyList(),
+    /** 定量类习惯（单位不是「次」的那些，也就是「背单词 / 背书计划」） */
+    val wordHabits: List<HabitEntity> = emptyList(),
+    // ---- 学习模块：课表 / 考试 / 作业 / 成绩 / 学分 / 奖助 ----
+    val courses: List<CourseEntity> = emptyList(),
+    val exams: List<ExamEntity> = emptyList(),
+    val studyTasks: List<StudyTaskEntity> = emptyList(),
+    val grades: List<GradeEntity> = emptyList(),
+    val creditTargets: List<CreditTargetEntity> = emptyList(),
+    val awards: List<AwardEntity> = emptyList(),
+    /** 最近一场还没开考的考试，没有就是 null */
+    val nextExam: ExamEntity? = null,
+    /** 距那场考试还有几天（今天考 = 0，没有考试也是 0） */
+    val examDaysLeft: Long = 0L,
+    /** 作业 / DDL 子集：挂了课程名的那部分待办 */
+    val assignmentTodos: List<TodoEntity> = emptyList(),
+    /** 其中还没做完、且到期日已经过去的条数 */
+    val overdueAssignments: Int = 0,
+    /** 全部流水（不筛选、不按月）：学习周报这类「近 7 天」统计要用 */
+    val transactions: List<TransactionEntity> = emptyList(),
+    /** 全部待办（不筛选）：周报与完成率统计要用 */
+    val todos: List<TodoEntity> = emptyList(),
+    /** 加权平均绩点：Σ(绩点 × 学分) / Σ学分，没有学分记录时是 0 */
+    val gpa: Double = 0.0,
+    /** 已修学分总和 */
+    val totalCredits: Double = 0.0,
+    /** 每个课程类别已修的学分：类别 → 学分 */
+    val creditsByCategory: Map<String, Double> = emptyMap(),
+    /** 今天的专注时长（分钟），和 focusStats.todayMinutes 同源 */
+    val studyMinutesToday: Int = 0
 ) {
     val balance: Long get() = monthIncome - monthExpense
     val hasMonthData: Boolean get() = monthGroups.isNotEmpty()
@@ -341,6 +448,33 @@ private data class TodoInputs(
     val query: String,
     val subtasks: List<SubtaskEntity>,
     val recurring: List<RecurringEntity>
+)
+
+/** 生活模块的输入聚合（备忘录 / 大事记 / 重要日期 / 习惯与打卡） */
+private data class LifeInputs(
+    val memos: List<MemoEntity>,
+    val milestones: List<MilestoneEntity>,
+    val dates: List<ImportantDateEntity>,
+    val habits: List<HabitEntity>,
+    val habitLogs: List<HabitLogEntity>
+)
+
+/** 学习模块的输入聚合（课表 / 考试 / 复习计划 / 成绩 / 奖助 / 学分要求） */
+private data class StudyInputs(
+    val courses: List<CourseEntity>,
+    val exams: List<ExamEntity>,
+    val studyTasks: List<StudyTaskEntity>,
+    val grades: List<GradeEntity>,
+    val awards: List<AwardEntity>,
+    val creditTargets: List<CreditTargetEntity>
+)
+
+/** 专注侧的输入聚合：记录 + 当前目标 + 分类清单，凑一层免得 combine 超过 5 个 */
+private data class FocusSettings(
+    val sessions: List<FocusSessionEntity>,
+    val taskId: Long,
+    val taskTitle: String,
+    val cats: CategoryInputs
 )
 
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
@@ -413,14 +547,45 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         TodoInputs(todos, filter, query, subtasks, recurring)
     }
 
-    val uiState: StateFlow<UiState> = combine(
-        ledgerInputs,
-        todoInputs,
+    private val lifeInputs = combine(
+        repo.memos,
+        repo.milestones,
+        repo.importantDates,
+        repo.habits,
+        repo.habitLogs
+    ) { memos, milestones, dates, habits, habitLogs ->
+        LifeInputs(memos, milestones, dates, habits, habitLogs)
+    }
+
+    // 奖助与学分要求先自己拼一层：这样下面那层 combine 正好 5 个流
+    private val studyExtras = combine(repo.awards, repo.creditTargets) { a, t -> a to t }
+
+    private val studyInputs = combine(
+        repo.courses,
+        repo.exams,
+        repo.studyTasks,
+        repo.grades,
+        studyExtras
+    ) { courses, exams, studyTasks, grades, extras ->
+        StudyInputs(courses, exams, studyTasks, grades, extras.first, extras.second)
+    }
+
+    private val focusSettings = combine(
         repo.focusSessions,
         settingsInputs,
         categoryInputs
-    ) { ledger, todos, sessions, task, cats ->
-        buildState(ledger, todos, sessions, task.first, task.second, cats)
+    ) { s, task, cats ->
+        FocusSettings(s, task.first, task.second, cats)
+    }
+
+    val uiState: StateFlow<UiState> = combine(
+        ledgerInputs,
+        todoInputs,
+        lifeInputs,
+        studyInputs,
+        focusSettings
+    ) { ledger, todos, life, study, focus ->
+        buildState(ledger, todos, life, study, focus)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState())
 
     /** 操作结果提示（导出成功、导入失败之类），界面弹完即清空 */
@@ -443,9 +608,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             combine(
                 repo.transactions,
                 repo.todos,
-                repo.focusSessions
-            ) { _, _, _ -> Unit }.collect {
+                repo.focusSessions,
+                repo.exams
+            ) { _, _, _, _ -> Unit }.collect {
                 WidgetProvider.refresh(app)
+                // 考试倒计时小组件跟着考试数据一起刷新
+                CountdownWidgetProvider.refresh(app)
             }
         }
         // 待办一变就重排提醒：完成 / 删除 / 改期都会自动撤销或顺延，不会留下幽灵提醒
@@ -478,6 +646,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun previousMonth() { selectedMonth.value = selectedMonth.value.minusMonths(1) }
 
     fun nextMonth() { selectedMonth.value = selectedMonth.value.plusMonths(1) }
+
+    /** 跳到指定月份：年月快速切换器（记账页与统计页共用）用的 */
+    fun moveToMonth(target: YearMonth) { selectedMonth.value = target }
 
     fun goToCurrentMonth() { selectedMonth.value = YearMonth.now() }
 
@@ -669,6 +840,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun toggleTodoImportant(item: TodoEntity) {
         viewModelScope.launch { repo.toggleTodoImportant(item) }
+    }
+
+    /** 作业 / DDL：一条带课程名的待办（学习模块用，省得先建后改） */
+    fun addAssignment(title: String, courseName: String, dueMillis: Long?) {
+        viewModelScope.launch {
+            repo.addTodo(title = title, dueMillis = dueMillis, courseName = courseName)
+        }
     }
 
     fun updateTodo(
@@ -890,15 +1068,281 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // ---- 备忘录 ----
+
+    /** 随手记一条；标题空了直接忽略，不写进库里 */
+    fun addMemo(title: String, content: String, pinned: Boolean = false) {
+        val text = title.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addMemo(text, content, pinned) }
+    }
+
+    /** 整体替换一条备忘录（界面自己 copy 好字段；updateMemo 会顺手刷新 updatedAt） */
+    fun updateMemo(item: MemoEntity) {
+        viewModelScope.launch { repo.updateMemo(item) }
+    }
+
+    fun deleteMemo(item: MemoEntity) {
+        viewModelScope.launch { repo.deleteMemo(item) }
+    }
+
+    /** 置顶 / 取消置顶（置顶也算一次改动，同样刷新 updatedAt） */
+    fun toggleMemoPinned(item: MemoEntity) {
+        viewModelScope.launch { repo.toggleMemoPinned(item) }
+    }
+
+    // ---- 大事记 ----
+
+    /** 记一件已经发生的事（毕业、入职、第一次旅行……） */
+    fun addMilestone(title: String, note: String, dateMillis: Long, imageUri: String = "") {
+        val text = title.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addMilestone(text, note, dateMillis, imageUri) }
+    }
+
+    fun updateMilestone(item: MilestoneEntity) {
+        viewModelScope.launch { repo.updateMilestone(item) }
+    }
+
+    fun deleteMilestone(item: MilestoneEntity) {
+        viewModelScope.launch { repo.deleteMilestone(item) }
+    }
+
+    // ---- 重要日期 ----
+
+    /**
+     * 新增一个重要日期（生日 / 纪念日 / 倒计时）。
+     * 农历的按「农历月 + 农历日」存，[dateMillis] 只是首次换算出的阳历日，方便排序。
+     */
+    fun addImportantDate(
+        title: String,
+        dateMillis: Long,
+        lunar: Boolean = false,
+        lunarMonth: Int = 1,
+        lunarDay: Int = 1,
+        lunarLeap: Boolean = false,
+        repeat: DateRepeat = DateRepeat.YEARLY,
+        remindDaysBefore: Int = 0,
+        note: String = ""
+    ) {
+        val text = title.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch {
+            repo.addImportantDate(
+                title = text,
+                dateMillis = dateMillis,
+                lunar = lunar,
+                lunarMonth = lunarMonth,
+                lunarDay = lunarDay,
+                lunarLeap = lunarLeap,
+                repeat = repeat,
+                remindDaysBefore = remindDaysBefore,
+                note = note
+            )
+        }
+    }
+
+    fun updateImportantDate(item: ImportantDateEntity) {
+        viewModelScope.launch { repo.updateImportantDate(item) }
+    }
+
+    fun deleteImportantDate(item: ImportantDateEntity) {
+        viewModelScope.launch { repo.deleteImportantDate(item) }
+    }
+
+    // ---- 习惯打卡 ----
+
+    /** 新建一个习惯；「背单词计划」这类也用它建（单位填 个 / 页） */
+    fun addHabit(
+        name: String,
+        emoji: String = "✅",
+        targetPerDay: Int = 1,
+        unit: String = "次",
+        daysPerWeek: Int = 7
+    ) {
+        val text = name.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addHabit(text, emoji, targetPerDay, unit, daysPerWeek) }
+    }
+
+    fun updateHabit(item: HabitEntity) {
+        viewModelScope.launch { repo.updateHabit(item) }
+    }
+
+    /** 删习惯会连它的打卡记录一起删 */
+    fun deleteHabit(item: HabitEntity) {
+        viewModelScope.launch { repo.deleteHabit(item) }
+    }
+
+    /** 记一次打卡：把某一天的完成量直接改成 [count]（一天一条，不会重复记） */
+    fun logHabit(habitId: Long, dayMillis: Long, count: Int) {
+        viewModelScope.launch { repo.logHabit(habitId, dayMillis, count) }
+    }
+
+    /** 勾选 / 取消勾选「今天」：今天就是本地零点的那一天，不用调用方传日期 */
+    fun toggleHabitToday(habit: HabitEntity) {
+        val todayMillis = LocalDate.now().toDayMillis()
+        viewModelScope.launch { repo.toggleHabitDone(habit.id, todayMillis, habit.targetPerDay) }
+    }
+
+    // ---- 课表 ----
+
+    /** 新增一门课（课表里的一格：星期几 + 第几节到第几节 + 起止周） */
+    fun addCourse(
+        name: String,
+        teacher: String = "",
+        location: String = "",
+        dayOfWeek: Int = 1,
+        startPeriod: Int = 1,
+        endPeriod: Int = 2,
+        weeks: String = "",
+        termStartMillis: Long,
+        colorIndex: Int = 0,
+        note: String = ""
+    ) {
+        val text = name.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch {
+            repo.addCourse(
+                name = text,
+                teacher = teacher,
+                location = location,
+                dayOfWeek = dayOfWeek,
+                startPeriod = startPeriod,
+                endPeriod = endPeriod,
+                weeks = weeks,
+                termStartMillis = termStartMillis,
+                colorIndex = colorIndex,
+                note = note
+            )
+        }
+    }
+
+    fun updateCourse(item: CourseEntity) {
+        viewModelScope.launch { repo.updateCourse(item) }
+    }
+
+    fun deleteCourse(item: CourseEntity) {
+        viewModelScope.launch { repo.deleteCourse(item) }
+    }
+
+    // ---- 考试与复习计划 ----
+
+    /** 新增一场考试（倒计时的主体） */
+    fun addExam(
+        name: String,
+        courseName: String = "",
+        examMillis: Long,
+        location: String = "",
+        note: String = ""
+    ) {
+        val text = name.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addExam(text, courseName, examMillis, location, note) }
+    }
+
+    fun updateExam(item: ExamEntity) {
+        viewModelScope.launch { repo.updateExam(item) }
+    }
+
+    /** 删考试会连它的复习计划一起删 */
+    fun deleteExam(item: ExamEntity) {
+        viewModelScope.launch { repo.deleteExam(item) }
+    }
+
+    /** 加一条复习计划；[examId] 传 0 表示不挂考试的独立任务 */
+    fun addStudyTask(examId: Long, title: String, dateMillis: Long) {
+        val text = title.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addStudyTask(examId, text, dateMillis) }
+    }
+
+    /** 整体替换一条复习计划（界面自己 copy 好标题 / 日期 / 排序） */
+    fun updateStudyTask(item: StudyTaskEntity) {
+        viewModelScope.launch { repo.updateStudyTask(item) }
+    }
+
+    fun toggleStudyTask(item: StudyTaskEntity) {
+        viewModelScope.launch { repo.toggleStudyTask(item) }
+    }
+
+    fun deleteStudyTask(item: StudyTaskEntity) {
+        viewModelScope.launch { repo.deleteStudyTask(item) }
+    }
+
+    // ---- 成绩 / 学分 / 奖助 ----
+
+    /** 录入一门课的成绩；[point] 是换算好的绩点，算 GPA 只认它 */
+    fun addGrade(
+        term: String,
+        courseName: String,
+        credit: Double = 0.0,
+        score: String = "",
+        scoreKind: ScoreKind = ScoreKind.PERCENT,
+        point: Double = 0.0,
+        category: String = "必修",
+        note: String = ""
+    ) {
+        val text = courseName.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch {
+            repo.addGrade(term, text, credit, score, scoreKind, point, category, note)
+        }
+    }
+
+    fun updateGrade(item: GradeEntity) {
+        viewModelScope.launch { repo.updateGrade(item) }
+    }
+
+    fun deleteGrade(item: GradeEntity) {
+        viewModelScope.launch { repo.deleteGrade(item) }
+    }
+
+    /** 某个课程类别要修满多少学分 */
+    fun addCreditTarget(category: String, required: Double) {
+        val text = category.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addCreditTarget(text, required) }
+    }
+
+    fun updateCreditTarget(item: CreditTargetEntity) {
+        viewModelScope.launch { repo.updateCreditTarget(item) }
+    }
+
+    fun deleteCreditTarget(item: CreditTargetEntity) {
+        viewModelScope.launch { repo.deleteCreditTarget(item) }
+    }
+
+    /** 记一条奖助 / 竞赛 / 证书 */
+    fun addAward(
+        title: String,
+        kind: AwardKind = AwardKind.SCHOLARSHIP,
+        dateMillis: Long,
+        level: String = "",
+        note: String = "",
+        imageUri: String = ""
+    ) {
+        val text = title.trim()
+        if (text.isEmpty()) return
+        viewModelScope.launch { repo.addAward(text, kind, dateMillis, level, note, imageUri) }
+    }
+
+    fun updateAward(item: AwardEntity) {
+        viewModelScope.launch { repo.updateAward(item) }
+    }
+
+    fun deleteAward(item: AwardEntity) {
+        viewModelScope.launch { repo.deleteAward(item) }
+    }
+
     // ---- 状态拼装 ----
 
     private fun buildState(
         ledger: LedgerInputs,
         todo: TodoInputs,
-        sessions: List<FocusSessionEntity>,
-        focusTaskId: Long,
-        focusTaskTitle: String,
-        cats: CategoryInputs
+        life: LifeInputs,
+        study: StudyInputs,
+        focus: FocusSettings
     ): UiState {
         val today = LocalDate.now()
         val month = ledger.month
@@ -1001,7 +1445,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
 
         // ---- 专注（从记录表派生）----
-        val sessionsByDay = sessions.groupBy { it.startedAtMillis.toLocalDate() }
+        val sessionsByDay = focus.sessions.groupBy { it.startedAtMillis.toLocalDate() }
         val todaySessions = sessionsByDay[today].orEmpty().sortedByDescending { it.startedAtMillis }
         val recentDays = (6 downTo 0).map { back ->
             val day = today.minusDays(back.toLong())
@@ -1017,16 +1461,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
         // ---- 本周 / 本月汇总（周一为一周之始）----
         val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
-        val weekSessions = sessions.filter {
+        val weekSessions = focus.sessions.filter {
             !it.startedAtMillis.toLocalDate().isBefore(monday)
         }
         val currentMonth = YearMonth.from(today)
-        val monthSessions = sessions.filter {
+        val monthSessions = focus.sessions.filter {
             YearMonth.from(it.startedAtMillis.toLocalDate()) == currentMonth
         }
 
         // ---- 近 12 周热力图：列是周，行是周一到周日；未来日期记 -1，界面画成空格 ----
-        val minutesByDay = sessions
+        val minutesByDay = focus.sessions
             .groupBy { it.startedAtMillis.toLocalDate() }
             .mapValues { entry -> entry.value.sumOf { it.minutes } }
         val heatWeeks = (11 downTo 0).map { back ->
@@ -1039,7 +1483,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val heatMaxMinutes = heatWeeks.flatten().maxOfOrNull { it.minutes }?.coerceAtLeast(0) ?: 0
 
         // ---- 按待办汇总投入时间（从「专注目标」发起的那些记录）----
-        val perTodo = sessions
+        val perTodo = focus.sessions
             .filter { it.taskTitle.isNotBlank() }
             .groupBy { it.taskTitle }
             .map { (title, items) ->
@@ -1051,7 +1495,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val focusStats = FocusStats(
             todayCount = todaySessions.size,
             todayMinutes = todaySessions.sumOf { it.minutes },
-            totalCount = sessions.size,
+            totalCount = focus.sessions.size,
             streak = streak,
             weekCount = weekSessions.size,
             weekMinutes = weekSessions.sumOf { it.minutes },
@@ -1059,10 +1503,104 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             monthMinutes = monthSessions.sumOf { it.minutes },
             recentDays = recentDays,
             todaySessions = todaySessions,
+            monthSessions = monthSessions.sortedByDescending { it.startedAtMillis },
             heatWeeks = heatWeeks,
             heatMaxMinutes = heatMaxMinutes,
             perTodo = perTodo
         )
+
+        // ---- 生活模块：备忘录 / 大事记 / 重要日期 / 习惯打卡 ----
+        // 打卡记录存的就是「当天零点」，所以这里的「今天」也用本地零点比
+        val todayMillis = today.toDayMillis()
+        // 一天一条记录（见 logHabit），所以按 habitId 分组后每组最多对上一个今天
+        val habitLogsOf = life.habitLogs.groupBy { it.habitId }
+
+        // 每个习惯今天的完成量；没记录就是 0
+        val habitToday = life.habits.associate { habit ->
+            habit.id to (habitLogsOf[habit.id].orEmpty()
+                .firstOrNull { it.dateMillis == todayMillis }?.count ?: 0)
+        }
+
+        // 连续天数：从今天往前一天天数；今天还没打卡就从昨天起算
+        // —— 今天还没过完，不该把「昨天还在坚持」判成断掉（和上面专注 streak 一个口径）
+        val habitStreak = life.habits.associate { habit ->
+            val doneDays = habitLogsOf[habit.id].orEmpty()
+                .filter { it.count > 0 }
+                .map { it.dateMillis.toLocalDate() }
+                .toSet()
+            var day = if (doneDays.contains(today)) today else today.minusDays(1)
+            var run = 0
+            while (doneDays.contains(day)) {
+                run++
+                day = day.minusDays(1)
+            }
+            habit.id to run
+        }
+
+        // 本周打过卡的天数：和上面 monday 同口径（周一为一周之始），用来算「每周 N 天」的完成度
+        val habitWeekDone = life.habits.associate { habit ->
+            val days = habitLogsOf[habit.id].orEmpty()
+                .filter { it.count > 0 && !it.dateMillis.toLocalDate().isBefore(monday) }
+                .map { it.dateMillis }
+                .distinct()
+                .size
+            habit.id to days
+        }
+
+        // 定量类习惯：单位不是「次」的就是按量记的（背单词是「个」、背书计划是「页」）
+        val wordHabits = life.habits.filter { it.unit != "次" }
+
+        // 重要日期的下一次发生：农历交给 Lunar 换算，阳历按重复规则往后滚；
+        // 「只过一次」的（不管阳历农历）就认它原来那天，已经过去就不再出现；最后按剩余天数从近到远排
+        val upcomingDates = life.dates.mapNotNull { item ->
+            val next = when {
+                item.repeatRule == DateRepeat.ONCE ->
+                    nextSolarOccurrence(item.dateMillis.toLocalDate(), DateRepeat.ONCE, today)
+                item.lunar ->
+                    // 第一个参数的年只是占位：solarOfNextOccurrence 内部按「今天的农历年」往后找
+                    Lunar.solarOfNextOccurrence(
+                        Lunar.LunarDate(today.year, item.lunarMonth, item.lunarDay, item.lunarLeap),
+                        today
+                    )
+                else ->
+                    nextSolarOccurrence(item.dateMillis.toLocalDate(), item.repeatRule, today)
+            } ?: return@mapNotNull null
+            UpcomingDate(item, next.toDayMillis(), ChronoUnit.DAYS.between(today, next))
+        }.sortedBy { it.daysLeft }
+
+        // ---- 学习模块：课表 / 考试 / 作业 / 成绩 / 学分 / 奖助 ----
+        // 下一场考试：已经开考的不算；examDaysLeft 是整天数（今天考 = 0）
+        val nowMillis = System.currentTimeMillis()
+        val nextExam = study.exams
+            .filter { it.examMillis >= nowMillis }
+            .minByOrNull { it.examMillis }
+        val examDaysLeft = nextExam?.let {
+            ChronoUnit.DAYS.between(today, it.examMillis.toLocalDate())
+        } ?: 0L
+
+        // 作业 / DDL 复用待办表：挂了课程名的那些就是作业（见 Study.kt 的说明）
+        val assignmentTodos = todo.all.filter { it.courseName.isNotBlank() }
+        val overdueAssignments = assignmentTodos.count { item ->
+            val due = item.dueMillis
+            !item.done && due != null && due.toLocalDate().isBefore(today)
+        }
+
+        // 平均绩点：只按有学分的课加权（point 在录入时已经按计分方式换算好了）
+        val graded = study.grades.filter { it.credit > 0.0 }
+        val gradedCredits = graded.sumOf { it.credit }
+        val gpa = if (gradedCredits > 0.0) {
+            graded.sumOf { it.point * it.credit } / gradedCredits
+        } else {
+            0.0
+        }
+        val totalCredits = study.grades.sumOf { it.credit }
+        // 按课程类别（必修 / 选修 / 通识）汇总已修学分，和 creditTargets 对照着看还差多少
+        val creditsByCategory = study.grades
+            .groupBy { it.category }
+            .mapValues { entry -> entry.value.sumOf { it.credit } }
+
+        // 今天的专注时长：和 focusStats.todayMinutes 同一个数，单独给学习页一个好读的名字
+        val studyMinutesToday = todaySessions.sumOf { it.minutes }
 
         // ---- 年度报表（近 12 个月趋势 + 当年汇总）----
         val thisYear = today.year
@@ -1109,8 +1647,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         val usedCategories = ledger.all.groupBy { it.type }.mapValues { entry ->
             entry.value.map { it.category }.distinct()
         }
-        val expenseCategories = (cats.expense + usedCategories[TxType.EXPENSE].orEmpty()).distinct()
-        val incomeCategories = (cats.income + usedCategories[TxType.INCOME].orEmpty()).distinct()
+        val expenseCategories = (focus.cats.expense + usedCategories[TxType.EXPENSE].orEmpty()).distinct()
+        val incomeCategories = (focus.cats.income + usedCategories[TxType.INCOME].orEmpty()).distinct()
 
         // ---- 当月日历 ----
         val byDay = monthTx.groupBy { it.dateMillis.toLocalDate() }
@@ -1256,13 +1794,41 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             todoQuery = todo.query,
             pendingCount = pending,
             doneCount = todo.all.size - pending,
-            focusTaskId = focusTaskId,
-            focusTaskTitle = focusTaskTitle,
+            focusTaskId = focus.taskId,
+            focusTaskTitle = focus.taskTitle,
             focusStats = focusStats,
             yearSummary = yearSummary,
             totalIncomeCents = allIncome,
             totalExpenseCents = allExpense,
-            totalCount = ledger.all.size
+            totalCount = ledger.all.size,
+            // 生活模块
+            memos = life.memos,
+            milestones = life.milestones,
+            importantDates = life.dates,
+            habits = life.habits,
+            habitLogs = life.habitLogs,
+            habitToday = habitToday,
+            habitStreak = habitStreak,
+            habitWeekDone = habitWeekDone,
+            upcomingDates = upcomingDates,
+            wordHabits = wordHabits,
+            // 学习模块
+            courses = study.courses,
+            exams = study.exams,
+            studyTasks = study.studyTasks,
+            grades = study.grades,
+            creditTargets = study.creditTargets,
+            awards = study.awards,
+            nextExam = nextExam,
+            examDaysLeft = examDaysLeft,
+            assignmentTodos = assignmentTodos,
+            overdueAssignments = overdueAssignments,
+            transactions = ledger.all,
+            todos = todo.all,
+            gpa = gpa,
+            totalCredits = totalCredits,
+            creditsByCategory = creditsByCategory,
+            studyMinutesToday = studyMinutesToday
         )
     }
 }

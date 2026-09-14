@@ -168,6 +168,68 @@ class SettingsStore private constructor(context: Context) {
         ThemePalette.valueOf(prefs.getString(KEY_PALETTE, null) ?: ThemePalette.TEAL.name)
     }.getOrDefault(ThemePalette.TEAL)
 
+    /**
+     * 自定义背景图：用户挑的一张图片，记住系统文件选择器授权过的 URI。
+     * 空串 = 不用背景图；图片本身不复制进应用私有目录。
+     */
+    private val _backgroundUri = MutableStateFlow(prefs.getString(KEY_BACKGROUND, "").orEmpty())
+    val backgroundUri: StateFlow<String> = _backgroundUri.asStateFlow()
+
+    /** 背景图上的蒙版浓度（0~80）：越大文字越清楚、图越淡 */
+    private val _backgroundScrim = MutableStateFlow(prefs.getInt(KEY_BACKGROUND_SCRIM, 30))
+    val backgroundScrim: StateFlow<Int> = _backgroundScrim.asStateFlow()
+
+    fun setBackgroundUri(uri: String?) {
+        val value = uri.orEmpty()
+        prefs.edit().putString(KEY_BACKGROUND, value).apply()
+        _backgroundUri.value = value
+    }
+
+    fun setBackgroundScrim(percent: Int) {
+        val value = percent.coerceIn(0, 80)
+        prefs.edit().putInt(KEY_BACKGROUND_SCRIM, value).apply()
+        _backgroundScrim.value = value
+    }
+
+    // ---- 学习设置（课表 / GPA / 上课提醒）----
+
+    /** 学期起始日（周一，当天 00:00）：用来把「第几周」换算成真实日期；0 = 还没设 */
+    private val _termStartMillis = MutableStateFlow(prefs.getLong(KEY_TERM_START, 0L))
+    val termStartMillis: StateFlow<Long> = _termStartMillis.asStateFlow()
+
+    fun setTermStartMillis(millis: Long) {
+        prefs.edit().putLong(KEY_TERM_START, millis.coerceAtLeast(0L)).apply()
+        _termStartMillis.value = millis.coerceAtLeast(0L)
+    }
+
+    /** GPA 计算口径：4.0 或 5.0（默认 4.0） */
+    private val _gpaScale = MutableStateFlow(prefs.getFloat(KEY_GPA_SCALE, 4.0f).toDouble())
+    val gpaScale: StateFlow<Double> = _gpaScale.asStateFlow()
+
+    fun setGpaScale(scale: Double) {
+        val value = if (scale >= 4.5) 5.0 else 4.0
+        prefs.edit().putFloat(KEY_GPA_SCALE, value.toFloat()).apply()
+        _gpaScale.value = value
+    }
+
+    /** 上课提醒：开关 + 提前多少分钟 */
+    private val _classReminder = MutableStateFlow(prefs.getBoolean(KEY_CLASS_REMIND, false))
+    val classReminder: StateFlow<Boolean> = _classReminder.asStateFlow()
+
+    private val _classReminderMinutes = MutableStateFlow(prefs.getInt(KEY_CLASS_REMIND_MIN, 15))
+    val classReminderMinutes: StateFlow<Int> = _classReminderMinutes.asStateFlow()
+
+    fun setClassReminder(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CLASS_REMIND, enabled).apply()
+        _classReminder.value = enabled
+    }
+
+    fun setClassReminderMinutes(minutes: Int) {
+        val value = minutes.coerceIn(5, 60)
+        prefs.edit().putInt(KEY_CLASS_REMIND_MIN, value).apply()
+        _classReminderMinutes.value = value
+    }
+
     /** 某个币种最近用过的汇率（×RATE_SCALE），下次记同一币种不用重填 */
     fun currencyRate(code: String): Long =
         prefs.getLong(KEY_RATE_PREFIX + code, Currencies.RATE_SCALE)
@@ -242,6 +304,12 @@ class SettingsStore private constructor(context: Context) {
         private const val KEY_BUDGET_WARNED = "budget_warned_keys"
         private const val KEY_RATE_PREFIX = "currency_rate_"
         private const val KEY_PALETTE = "theme_palette"
+        private const val KEY_BACKGROUND = "background_uri"
+        private const val KEY_BACKGROUND_SCRIM = "background_scrim"
+        private const val KEY_TERM_START = "term_start_millis"
+        private const val KEY_GPA_SCALE = "gpa_scale"
+        private const val KEY_CLASS_REMIND = "class_reminder_enabled"
+        private const val KEY_CLASS_REMIND_MIN = "class_reminder_minutes"
         private const val KEY_FOCUS_TASK_ID = "focus_task_id"
         private const val KEY_FOCUS_TASK_TITLE = "focus_task_title"
         private const val KEY_REMINDED = "reminded_keys"

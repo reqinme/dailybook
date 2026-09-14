@@ -72,6 +72,22 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info" />
         </receiver>
+
+        <!-- 桌面小组件（第二个）：考试倒计时（四六级 / 考研等）。
+             同样只用系统框架 API，没有新增依赖与权限；
+             「切换考试」是自己给自己发的显式广播（com.dailybook.app.COUNTDOWN_NEXT），
+             所以 exported 保持和第一个小组件一致即可 -->
+        <receiver
+            android:name=".widget.CountdownWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_countdown_info" />
+        </receiver>
     </application>
 
 </manifest>

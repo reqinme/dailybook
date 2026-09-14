@@ -19,6 +19,80 @@ object AppStrings {
     fun tabStats(lang: Lang) = pick(lang, "统计", "統計", "Stats", "統計")
     fun tabSettings(lang: Lang) = pick(lang, "设置", "設定", "Settings", "設定")
 
+    /** 新增的两个标签页（这一版把「设置」移到右上角齿轮，给它们腾位置） */
+    fun tabLife(lang: Lang) = pick(lang, "生活", "生活", "Life", "ライフ")
+
+    fun tabStudy(lang: Lang) = pick(lang, "学习", "學習", "Study", "学習")
+
+    // ---- 设置里的大分类（系统设置式） ----
+    fun settingsAppearance(lang: Lang) = pick(lang, "外观", "外觀", "Appearance", "外観")
+
+    fun settingsTitle(lang: Lang) = pick(lang, "设置", "設定", "Settings", "設定")
+    fun settingsLanguage(lang: Lang) = pick(lang, "语言", "語言", "Language", "言語")
+    fun settingsLedger(lang: Lang) = pick(lang, "记账", "記帳", "Ledger", "家計簿")
+    fun settingsFocus(lang: Lang) = pick(lang, "专注", "專注", "Focus", "集中")
+    fun settingsStudy(lang: Lang) = pick(lang, "学习", "學習", "Study", "学習")
+    fun settingsData(lang: Lang) = pick(lang, "数据与备份", "資料與備份", "Data & backup", "データとバックアップ")
+    fun settingsAbout(lang: Lang) = pick(lang, "关于与更新", "關於與更新", "About & updates", "このアプリと更新")
+
+    fun settingsAppearanceHint(lang: Lang) =
+        pick(lang, "主题、配色、背景图", "主題、配色、背景圖", "Theme, colours, background", "テーマ・配色・背景")
+
+    fun settingsLanguageHint(lang: Lang) =
+        pick(lang, "界面语言", "介面語言", "Interface language", "表示言語")
+
+    fun settingsLedgerHint(lang: Lang) = pick(
+        lang, "预算、提醒、分类、周期记账", "預算、提醒、分類、週期記帳",
+        "Budget, reminders, categories, recurring entries", "予算・リマインダー・カテゴリ・定期的な記録"
+    )
+
+    fun settingsFocusHint(lang: Lang) = pick(
+        lang, "番茄钟时长、专注目标、提醒", "番茄鐘時長、專注目標、提醒",
+        "Timer lengths, focus goal, reminders", "タイマー時間・目標・リマインダー"
+    )
+
+    fun settingsStudyHint(lang: Lang) = pick(
+        lang, "学期起始日、GPA 计算口径、上课提醒", "學期起始日、GPA 計算口徑、上課提醒",
+        "Term start, GPA scale, class reminders", "学期開始日・GPA 方式・授業リマインダー"
+    )
+
+    fun settingsDataHint(lang: Lang) = pick(
+        lang, "导出备份、导入恢复、CSV、自动备份、清除数据", "匯出備份、匯入還原、CSV、自動備份、清除資料",
+        "Export, restore, CSV, automatic backup, clear data", "書き出し・復元・CSV・自動バックアップ・データ削除"
+    )
+
+    fun settingsAboutHint(lang: Lang) = pick(
+        lang, "版本、检查更新、开源信息", "版本、檢查更新、開源資訊",
+        "Version, check for updates, licences", "バージョン・更新確認・ライセンス"
+    )
+
+    // ---- 生活 / 学习模块的页面标题 ----
+    fun tabHabits(lang: Lang) = pick(lang, "习惯打卡", "習慣打卡", "Habit check-in", "習慣チェック")
+    fun tabMemos(lang: Lang) = pick(lang, "备忘录", "備忘錄", "Notes", "メモ")
+    fun tabMilestones(lang: Lang) = pick(lang, "大事记", "大事記", "Milestones", "大事記")
+    fun tabImportantDates(lang: Lang) = pick(lang, "重要日期", "重要日期", "Important dates", "大切な日")
+
+    fun tabCourses(lang: Lang) = pick(lang, "课表", "課表", "Timetable", "時間割")
+    fun tabExams(lang: Lang) = pick(lang, "考试与复习", "考試與複習", "Exams & revision", "試験と復習")
+    fun tabAssignments(lang: Lang) = pick(lang, "作业与 DDL", "作業與 DDL", "Assignments & deadlines", "課題と締切")
+    fun tabGrades(lang: Lang) = pick(lang, "成绩与 GPA", "成績與 GPA", "Grades & GPA", "成績と GPA")
+    fun tabCredits(lang: Lang) = pick(lang, "学分进度", "學分進度", "Credit progress", "単位数の進捗")
+    fun tabAwards(lang: Lang) = pick(lang, "奖助与证书", "獎助與證書", "Awards & certificates", "奨学金と資格")
+    fun tabWords(lang: Lang) = pick(lang, "背单词", "背單詞", "Vocabulary", "単語")
+    fun tabWeeklyReport(lang: Lang) = pick(lang, "学习周报", "學習週報", "Weekly report", "週間レポート")
+
+    // ---- 统计详情页标题（点标题才打开的页面） ----
+    fun statsMonthEntries(lang: Lang) = pick(lang, "本月记录", "本月紀錄", "This month's entries", "今月の記録")
+    fun statsCategoryEntries(lang: Lang) = pick(lang, "分类明细", "分類明細", "By category", "カテゴリ別")
+    fun statsDailyEntries(lang: Lang) = pick(lang, "每日明细", "每日明細", "By day", "日別")
+    fun statsFocusSessions(lang: Lang) = pick(lang, "专注记录", "專注紀錄", "Focus sessions", "集中の記録")
+    fun statsTodoSummary(lang: Lang) = pick(lang, "待办完成情况", "待辦完成情況", "To-do completion", "ToDo の完了状況")
+
+    // ---- 其它 ----
+    fun back(lang: Lang) = pick(lang, "返回", "返回", "Back", "戻る")
+    fun checkUpdate(lang: Lang) = pick(lang, "检查更新", "檢查更新", "Check for updates", "更新を確認")
+    fun tabMore(lang: Lang) = pick(lang, "更多", "更多", "More", "もっと")
+
     // ---- 通用动作 ----
     fun save(lang: Lang) = pick(lang, "保存", "儲存", "Save", "保存")
     fun cancel(lang: Lang) = pick(lang, "取消", "取消", "Cancel", "キャンセル")
@@ -412,37 +486,13 @@ object AppStrings {
     fun paletteAmber(lang: Lang) = pick(lang, "琥珀", "琥珀", "Amber", "アンバー")
     fun paletteForest(lang: Lang) = pick(lang, "森林", "森林", "Forest", "フォレスト")
 
-    // ---- 应用锁 ----
-    fun appLockTitle(lang: Lang) = pick(lang, "应用锁", "應用鎖", "App lock", "アプリロック")
-    fun appLockHint(lang: Lang) = pick(
-        lang, "打开 App 时先验证 4~6 位数字密码，挡住随手翻看手机的人。",
-        "打開 App 時先驗證 4~6 位數字密碼，擋住隨手翻看手機的人。",
-        "Ask for a 4–6 digit passcode when the app opens, so a borrowed phone stays private.",
-        "アプリを開くときに 4〜6 桁のパスコードを確認します。"
-    )
-    fun appLockNeedsPin(lang: Lang) = pick(
-        lang, "请先设置密码，再打开应用锁", "請先設定密碼，再打開應用鎖",
-        "Set a passcode first, then turn the lock on", "先にパスコードを設定してください"
-    )
-    fun appLockSetPin(lang: Lang) = pick(lang, "设置密码", "設定密碼", "Set passcode", "パスコードを設定")
-    fun appLockChangePin(lang: Lang) = pick(lang, "修改密码", "修改密碼", "Change passcode", "パスコードを変更")
-    fun appLockRemovePin(lang: Lang) = pick(lang, "关闭并清除密码", "關閉並清除密碼", "Turn off and clear", "オフにして消去")
-    fun appLockPinSaved(lang: Lang) = pick(lang, "密码已保存", "密碼已儲存", "Passcode saved", "パスコードを保存しました")
-    fun appLockPinRemoved(lang: Lang) = pick(lang, "已关闭应用锁", "已關閉應用鎖", "App lock turned off", "アプリロックをオフにしました")
-    fun appLockPinRule(lang: Lang) = pick(
-        lang, "4~6 位数字", "4~6 位數字", "4–6 digits", "4〜6 桁の数字"
-    )
-    fun appLockEnterPin(lang: Lang) = pick(lang, "请输入密码", "請輸入密碼", "Enter passcode", "パスコードを入力")
-    fun appLockWrongPin(lang: Lang) = pick(lang, "密码不对，再试一次", "密碼不對，再試一次", "Wrong passcode, try again", "パスコードが違います")
-    fun appLockForgot(lang: Lang) = pick(
-        lang, "忘记密码只能清除 App 数据后重新开始（密码只存在本机，无法找回）",
-        "忘記密碼只能清除 App 資料後重新開始（密碼只存在本機，無法找回）",
-        "A forgotten passcode can only be reset by clearing the app's data — it is stored only on this device.",
-        "パスコードを忘れた場合、アプリのデータを消去するしかありません（端末内にのみ保存されます）。"
-    )
-    fun appLockUnlock(lang: Lang) = pick(lang, "解锁", "解鎖", "Unlock", "ロック解除")
-    fun appLockClearPin(lang: Lang) = pick(lang, "清除", "清除", "Clear", "クリア")
-    fun appLockBackspace(lang: Lang) = pick(lang, "退格", "退格", "Backspace", "1 文字消す")
+    // v1.9 新增的六套配色
+    fun paletteSky(lang: Lang) = pick(lang, "天蓝", "天藍", "Sky", "スカイ")
+    fun paletteMint(lang: Lang) = pick(lang, "薄荷", "薄荷", "Mint", "ミント")
+    fun paletteCoral(lang: Lang) = pick(lang, "珊瑚", "珊瑚", "Coral", "コーラル")
+    fun paletteCoffee(lang: Lang) = pick(lang, "咖啡", "咖啡", "Coffee", "コーヒー")
+    fun paletteGraphite(lang: Lang) = pick(lang, "石墨", "石墨", "Graphite", "グラファイト")
+    fun paletteSakura(lang: Lang) = pick(lang, "樱花", "櫻花", "Sakura", "さくら")
 
     // ---- 自动备份 ----
     fun autoBackupTitle(lang: Lang) =

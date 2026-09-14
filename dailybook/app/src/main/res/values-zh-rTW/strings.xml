@@ -18,4 +18,19 @@
     <!-- 版面裡的佔位文字，執行時會被真實數字覆蓋 -->
     <string name="widget_money_placeholder">¥0.00</string>
     <string name="widget_todo_focus_placeholder">待辦 0 · 專注 0 分鐘</string>
+
+    <!-- 考試倒數小工具：文字同樣跟隨系統語言 -->
+    <string name="widget_countdown_title">考試倒數</string>
+    <!-- %1$d = 剩餘整天數 -->
+    <string name="widget_countdown_days">%1$d 天</string>
+    <string name="widget_countdown_today">今天</string>
+    <string name="widget_countdown_passed">已結束</string>
+    <!-- 熱區：換下一場考試 -->
+    <string name="widget_countdown_switch">切換</string>
+    <!-- 沒有任何一場未來考試時的備用文字（上行 / 下行） -->
+    <string name="widget_countdown_empty">還沒有新增考試</string>
+    <string name="widget_countdown_empty_hint">點一下新增</string>
+    <!-- 版面裡的佔位文字，執行時會被真實資料覆蓋 -->
+    <string name="widget_countdown_days_placeholder">30 天</string>
+    <string name="widget_countdown_meta_placeholder">9月13日 · 資料結構 · 教三101</string>
 </resources>

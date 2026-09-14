@@ -18,4 +18,19 @@
     <!-- 布局里的占位文案，运行时会被真实数字覆盖 -->
     <string name="widget_money_placeholder">¥0.00</string>
     <string name="widget_todo_focus_placeholder">待办 0 · 专注 0 分钟</string>
+
+    <!-- 考试倒计时小组件：文字同样跟随系统语言 -->
+    <string name="widget_countdown_title">考试倒计时</string>
+    <!-- %1$d = 剩余整天数 -->
+    <string name="widget_countdown_days">%1$d 天</string>
+    <string name="widget_countdown_today">今天</string>
+    <string name="widget_countdown_passed">已结束</string>
+    <!-- 热区：换下一场考试 -->
+    <string name="widget_countdown_switch">切换</string>
+    <!-- 没有任何一场未来考试时的兜底文案（上行 / 下行） -->
+    <string name="widget_countdown_empty">还没有添加考试</string>
+    <string name="widget_countdown_empty_hint">点一下添加</string>
+    <!-- 布局里的占位文案，运行时会被真实数据覆盖 -->
+    <string name="widget_countdown_days_placeholder">30 天</string>
+    <string name="widget_countdown_meta_placeholder">9月13日 · 数据结构 · 教三101</string>
 </resources>

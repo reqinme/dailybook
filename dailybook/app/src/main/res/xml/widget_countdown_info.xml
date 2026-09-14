@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  考试倒计时小组件元数据。
+  180dp × 110dp ≈ 4×2 格，可横向 / 纵向拉伸（和第一个小组件的格子大小一致）。
+  updatePeriodMillis 30 分钟是系统允许的最小值，到点系统会唤起 onUpdate；
+  真正的即时刷新靠 CountdownWidgetProvider.refresh() 的广播。
+  previewImage 故意省略（没有预览图也不影响添加）。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:initialLayout="@layout/widget_countdown"
+    android:minHeight="110dp"
+    android:minWidth="180dp"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

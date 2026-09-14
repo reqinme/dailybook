@@ -14,6 +14,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -40,21 +41,22 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dailybook.app.data.SettingsStore
@@ -62,12 +64,38 @@ import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.LedgerScreen
-import com.dailybook.app.ui.SettingsScreen
+import com.dailybook.app.ui.settings.AboutScreen
+import com.dailybook.app.ui.settings.SettingsCategoryScreen
+import com.dailybook.app.ui.settings.SettingsHomeScreen
+import com.dailybook.app.ui.settings.UpdateScreen
 import com.dailybook.app.ui.StatsScreen
 import com.dailybook.app.ui.TimerScreen
 import com.dailybook.app.ui.TodoScreen
-import com.dailybook.app.security.AppLockStore
-import com.dailybook.app.ui.LockScreen
+import androidx.compose.ui.graphics.Color
+import com.dailybook.app.i18n.Lang
+import com.dailybook.app.ui.AppBackground
+import com.dailybook.app.ui.Navigator
+import com.dailybook.app.ui.Route
+import com.dailybook.app.ui.StatsDetailKind
+import com.dailybook.app.ui.StatsDetailScreen
+import com.dailybook.app.ui.Tab
+import com.dailybook.app.ui.life.HabitsScreen
+import com.dailybook.app.ui.life.ImportantDatesScreen
+import com.dailybook.app.ui.life.LifeScreen
+import com.dailybook.app.ui.life.MemosScreen
+import com.dailybook.app.ui.life.MilestonesScreen
+import com.dailybook.app.ui.settings.AboutScreen
+import com.dailybook.app.ui.settings.SettingsCategoryScreen
+import com.dailybook.app.ui.settings.SettingsHomeScreen
+import com.dailybook.app.ui.settings.UpdateScreen
+import com.dailybook.app.ui.study.AssignmentsScreen
+import com.dailybook.app.ui.study.AwardsScreen
+import com.dailybook.app.ui.study.CoursesScreen
+import com.dailybook.app.ui.study.CreditsScreen
+import com.dailybook.app.ui.study.ExamsScreen
+import com.dailybook.app.ui.study.GradesScreen
+import com.dailybook.app.ui.study.StudyScreen
+import com.dailybook.app.ui.study.WeeklyReportScreen
 import com.dailybook.app.ui.theme.DailyBookTheme
 
 class MainActivity : ComponentActivity() {
@@ -109,7 +137,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Tab(val title: String, val icon: ImageVector)
+// 标签页与页面路由的定义都在 ui/Nav.kt（Tab 枚举 / Route / Navigator），这里不再重复定义
 
 /** 宽屏阈值：>= 600dp（平板、横屏手机、折叠屏展开）改用侧边导航栏 */
 private const val WIDE_SCREEN_DP = 600
@@ -129,19 +157,18 @@ fun DailyBookApp(
     val themeMode by vm.settings.themeMode.collectAsStateWithLifecycle()
     val dynamicColor by vm.settings.dynamicColor.collectAsStateWithLifecycle()
     val palette by vm.settings.palette.collectAsStateWithLifecycle()
+    val backgroundUri by vm.settings.backgroundUri.collectAsStateWithLifecycle()
+    val backgroundScrim by vm.settings.backgroundScrim.collectAsStateWithLifecycle()
 
     val lang = LocalLang.current
 
-    val tabs = remember(lang) {
-        listOf(
-            Tab(AppStrings.tabLedger(lang), Icons.Filled.AccountBalanceWallet),
-            Tab(AppStrings.tabTodo(lang), Icons.Filled.Checklist),
-            Tab(AppStrings.tabFocus(lang), Icons.Filled.Timer),
-            Tab(AppStrings.tabStats(lang), Icons.Filled.BarChart),
-            Tab(AppStrings.tabSettings(lang), Icons.Filled.Settings)
-        )
-    }
+    val tabs = Tab.entries
     var selectedTab by remember { mutableIntStateOf(initialTab) }
+    // 页面栈：设置与各模块子页面都推到这里，返回键逐层退回（不引 navigation 库）
+    val backStack = remember { mutableStateListOf<Route>() }
+    val navigator = remember(backStack) { Navigator(backStack) }
+    val currentRoute = backStack.lastOrNull()
+    BackHandler(enabled = backStack.isNotEmpty()) { navigator.pop() }
     val wideScreen = LocalConfiguration.current.screenWidthDp >= WIDE_SCREEN_DP
 
     // 从桌面快捷方式进来时切到对应标签页（连续点同一个也会重新切）
@@ -149,40 +176,13 @@ fun DailyBookApp(
         if (tabRequestSeq > 0 && initialTab in tabs.indices) selectedTab = initialTab
     }
 
-    DailyBookTheme(themeMode = themeMode, palette = palette, dynamicColor = dynamicColor) {
-        // ---- 应用锁：开了锁就必须先验证密码，验证前不渲染任何数据 ----
-        val context = LocalContext.current
-        val appLock = remember { AppLockStore.get(context) }
-        val lockEnabled by appLock.enabled.collectAsStateWithLifecycle()
-        var unlocked by rememberSaveable { mutableStateOf(false) }
-
-        // 退到后台就重新上锁：再回来还要验证一次
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner) {
-            val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_STOP) unlocked = false
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
-
-        if (lockEnabled && !unlocked) {
-            LockScreen(
-                hasPin = appLock.hasPin(),
-                onUnlock = { pin ->
-                    val ok = appLock.verify(pin)
-                    if (ok) unlocked = true
-                    ok
-                },
-                onClear = {
-                    appLock.clear()
-                    unlocked = true
-                }
-            )
-            // 锁定期间不渲染主界面（也不去申请通知权限，免得权限弹窗盖在锁屏上）
-            return@DailyBookTheme
-        }
-
+    DailyBookTheme(
+        themeMode = themeMode,
+        palette = palette,
+        dynamicColor = dynamicColor,
+        // 有背景图时底与卡片半透明，图才透得出来
+        seeThrough = backgroundUri.isNotBlank()
+    ) {
         // Android 13+ 需要授权才能弹出「专注结束」通知
         val permissionLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission(),
@@ -197,92 +197,231 @@ fun DailyBookApp(
         // 专注计时中保持屏幕常亮
         KeepScreenOn(enabled = timerState.isRunning && timerState.settings.keepScreenOn)
 
-        if (wideScreen) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .safeDrawingPadding()
-            ) {
-                NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
-                    tabs.forEachIndexed { index, tab ->
-                        NavigationRailItem(
-                            selected = selectedTab == index,
-                            onClick = { selectedTab = index },
-                            icon = { Icon(tab.icon, contentDescription = tab.title) },
-                            label = { Text(tab.title) }
-                        )
-                    }
-                }
-                AppContent(
-                    selectedTab = selectedTab,
-                    state = state,
-                    timerState = timerState,
-                    vm = vm,
-                    timerVm = timerVm,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .weight(1f)
+        val title = currentRoute?.title(lang) ?: tabs[selectedTab].label(lang)
+
+        Scaffold(
+            // 有背景图时不要用实色底，否则会把图挡住
+            containerColor = if (backgroundUri.isBlank()) {
+                MaterialTheme.colorScheme.background
+            } else {
+                Color.Transparent
+            },
+            topBar = {
+                AppTopBar(
+                    title = title,
+                    showBack = currentRoute != null,
+                    onBack = { navigator.pop() },
+                    onSettings = { navigator.push(Route.SettingsHome) }
                 )
-            }
-        } else {
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                bottomBar = {
+            },
+            bottomBar = {
+                // 子页面打开时收起底部栏，把整屏让给内容
+                if (!wideScreen && currentRoute == null) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         tabs.forEachIndexed { index, tab ->
                             NavigationBarItem(
                                 selected = selectedTab == index,
                                 onClick = { selectedTab = index },
-                                icon = { Icon(tab.icon, contentDescription = tab.title) },
-                                label = { Text(tab.title) }
+                                icon = { Icon(tab.icon, contentDescription = tab.label(lang)) },
+                                label = { Text(tab.label(lang)) }
                             )
                         }
                     }
                 }
-            ) { innerPadding ->
+            }
+        ) { innerPadding ->
+            AppBackground(uriString = backgroundUri, scrimPercent = backgroundScrim) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // 宽屏用侧栏；窄屏靠底部栏（已在上面按需隐藏）
+                if (wideScreen) {
+                    NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
+                        tabs.forEachIndexed { index, tab ->
+                            NavigationRailItem(
+                                selected = selectedTab == index && currentRoute == null,
+                                onClick = {
+                                    backStack.clear()
+                                    selectedTab = index
+                                },
+                                icon = { Icon(tab.icon, contentDescription = tab.label(lang)) },
+                                label = { Text(tab.label(lang)) }
+                            )
+                        }
+                    }
+                }
                 AppContent(
+                    route = currentRoute,
                     selectedTab = selectedTab,
                     state = state,
                     timerState = timerState,
                     vm = vm,
                     timerVm = timerVm,
-                    modifier = Modifier.padding(innerPadding)
+                    navigator = navigator,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .weight(1f)
                 )
+            }
             }
         }
     }
 }
 
-/** 内容区：宽屏时限宽居中，切换标签带淡入淡出 */
+/** 顶部栏：子页面显示返回箭头，首页显示设置齿轮 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AppTopBar(
+    title: String,
+    showBack: Boolean,
+    onBack: () -> Unit,
+    onSettings: () -> Unit
+) {
+    val lang = LocalLang.current
+    TopAppBar(
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.background
+        ),
+        navigationIcon = {
+            if (showBack) {
+                IconButton(onClick = onBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = AppStrings.back(lang)
+                    )
+                }
+            }
+        },
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        actions = {
+            if (!showBack) {
+                IconButton(onClick = onSettings) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = AppStrings.tabSettings(lang)
+                    )
+                }
+            }
+        }
+    )
+}
+
+/** 子页面标题（顶部栏用） */
+private fun Route.title(lang: Lang): String = when (this) {
+    Route.SettingsHome -> AppStrings.settingsTitle(lang)
+    is Route.SettingsPage -> category.label(lang)
+    Route.About -> AppStrings.settingsAbout(lang)
+    Route.Update -> AppStrings.checkUpdate(lang)
+    Route.Habits -> AppStrings.tabHabits(lang)
+    Route.Memos -> AppStrings.tabMemos(lang)
+    is Route.MemoDetail -> AppStrings.tabMemos(lang)
+    Route.Milestones -> AppStrings.tabMilestones(lang)
+    Route.ImportantDates -> AppStrings.tabImportantDates(lang)
+    Route.Courses -> AppStrings.tabCourses(lang)
+    Route.Exams -> AppStrings.tabExams(lang)
+    Route.Assignments -> AppStrings.tabAssignments(lang)
+    Route.Grades -> AppStrings.tabGrades(lang)
+    Route.Credits -> AppStrings.tabCredits(lang)
+    Route.Awards -> AppStrings.tabAwards(lang)
+    Route.Words -> AppStrings.tabWords(lang)
+    Route.WeeklyReport -> AppStrings.tabWeeklyReport(lang)
+    is Route.StatsDetail -> kind.title(lang)
+}
+
+private fun StatsDetailKind.title(lang: Lang): String = when (this) {
+    StatsDetailKind.MONTH_ENTRIES -> AppStrings.statsMonthEntries(lang)
+    StatsDetailKind.CATEGORY_ENTRIES -> AppStrings.statsCategoryEntries(lang)
+    StatsDetailKind.DAILY_ENTRIES -> AppStrings.statsDailyEntries(lang)
+    StatsDetailKind.FOCUS_SESSIONS -> AppStrings.statsFocusSessions(lang)
+    StatsDetailKind.TODO_SUMMARY -> AppStrings.statsTodoSummary(lang)
+}
+
+/**
+ * 子页面路由表：集中一处，方便一眼看清有哪些页面；各页面自己不管导航。
+ */
+@Composable
+private fun ScreenHost(
+    route: Route,
+    state: UiState,
+    vm: MainViewModel,
+    timerVm: TimerViewModel,
+    nav: Navigator
+) {
+    when (route) {
+        Route.SettingsHome -> SettingsHomeScreen(state, vm, timerVm, nav)
+        is Route.SettingsPage -> SettingsCategoryScreen(route.category, state, vm, timerVm, nav)
+        Route.About -> AboutScreen(nav)
+        Route.Update -> UpdateScreen(nav)
+
+        Route.Habits -> HabitsScreen(state, vm, nav)
+        Route.Memos -> MemosScreen(state, vm, nav)
+        is Route.MemoDetail -> MemosScreen(state, vm, nav)
+        Route.Milestones -> MilestonesScreen(state, vm, nav)
+        Route.ImportantDates -> ImportantDatesScreen(state, vm, nav)
+
+        Route.Courses -> CoursesScreen(state, vm, nav)
+        Route.Exams -> ExamsScreen(state, vm, nav)
+        Route.Assignments -> AssignmentsScreen(state, vm, nav)
+        Route.Grades -> GradesScreen(state, vm, nav)
+        Route.Credits -> CreditsScreen(state, vm, nav)
+        Route.Awards -> AwardsScreen(state, vm, nav)
+        Route.Words -> HabitsScreen(state, vm, nav)
+        Route.WeeklyReport -> WeeklyReportScreen(state, vm, nav)
+
+        is Route.StatsDetail -> StatsDetailScreen(route.kind, state, vm, nav)
+    }
+}
+
+/** 内容区：子页面优先，否则渲染当前标签页；宽屏时限宽居中 */
 @Composable
 private fun AppContent(
+    route: Route?,
     selectedTab: Int,
     state: UiState,
     timerState: com.dailybook.app.timer.TimerUiState,
     vm: MainViewModel,
     timerVm: TimerViewModel,
+    navigator: Navigator,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    Box(modifier = modifier, contentAlignment = Alignment.TopCenter) {
         Box(
             modifier = Modifier
                 .fillMaxHeight()
                 .widthIn(max = MAX_CONTENT_WIDTH)
         ) {
+            // 用「路由或标签」当动画 key：从标签进入子页面也有同一套淡入淡出
             AnimatedContent(
-                targetState = selectedTab,
+                targetState = route ?: Tab.entries[selectedTab],
                 transitionSpec = {
                     fadeIn(animationSpec = tween(200)) togetherWith
                         fadeOut(animationSpec = tween(120))
                 },
-                label = "tabContent"
-            ) { tab ->
-                when (tab) {
-                    0 -> LedgerScreen(state = state, vm = vm)
-                    1 -> TodoScreen(state = state, vm = vm)
-                    2 -> TimerScreen(state = timerState, stats = state.focusStats, vm = timerVm)
-                    3 -> StatsScreen(state = state, vm = vm)
-                    else -> SettingsScreen(state = state, vm = vm, timerVm = timerVm)
+                label = "screenContent"
+            ) { target ->
+                when (target) {
+                    is Route -> ScreenHost(
+                        route = target,
+                        state = state,
+                        vm = vm,
+                        timerVm = timerVm,
+                        nav = navigator
+                    )
+
+                    is Tab -> when (target) {
+                        Tab.LEDGER -> LedgerScreen(state = state, vm = vm)
+                        Tab.LIFE -> LifeScreen(state = state, vm = vm, nav = navigator)
+                        Tab.STUDY -> StudyScreen(state = state, vm = vm, nav = navigator)
+                        Tab.FOCUS -> TimerScreen(
+                            state = timerState,
+                            stats = state.focusStats,
+                            vm = timerVm
+                        )
+
+                        Tab.STATS -> StatsScreen(state = state, vm = vm, nav = navigator)
+                    }
                 }
             }
         }

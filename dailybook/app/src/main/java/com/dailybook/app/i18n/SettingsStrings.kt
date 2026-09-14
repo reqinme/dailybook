@@ -227,52 +227,6 @@ object SettingsStrings {
         "システム連動の動的カラーがオンのため、この配色は使われません。オフにすると反映されます。"
     )
 
-    // ---- v1.8 安全：应用锁 ----
-    // 密码规则、忘记密码、按钮名与保存提示都在 AppStrings（锁屏页共用）。
-    fun sectionSecurity(lang: Lang) = pick(lang, "安全", "安全", "Security", "セキュリティ")
-    /** 开关打开但还没设过密码时的行内提示；%1$d 是 PinCode.MIN_LENGTH，关掉对话框后也留着 */
-    fun appLockEnableNeedsPin(lang: Lang, minLength: Int) = pickf(
-        lang,
-        "还没设置密码，应用锁没有打开；先设一个至少 %1\$d 位的数字密码。",
-        "還沒設定密碼，應用鎖沒有打開；先設一個至少 %1\$d 位的數字密碼。",
-        "No passcode yet, so the app lock is still off — set one of at least %1\$d digits first.",
-        "パスコードが未設定のためアプリロックはオフのままです。まず %1\$d 桁以上の数字を設定してください。",
-        minLength
-    )
-    fun appLockPinState(lang: Lang) = pick(
-        lang,
-        "已设置密码", "已設定密碼", "Passcode is set", "パスコード設定済み"
-    )
-    /** 密码改成别的长度也合法（4~6 位），所以这里说「重新设置」而不是「修改」 */
-    fun appLockChangePinHint(lang: Lang) = pick(
-        lang,
-        "重新设置会覆盖旧密码，旧密码立刻失效。",
-        "重新設定會覆蓋舊密碼，舊密碼立刻失效。",
-        "Saving a new passcode replaces the old one, which stops working right away.",
-        "設定し直すと古いパスコードは上書きされ、すぐ使えなくなります。"
-    )
-    /** 行内报错：setPin 返回 false（不是 4~6 位纯数字），用 %d 把规则写清楚 */
-    fun appLockPinInvalid(lang: Lang, minLength: Int, maxLength: Int) = pickf(
-        lang,
-        "密码要是 %d~%d 位数字，请重新输入。",
-        "密碼要是 %d~%d 位數字，請重新輸入。",
-        "The passcode must be %d–%d digits — please try again.",
-        "パスコードは %d〜%d 桁の数字にしてください。",
-        minLength, maxLength
-    )
-    fun appLockRemovePinTitle(lang: Lang) = pick(
-        lang,
-        "关闭应用锁并清除密码？", "關閉應用鎖並清除密碼？",
-        "Turn off the app lock and clear the passcode?", "アプリロックをオフにしてパスコードを消去しますか？"
-    )
-    fun appLockRemovePinMessage(lang: Lang) = pick(
-        lang,
-        "App 之后不再需要密码即可打开，已保存的密码会被删除，无法恢复。",
-        "App 之後不再需要密碼即可打開，已儲存的密碼會被刪除，無法復原。",
-        "The app will open without a passcode, and the saved passcode is deleted for good.",
-        "次回からパスコードなしで開けるようになり、保存済みのパスコードは完全に削除されます。"
-    )
-
     // ---- v1.8 数据：自动备份 ----
     // 标题、说明、按钮名、失败原因的人话都在 AppStrings（VM 的 Toast 也用它），这里只补两处。
     fun autoBackupFolderLabel(lang: Lang) =
@@ -284,5 +238,215 @@ object SettingsStrings {
         "還沒有選資料夾，自動備份不會開始；先選一個資料夾再打開開關。",
         "No folder chosen yet, so nothing is backed up — pick a folder first, then turn this on.",
         "フォルダが未選択のため自動バックアップは動きません。先にフォルダを選んでからオンにしてください。"
+    )
+
+    // =====================================================================
+    // v1.9 系统设置式改造：设置首页（分类列表）+ 各分类子页面
+    // =====================================================================
+
+    /**
+     * 设置首页的标题。
+     *
+     * 顶栏的标题走 [AppStrings.settingsTitle]（路由层用），这里放一份让设置页面
+     * 自己也能取到标题，不必到处 import 两张表。
+     */
+    fun homeTitle(lang: Lang) = pick(lang, "设置", "設定", "Settings", "設定")
+
+    /** 首页顶部小标题：「日常本 1.8」那种写法，版本号由 queryAppVersion() 拿出来 */
+    fun homeHeader(lang: Lang, appName: String, version: String) =
+        pickf(lang, "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", appName, version)
+
+    /** 首页分类列表的副标题（分类名用 SettingsCategory.label） */
+    fun homeCategoryHint(lang: Lang) = pick(
+        lang,
+        "点一项进入它的子页面，每个分类都有自己的页面。",
+        "點一項進入它的子頁面，每個分類都有自己的頁面。",
+        "Tap a category to open its own page.",
+        "項目をタップすると、そのカテゴリ専用のページが開きます。"
+    )
+
+    /** 背景图（还没做的功能）：行是灰色的，不要写成「已经能用」 */
+    fun backgroundImage(lang: Lang) = pick(lang, "背景图", "背景圖", "Background image", "背景画像")
+    fun notAvailableYet(lang: Lang) = pick(lang, "暂未开放", "尚未開放", "Not available yet", "未対応")
+    fun backgroundNotYetHint(lang: Lang) = pick(
+        lang,
+        "这个开关还没做，现在选了也不会有变化，下一版再补。",
+        "這個開關還沒做，現在選了也不會有變化，下一版再補。",
+        "This switch isn't built yet — choosing it does nothing for now; it's coming in a later version.",
+        "このスイッチはまだ実装していません。今は選んでも何も変わりません（後の版で対応します）。"
+    )
+
+    // ---- 外观：自定义背景图（SettingsStore.backgroundUri / backgroundScrim）----
+    /** 「已选好背景图」；没有背景图时复用 AppStrings.autoBackupNone（「还没有选择」） */
+    fun backgroundChosen(lang: Lang) =
+        pick(lang, "已设置背景图", "已設定背景圖", "Background image set", "背景画像を設定済み")
+
+    fun backgroundPick(lang: Lang) = pick(lang, "选择图片", "選擇圖片", "Choose image", "画像を選ぶ")
+
+    /** 背景图上的蒙版浓度：越大文字越清楚、图越淡 */
+    fun backgroundScrim(lang: Lang) = pick(lang, "蒙版浓度", "蒙版濃度", "Scrim opacity", "マスクの濃さ")
+
+    /**
+     * LabeledSlider 自己会把 %d 换成当前数值，所以这里给出的是模板。
+     *
+     * ⚠️ 只写一个 `%`：这个模板**不过 String.format**（是 LabeledSlider 用
+     * `valueText.replace("%d", …)` 直接换的），写成 `%%` 会在界面上原样显示成「30%%」。
+     */
+    fun percentTemplate(lang: Lang) = pick(lang, "%d%", "%d%", "%d%", "%d%")
+
+    fun backgroundHint(lang: Lang) = pick(
+        lang,
+        "图片只在手机本地读取，不会复制进 App 也不会外传；蒙版越浓，界面文字越清楚。",
+        "圖片只在手機本機讀取，不會複製進 App 也不會外傳；蒙版越濃，介面文字越清楚。",
+        "The image is read on this phone only — it is never copied into the app or uploaded. A stronger scrim keeps text readable.",
+        "画像は端末内でのみ読み込み、アプリに複製も送信もしません。マスクを濃くすると文字が読みやすくなります。"
+    )
+
+    // ---- 学习设置（学期起始日 / GPA 口径 / 上课提醒）----
+    fun termStart(lang: Lang) = pick(lang, "学期起始日", "學期起始日", "Term start date", "学期の開始日")
+    fun gpaScale(lang: Lang) = pick(lang, "GPA 计算口径", "GPA 計算口徑", "GPA scale", "GPA の方式")
+    fun classReminder(lang: Lang) = pick(lang, "上课提醒", "上課提醒", "Class reminders", "授業リマインダー")
+    fun minutesBefore(lang: Lang) = pick(lang, "提前多少分钟", "提前多少分鐘", "How many minutes early", "何分前に知らせるか")
+
+    /** 「4.0 分制」/「5.0 分制」 */
+    fun gpaScaleValue(lang: Lang, scale: String) =
+        pickf(lang, "%s 分制", "%s 分制", "%s scale", "%s 方式", scale)
+
+    /** 「提前 %d 分钟」 */
+    fun minutesBeforeValue(lang: Lang, minutes: Int) =
+        pickf(lang, "提前 %d 分钟", "提前 %d 分鐘", "%d min before", "%d 分前", minutes)
+
+    /**
+     * 学习这三项还没有对应的偏好设置：SettingsStore 里没有键，VM 也没有写入入口，
+     * 所以行是灰的，并明确说出「存在哪里」而不是假装已经生效。
+     */
+    fun studyNotConfiguredHint(lang: Lang) = pick(
+        lang,
+        "这个设置还没接线：偏好里还没有对应的键，现在改不了。课表里每门课可以单独填学期起始日。",
+        "這個設定還沒接線：偏好裡還沒有對應的鍵，現在改不了。課表裡每門課可以單獨填學期起始日。",
+        "Not wired up yet — there is no preference behind it, so it can't be changed here. Each course in the timetable has its own term start date.",
+        "まだ配線されていません（対応する設定項目がありません）。時間割の各授業には学期開始日を個別に設定できます。"
+    )
+
+    // ---- 关于与更新 ----
+    /** 关于卡片里的第一行：应用名 + 版本号 */
+    fun aboutAppLine(lang: Lang, appName: String, version: String) =
+        pickf(lang, "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", appName, version)
+
+    fun aboutPackage(lang: Lang) = pick(lang, "包名", "套件名稱", "Package", "パッケージ名")
+
+    fun aboutVersionName(lang: Lang) = pick(lang, "版本号", "版本號", "Version", "バージョン")
+    fun aboutVersionCode(lang: Lang) = pick(lang, "版本代码", "版本代碼", "Version code", "バージョンコード")
+
+    /** 「版本信息」那一节的标题（别和 [aboutVersionName] 的行标签重复） */
+    fun aboutVersionSection(lang: Lang) =
+        pick(lang, "版本信息", "版本資訊", "Version info", "バージョン情報")
+
+    fun aboutMinAndroid(lang: Lang) = pick(lang, "支持的最低 Android 版本", "支援的最低 Android 版本", "Minimum Android version", "対応する最小の Android バージョン")
+
+    /** 「Android 8.0（API 26）及以上」，数值来自 Build 常量 */
+    fun aboutMinAndroidValue(lang: Lang, release: String, api: Int) = pickf(
+        lang,
+        "Android %1\$s（API %2\$d）及以上", "Android %1\$s（API %2\$d）及以上",
+        "Android %1\$s (API %2\$d) and newer", "Android %1\$s（API %2\$d）以上",
+        release, api
+    )
+
+    /** 版本号旁边的小字：数字是从系统里读的，不是我写死的 */
+    fun aboutVersionSource(lang: Lang) = pick(
+        lang,
+        "版本号由系统从安装包里读出，代码里不写死。",
+        "版本號由系統從安裝檔裡讀出，程式碼裡不寫死。",
+        "The version comes from the installed package at runtime — it is not hard-coded.",
+        "バージョンはインストール済みパッケージから実行時に読み取ります（コードに固定していません）。"
+    )
+
+    /** 系统查不到版本时的兜底显示（不写死一个假版本号） */
+    fun versionUnknown(lang: Lang) = pick(lang, "未知", "未知", "Unknown", "不明")
+
+    fun aboutDescription(lang: Lang) = pick(
+        lang,
+        "记账、待办、专注计时、习惯与学习管理合在一起的一个小工具。",
+        "記帳、待辦、專注計時、習慣與學習管理合在一起的一個小工具。",
+        "One small app that puts a ledger, to-dos, a focus timer, habits and study planning together.",
+        "家計簿・ToDo・集中タイマー・習慣・学習管理を 1 つにまとめた小さなアプリです。"
+    )
+
+    /** 关于页上「数据与联网」那一节的标题 */
+    fun aboutDataTitle(lang: Lang) = pick(
+        lang, "数据与联网", "資料與連網", "Data & network", "データと通信"
+    )
+
+    /** 关于页最要紧的一句：数据只在本地 */
+    fun aboutAllLocal(lang: Lang) = pick(
+        lang,
+        "所有数据只存在这台手机里，App 没有申请联网权限，也不会把任何内容上传到服务器；导出与备份都由你自己挑位置保存。",
+        "所有資料只存在這台手機裡，App 沒有申請連網權限，也不會把任何內容上傳到伺服器；匯出與備份都由你自己挑位置儲存。",
+        "Everything stays on this phone: the app does not request the internet permission and never uploads anything. Exports and backups are saved wherever you choose.",
+        "データはすべてこの端末の中だけに保存されます。アプリはインターネット権限を要求せず、何も送信しません。書き出しやバックアップの保存先は自分で選べます。"
+    )
+
+    // ---- 开源许可 ----
+    fun licenseTitle(lang: Lang) = pick(lang, "开源许可", "開源授權", "Open-source licences", "オープンソースライセンス")
+
+    fun licenseText(lang: Lang) = pick(
+        lang,
+        "界面用 Jetpack Compose，数据库用 Room，偏好设置用 DataStore，都是 Apache-2.0 许可。图表和图片处理是自己画的，没有引入任何第三方图表库或图片库，所以安装包里没有它们的许可条文要列。",
+        "介面用 Jetpack Compose，資料庫用 Room，偏好設定用 DataStore，都是 Apache-2.0 授權。圖表和圖片處理是自己畫的，沒有引入任何第三方圖表庫或圖片庫，所以安裝檔裡沒有它們的授權條文要列。",
+        "The interface uses Jetpack Compose, the database uses Room and preferences use DataStore — all Apache-2.0. Charts and image handling are drawn in-house, so no third-party chart or image library ships with the app and there are no extra licence notices to list.",
+        "UI は Jetpack Compose、データベースは Room、設定は DataStore を使用しており、いずれも Apache-2.0 です。グラフや画像処理は自前で描いているため、サードパーティのチャート・画像ライブラリは同梱しておらず、追加のライセンス表示はありません。"
+    )
+
+    // ---- 检查更新 ----
+    /** 「当前版本：1.8（9）」，和关于页用的是同一份数据 */
+    fun updateCurrentVersion(lang: Lang, version: String) =
+        pickf(lang, "当前版本：%s", "目前版本：%s", "Current version: %s", "現在のバージョン：%s", version)
+
+    fun updateOpenReleases(lang: Lang) =
+        pick(lang, "打开浏览器看发布页", "開啟瀏覽器看發佈頁", "Open the releases page in a browser", "ブラウザでリリースページを開く")
+
+    fun updateUrl(lang: Lang) =
+        pick(lang, "发布页地址", "發佈頁網址", "Releases page", "リリースページ")
+
+    /** 没有联网权限，所以「检查更新」只能是打开浏览器 */
+    fun updateNoNetworkNote(lang: Lang) = pick(
+        lang,
+        "这个 App 没有申请联网权限，所以没法在应用内自己查新版本：点下面的按钮会交给系统浏览器打开发布页，新版本和安装包都在那里。",
+        "這個 App 沒有申請連網權限，所以沒辦法在應用內自己查新版本：點下面的按鈕會交給系統瀏覽器開啟發佈頁，新版本和安裝包都在那裡。",
+        "This app has no internet permission, so it cannot check for updates by itself: the button below hands the releases page to your browser, where new versions and the APK are published.",
+        "このアプリはインターネット権限を持たないため、アプリ内で更新を確認できません。下のボタンでシステムのブラウザにリリースページを開きます。新しい版と APK はそこで公開しています。"
+    )
+
+    fun updateApkNote(lang: Lang) = pick(
+        lang,
+        "只从上面这个发布页下载安装包；安装时系统会要求你确认来源。",
+        "只從上面這個發佈頁下載安裝檔；安裝時系統會要求你確認來源。",
+        "Only download the APK from that releases page; Android will ask you to confirm the source when installing.",
+        "APK は上記のリリースページからのみ入手してください。インストール時に Android が提供元の確認を求めます。"
+    )
+
+    /** 设备上没有任何浏览器能接这个 Intent 时的提示，不崩 */
+    fun updateNoBrowser(lang: Lang) = pick(
+        lang,
+        "这台设备上没有能打开网页的浏览器，请自己手动访问：",
+        "這台裝置上沒有能開啟網頁的瀏覽器，請自己手動前往：",
+        "No browser on this device can open the page — please visit it manually:",
+        "この端末にはページを開けるブラウザがありません。手動でアクセスしてください："
+    )
+
+    /** 学期起始日说明：课表的「第几周」靠它换算 */
+    fun termStartHint(lang: Lang) = pick(
+        lang, "课表的「第几周」用它换算成真实日期；每门课也可以单独填",
+        "課表的「第幾週」用它換算成真實日期；每門課也可以單獨填",
+        "Turns the timetable's week numbers into real dates; each course can override it",
+        "時間割の「第何週」を実際の日付に換算します。授業ごとに上書きもできます"
+    )
+
+    /** 上课提醒说明 */
+    fun classReminderHint(lang: Lang) = pick(
+        lang, "按课表在每节课开始前提醒一次（先填学期起始日，并给课程填好周次）",
+        "按課表在每節課開始前提醒一次（先填學期起始日，並給課程填好週次）",
+        "Reminds you before each class on your timetable (set the term start date and each course's weeks first)",
+        "時間割に沿って授業の前に通知します（先に学期開始日と各授業の週を設定してください）"
     )
 }

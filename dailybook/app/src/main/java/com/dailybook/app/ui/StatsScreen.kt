@@ -53,7 +53,6 @@ import com.dailybook.app.R
 import com.dailybook.app.UiState
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
-import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LocalLang
@@ -71,9 +70,6 @@ import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.formatMonthLabel
-import java.time.Instant
-import java.time.YearMonth
-import java.time.ZoneId
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -85,11 +81,6 @@ private enum class ExportFormat(val mime: String, val extension: String) {
     IMAGE("image/png", "png"),
     HTML("text/html", "html"),
     PDF("application/pdf", "pdf")
-}
-
-private fun clockText(millis: Long): String {
-    val time = Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).toLocalTime()
-    return "%02d:%02d".format(time.hour, time.minute)
 }
 
 // ==================== v1.7：智能洞察 / 月报的数据拼装 ====================
@@ -225,6 +216,7 @@ private fun monthlyReportData(state: UiState, lang: Lang): MonthlyReportData {
 fun StatsScreen(
     state: UiState,
     vm: MainViewModel,
+    nav: Navigator,
     modifier: Modifier = Modifier
 ) {
     val lang = LocalLang.current
@@ -340,13 +332,49 @@ fun StatsScreen(
         )
         Spacer(Modifier.height(8.dp))
 
-        MonthSwitcher(
+        // ==================== 年 / 月快速切换 ====================
+        // 中间的年月可以点开选年月，一次跳到很久以前 / 以后，不用一路点箭头
+        MonthYearBar(
+            yearMonth = state.month,
             label = AppStrings.yearMonth(lang, state.month.year, state.month.monthValue),
             onPrev = vm::previousMonth,
             onNext = vm::nextMonth,
-            onToday = vm::goToCurrentMonth,
-            showToday = state.month != YearMonth.now()
+            onPick = { picked -> vm.moveToMonth(picked) },
+            onToday = vm::goToCurrentMonth
         )
+
+        // ==================== 记录入口 ====================
+        // 五份原始列表（本月记录 / 分类明细 / 每日明细 / 专注记录 / 待办完成情况）不在这里铺开，
+        // 点标题进 StatsDetailScreen 看整份；这一页只留汇总和可视化，不会被长列表拖散。
+        Spacer(Modifier.height(8.dp))
+        SectionCard(title = StatsStrings.recordsTitle(lang)) {
+            // 卡片自带 18dp 内边距，入口行不再自己缩进，点按区域直接铺满卡片宽度
+            StatsDetailRow(
+                label = AppStrings.statsMonthEntries(lang),
+                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.MONTH_ENTRIES)) },
+                horizontalPadding = 0.dp
+            )
+            StatsDetailRow(
+                label = AppStrings.statsCategoryEntries(lang),
+                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.CATEGORY_ENTRIES)) },
+                horizontalPadding = 0.dp
+            )
+            StatsDetailRow(
+                label = AppStrings.statsDailyEntries(lang),
+                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.DAILY_ENTRIES)) },
+                horizontalPadding = 0.dp
+            )
+            StatsDetailRow(
+                label = AppStrings.statsFocusSessions(lang),
+                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.FOCUS_SESSIONS)) },
+                horizontalPadding = 0.dp
+            )
+            StatsDetailRow(
+                label = AppStrings.statsTodoSummary(lang),
+                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.TODO_SUMMARY)) },
+                horizontalPadding = 0.dp
+            )
+        }
 
         // ==================== 记账 ====================
         Spacer(Modifier.height(8.dp))
@@ -720,15 +748,23 @@ fun StatsScreen(
             FocusWeekChart(focus.recentDays)
         }
 
+        // 专注的明细（今天做了哪几段）也不在这一页铺开，改成入口按钮：
+        // 进来能看到本月汇总、今天的每一条（含「中断」标记）和按待办的投入时间
         Spacer(Modifier.height(14.dp))
         SectionCard(title = StatsStrings.todayDetailTitle(lang)) {
+            StatsDetailRow(
+                label = AppStrings.statsFocusSessions(lang),
+                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.FOCUS_SESSIONS)) },
+                horizontalPadding = 0.dp
+            )
             if (focus.todaySessions.isEmpty()) {
                 HintText(StatsStrings.noFocusToday(lang))
             } else {
-                focus.todaySessions.forEachIndexed { index, session ->
-                    if (index > 0) Spacer(Modifier.height(10.dp))
-                    SessionRow(session)
-                }
+                Text(
+                    text = StatsStrings.todayFocusMinutes(lang, focus.todayMinutes),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -774,56 +810,8 @@ fun StatsScreen(
     }
 }
 
-@Composable
-private fun SessionRow(session: FocusSessionEntity) {
-    val lang = LocalLang.current
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${clockText(session.startedAtMillis)} - ${clockText(session.endedAtMillis)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = StatsStrings.sessionMinutes(lang, session.minutes),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                // 中途停止 / 跳过的记录挂一个淡色小标签，正常走完的什么都不加
-                if (session.interrupted) {
-                    Spacer(Modifier.width(6.dp))
-                    InterruptedTag(StatsStrings.sessionInterrupted(lang))
-                }
-            }
-        }
-        if (session.taskTitle.isNotBlank()) {
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "🎯 ${session.taskTitle}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-/** 淡色的「中断」小标签 */
-@Composable
-private fun InterruptedTag(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 1.dp)
-    )
-}
+// 原本这里的 SessionRow / InterruptedTag（专注时段明细）随「今日专注明细」的列表
+// 一起搬到了 StatsDetailScreen 的 FOCUS_SESSIONS 里，这一页只留汇总与入口按钮。
 
 private fun insightEmoji(kind: InsightKind): String = when (kind) {
     InsightKind.SPENT_MORE -> "🔥"
@@ -1347,9 +1335,10 @@ private fun FocusHeatmap(weeks: List<List<HeatCell>>, maxMinutes: Int) {
 }
 
 @Composable
-private fun HintText(text: String) {
+internal fun HintText(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
+        modifier = modifier,
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

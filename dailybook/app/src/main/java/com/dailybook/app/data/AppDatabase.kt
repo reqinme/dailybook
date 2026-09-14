@@ -13,9 +13,20 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TodoEntity::class,
         FocusSessionEntity::class,
         SubtaskEntity::class,
-        RecurringEntity::class
+        RecurringEntity::class,
+        MemoEntity::class,
+        MilestoneEntity::class,
+        ImportantDateEntity::class,
+        HabitEntity::class,
+        HabitLogEntity::class,
+        CourseEntity::class,
+        ExamEntity::class,
+        StudyTaskEntity::class,
+        GradeEntity::class,
+        CreditTargetEntity::class,
+        AwardEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,6 +36,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun focusSessionDao(): FocusSessionDao
     abstract fun subtaskDao(): SubtaskDao
     abstract fun recurringDao(): RecurringDao
+    abstract fun memoDao(): MemoDao
+    abstract fun milestoneDao(): MilestoneDao
+    abstract fun importantDateDao(): ImportantDateDao
+    abstract fun habitDao(): HabitDao
+    abstract fun courseDao(): CourseDao
+    abstract fun examDao(): ExamDao
+    abstract fun studyDao(): StudyDao
 
     companion object {
         /** v1.1 → v1.2：新增专注记录表（老用户的记账/待办数据完整保留） */
@@ -118,6 +136,138 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v1.7 → v1.8：待办新增「课程名」列（作业/DDL 复用待办，老数据为空串） */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `todos` ADD COLUMN `courseName` TEXT NOT NULL DEFAULT ''"
+                )
+
+                // ---- 生活模块 ----
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `memos` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`content` TEXT NOT NULL, " +
+                        "`pinned` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `milestones` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`dateMillis` INTEGER NOT NULL, " +
+                        "`imageUri` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `important_dates` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`dateMillis` INTEGER NOT NULL, " +
+                        "`lunar` INTEGER NOT NULL, " +
+                        "`lunarMonth` INTEGER NOT NULL, " +
+                        "`lunarDay` INTEGER NOT NULL, " +
+                        "`lunarLeap` INTEGER NOT NULL, " +
+                        "`repeat` TEXT NOT NULL, " +
+                        "`remindDaysBefore` INTEGER NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `habits` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`emoji` TEXT NOT NULL, " +
+                        "`targetPerDay` INTEGER NOT NULL, " +
+                        "`unit` TEXT NOT NULL, " +
+                        "`daysPerWeek` INTEGER NOT NULL, " +
+                        "`sortOrder` INTEGER NOT NULL, " +
+                        "`archived` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `habit_logs` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`habitId` INTEGER NOT NULL, " +
+                        "`dateMillis` INTEGER NOT NULL, " +
+                        "`count` INTEGER NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+
+                // ---- 学习模块 ----
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `courses` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`teacher` TEXT NOT NULL, " +
+                        "`location` TEXT NOT NULL, " +
+                        "`dayOfWeek` INTEGER NOT NULL, " +
+                        "`startPeriod` INTEGER NOT NULL, " +
+                        "`endPeriod` INTEGER NOT NULL, " +
+                        "`weeks` TEXT NOT NULL, " +
+                        "`termStartMillis` INTEGER NOT NULL, " +
+                        "`colorIndex` INTEGER NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `exams` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`courseName` TEXT NOT NULL, " +
+                        "`examMillis` INTEGER NOT NULL, " +
+                        "`location` TEXT NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `study_tasks` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`examId` INTEGER NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`done` INTEGER NOT NULL, " +
+                        "`dateMillis` INTEGER NOT NULL, " +
+                        "`sortOrder` INTEGER NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `grades` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`term` TEXT NOT NULL, " +
+                        "`courseName` TEXT NOT NULL, " +
+                        "`credit` REAL NOT NULL, " +
+                        "`score` TEXT NOT NULL, " +
+                        "`scoreKind` TEXT NOT NULL, " +
+                        "`point` REAL NOT NULL, " +
+                        "`category` TEXT NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `credit_targets` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`category` TEXT NOT NULL, " +
+                        "`required` REAL NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `awards` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, " +
+                        "`dateMillis` INTEGER NOT NULL, " +
+                        "`level` TEXT NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`imageUri` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL)"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -133,7 +283,8 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_2_3,
                         MIGRATION_3_4,
                         MIGRATION_4_5,
-                        MIGRATION_5_6
+                        MIGRATION_5_6,
+                        MIGRATION_6_7
                     )
                     .build()
                     .also { instance = it }

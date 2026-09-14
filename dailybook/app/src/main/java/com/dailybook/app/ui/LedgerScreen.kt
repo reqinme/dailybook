@@ -8,7 +8,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -131,6 +130,26 @@ private fun categoryOptions(
     TxType.INCOME -> income.ifEmpty { Categories.INCOME }
 }
 
+/**
+ * 跳到指定的某个月。
+ *
+ * 本来最省事的做法是给 MainViewModel 加一个 `fun moveToMonth(target: YearMonth)`，
+ * 但这一版约定不改 MainViewModel，所以用现成的三个月份动作推过去：
+ * 差几个月就走几次 next / previous（每次都是一次状态赋值，最多几十次），差 0 就什么都不做。
+ */
+private fun MainViewModel.moveToMonth(target: YearMonth) {
+    val current = uiState.value.month
+    var delta = (target.year - current.year) * 12 + (target.monthValue - current.monthValue)
+    while (delta > 0) {
+        nextMonth()
+        delta--
+    }
+    while (delta < 0) {
+        previousMonth()
+        delta++
+    }
+}
+
 /** 日历格子里的短金额：整元不带小数，大数字用 k 收窄 */
 private fun compactAmount(cents: Long): String {
     if (cents <= 0L) return ""
@@ -175,12 +194,13 @@ fun LedgerScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            MonthSwitcher(
+            MonthYearBar(
+                yearMonth = state.month,
                 label = AppStrings.yearMonth(lang, state.month.year, state.month.monthValue),
                 onPrev = vm::previousMonth,
                 onNext = vm::nextMonth,
-                onToday = vm::goToCurrentMonth,
-                showToday = state.month != YearMonth.now()
+                onPick = { picked -> vm.moveToMonth(picked) },
+                onToday = vm::goToCurrentMonth
             )
 
             MonthSummaryCard(
@@ -231,7 +251,7 @@ fun LedgerScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
 
-            LedgerContent(
+            LedgerList(
                 state = state,
                 vm = vm,
                 view = view,
@@ -298,67 +318,91 @@ fun LedgerScreen(
     }
 }
 
-/** 内容区：日历视图或流水列表（空态文案会提到当前筛选） */
+/**
+ * 内容区：日历视图 + 流水列表，**同一个 LazyColumn**（内容区里唯一的滚动面）。
+ *
+ * 这一版把日历挪进 LazyColumn 当第一个 item。
+ * 之前日历是 LazyColumn 的兄弟节点，上面那几张固定高度的汇总 / 筛选卡加上日历正好占满一屏，
+ * 列表就被挤成 0 高度，而外层 Column 又不会滚 —— 于是「打开日历筛选后不能上下滑动」。
+ * 现在整屏只有一个滚动面：日历、当天筛选条、每天的流水都在里面，多余的内容一律靠滚动看到，
+ * 没有任何一块被裁掉，也没有谁再需要 weight(1f) 去抢高度。
+ */
 @Composable
-private fun ColumnScope.LedgerContent(
+private fun LedgerList(
     state: UiState,
     vm: MainViewModel,
     view: LedgerView,
     lang: Lang,
     onEdit: (TransactionEntity) -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        // 底部留出 FAB 的空间，最后一行不会被悬浮按钮压住
+        contentPadding = PaddingValues(bottom = 104.dp)
     ) {
         if (view == LedgerView.CALENDAR) {
-            MonthCalendar(
-                days = state.calendarDays,
-                maxExpense = state.maxCalendarExpense,
-                selected = state.dayFilter,
-                lang = lang,
-                onPick = { date -> vm.setDayFilter(date) }
-            )
+            item(key = "month-calendar") {
+                Column(Modifier.fillMaxWidth()) {
+                    MonthCalendar(
+                        days = state.calendarDays,
+                        maxExpense = state.maxCalendarExpense,
+                        selected = state.dayFilter,
+                        lang = lang,
+                        onPick = { date -> vm.setDayFilter(date) }
+                    )
+                    HintText(
+                        text = LedgerStrings.calendarScrollHint(lang),
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 2.dp, bottom = 6.dp)
+                    )
+                }
+            }
+        }
+
+        // 点过日历里的某一天才出现：说明当前按哪一天筛，✕ 或再点同一天取消
+        if (state.dayFilter != null) {
+            item(key = "day-filter") { DayFilterCard(state = state, vm = vm) }
         }
 
         if (!state.hasMonthData) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                EmptyHint(
-                    emoji = when {
-                        state.isSearching -> "🔍"
-                        state.tagFilter != null -> "🏷️"
-                        state.dayFilter != null -> "📅"
-                        state.accountFilter != null -> "💳"
-                        else -> "🧾"
-                    },
-                    title = when {
-                        state.isSearching -> LedgerStrings.emptySearchTitle(lang)
-                        state.isLedgerFiltered -> LedgerStrings.emptyNoMatchTitle(lang)
-                        else -> LedgerStrings.emptyMonthTitle(lang)
-                    },
-                    subtitle = when {
-                        state.isSearching -> LedgerStrings.emptySearchSubtitle(lang)
-                        state.isLedgerFiltered -> LedgerStrings.emptyNoMatchHint(lang)
-                        else -> LedgerStrings.emptyMonthSubtitle(lang)
-                    }
-                )
+            item(key = "empty") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(260.dp)
+                        .padding(horizontal = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    EmptyHint(
+                        emoji = when {
+                            state.isSearching -> "🔍"
+                            state.tagFilter != null -> "🏷️"
+                            state.dayFilter != null -> "📅"
+                            state.accountFilter != null -> "💳"
+                            else -> "🧾"
+                        },
+                        title = when {
+                            state.isSearching -> LedgerStrings.emptySearchTitle(lang)
+                            state.isLedgerFiltered -> LedgerStrings.emptyNoMatchTitle(lang)
+                            else -> LedgerStrings.emptyMonthTitle(lang)
+                        },
+                        subtitle = when {
+                            state.isSearching -> LedgerStrings.emptySearchSubtitle(lang)
+                            state.isLedgerFiltered -> LedgerStrings.emptyNoMatchHint(lang)
+                            else -> LedgerStrings.emptyMonthSubtitle(lang)
+                        }
+                    )
+                }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 104.dp)
-            ) {
-                state.monthGroups.forEach { group ->
-                    item(key = "day-${group.date}") { DayHeader(group) }
-                    items(items = group.items, key = { it.id }) { tx ->
-                        TransactionRow(
-                            tx = tx,
-                            onEdit = { onEdit(tx) },
-                            onDelete = { vm.deleteTransaction(tx) },
-                            onToggleReimbursed = { vm.toggleReimbursed(tx) }
-                        )
-                    }
+            state.monthGroups.forEach { group ->
+                item(key = "day-${group.date}") { DayHeader(group) }
+                items(items = group.items, key = { it.id }) { tx ->
+                    TransactionRow(
+                        tx = tx,
+                        onEdit = { onEdit(tx) },
+                        onDelete = { vm.deleteTransaction(tx) },
+                        onToggleReimbursed = { vm.toggleReimbursed(tx) }
+                    )
                 }
             }
         }
@@ -626,8 +670,14 @@ private fun BudgetCard(
     }
 }
 
+/**
+ * 日期分组标题（今天 / 昨天 / 9月13日 周六）。
+ *
+ * internal 而不是 private：统计详情页的「本月记录 / 每日明细」也用同一套日期文案与排版，
+ * 这样两个月度列表看起来是一回事。
+ */
 @Composable
-private fun DayHeader(group: DayGroup) {
+internal fun DayHeader(group: DayGroup) {
     val lang = LocalLang.current
 
     Row(
@@ -654,12 +704,19 @@ private fun DayHeader(group: DayGroup) {
     }
 }
 
+/**
+ * 流水行：记账页里可编辑 / 可删除，统计详情页里是只读的。
+ * [readOnly] 为 true 时不显示删除按钮、报销徽标也不可点，只保留排版（分类徽标、账户、备注、标签、金额）。
+ * 不传 [onClick] 时用 [onEdit] 作为整行的点击行为。
+ */
 @Composable
-private fun TransactionRow(
+internal fun TransactionRow(
     tx: TransactionEntity,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onToggleReimbursed: () -> Unit
+    readOnly: Boolean = false,
+    onEdit: () -> Unit = {},
+    onDelete: () -> Unit = {},
+    onToggleReimbursed: () -> Unit = {},
+    onClick: () -> Unit = onEdit
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
     val lang = LocalLang.current
@@ -671,7 +728,7 @@ private fun TransactionRow(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .background(MaterialTheme.colorScheme.surface, Shapes.card)
-            .clickable { onEdit() }
+            .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -692,6 +749,7 @@ private fun TransactionRow(
                     Spacer(Modifier.width(6.dp))
                     ReimbursementBadge(
                         reimbursed = tx.reimbursed,
+                        clickable = !readOnly,
                         onToggle = onToggleReimbursed
                     )
                 }
@@ -745,16 +803,18 @@ private fun TransactionRow(
                 )
             }
         }
-        IconButton(onClick = { confirmDelete = true }) {
-            Icon(
-                imageVector = Icons.Filled.DeleteOutline,
-                contentDescription = AppStrings.delete(lang),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        if (!readOnly) {
+            IconButton(onClick = { confirmDelete = true }) {
+                Icon(
+                    imageVector = Icons.Filled.DeleteOutline,
+                    contentDescription = AppStrings.delete(lang),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 
-    if (confirmDelete) {
+    if (confirmDelete && !readOnly) {
         ConfirmDialog(
             title = LedgerStrings.deleteTitle(lang),
             text = LedgerStrings.deleteBody(lang, tx.category, formatAmount(tx.amountCents), tx.note),
@@ -765,10 +825,14 @@ private fun TransactionRow(
     }
 }
 
-/** 待报销 / 已报销 小徽标：自己是一个可点区域，不会触发整行的编辑 */
+/**
+ * 待报销 / 已报销 小徽标：在记账页自己是一个可点区域，不会触发整行的编辑；
+ * 统计详情页里只做展示（clickable = false），点它不会改任何数据。
+ */
 @Composable
 private fun ReimbursementBadge(
     reimbursed: Boolean,
+    clickable: Boolean = true,
     onToggle: () -> Unit
 ) {
     val lang = LocalLang.current
@@ -783,7 +847,7 @@ private fun ReimbursementBadge(
         maxLines = 1,
         modifier = Modifier
             .clip(Shapes.badge)
-            .clickable { onToggle() }
+            .then(if (clickable) Modifier.clickable { onToggle() } else Modifier)
             .background(accent.copy(alpha = 0.12f), Shapes.badge)
             .padding(horizontal = 6.dp, vertical = 2.dp)
     )

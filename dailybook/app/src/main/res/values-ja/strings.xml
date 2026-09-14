@@ -18,4 +18,20 @@
     <!-- レイアウト内のプレースホルダー。実行時に実際の数値へ置き換わります -->
     <string name="widget_money_placeholder">¥0.00</string>
     <string name="widget_todo_focus_placeholder">ToDo 0 · 集中 0 分</string>
+
+    <!-- 試験カウントダウンウィジェット：文字は同じく**システム**の言語に従います -->
+    <!-- 4×2 マスは幅 180dp しかないため、全角の長い見出しは省略記号で切られます。短い見出しにしています -->
+    <string name="widget_countdown_title">試験まで</string>
+    <!-- %1$d = 残りの日数 -->
+    <string name="widget_countdown_days">%1$d 日</string>
+    <string name="widget_countdown_today">今日</string>
+    <string name="widget_countdown_passed">終了</string>
+    <!-- ホットスポット：次の試験に切り替え -->
+    <string name="widget_countdown_switch">切替</string>
+    <!-- 今後の試験が 1 件もないときの案内（上段 / 下段） -->
+    <string name="widget_countdown_empty">試験がありません</string>
+    <string name="widget_countdown_empty_hint">タップして追加</string>
+    <!-- レイアウト内のプレースホルダー。実行時に実際のデータへ置き換わります -->
+    <string name="widget_countdown_days_placeholder">30 日</string>
+    <string name="widget_countdown_meta_placeholder">9月13日 · データ構造 · 教三101</string>
 </resources>

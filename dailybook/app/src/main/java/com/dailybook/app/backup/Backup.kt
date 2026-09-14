@@ -3,11 +3,25 @@ package com.dailybook.app.backup
 import android.content.Context
 import android.net.Uri
 import com.dailybook.app.data.Accounts
+import com.dailybook.app.data.AwardEntity
+import com.dailybook.app.data.AwardKind
+import com.dailybook.app.data.CourseEntity
+import com.dailybook.app.data.CreditTargetEntity
 import com.dailybook.app.data.Currencies
+import com.dailybook.app.data.DateRepeat
 import com.dailybook.app.data.DbSnapshot
+import com.dailybook.app.data.ExamEntity
 import com.dailybook.app.data.FocusSessionEntity
+import com.dailybook.app.data.GradeEntity
+import com.dailybook.app.data.HabitEntity
+import com.dailybook.app.data.HabitLogEntity
+import com.dailybook.app.data.ImportantDateEntity
+import com.dailybook.app.data.MemoEntity
+import com.dailybook.app.data.MilestoneEntity
 import com.dailybook.app.data.RecurringEntity
 import com.dailybook.app.data.RepeatRule
+import com.dailybook.app.data.ScoreKind
+import com.dailybook.app.data.StudyTaskEntity
 import com.dailybook.app.data.SubtaskEntity
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
@@ -40,9 +54,11 @@ object Backup {
      * 2：记账多了「账户」，待办多了「重复规则」
      * 3：记账多了「标签 / 待报销 / 多币种」，专注记录多了「中断」
      * 4：多了「子任务」与「周期记账」，待办多了「优先级 / 手动排序」
+     * 5：多了生活与学习两个模块——「备忘录 / 大事记 / 重要日期 / 习惯 + 打卡记录 /
+     *    课表 / 考试 + 复习计划 / 成绩 / 学分要求 / 奖助记录」
      * 读取时兼容更旧的版本（缺字段就取默认值），比当前版本更新的才拒绝。
      */
-    const val FORMAT = 4
+    const val FORMAT = 5
 
     // ---------- 导出 ----------
 
@@ -110,6 +126,8 @@ object Backup {
         })
 
         appendExtras(root, snapshot)
+        appendLife(root, snapshot)
+        appendStudy(root, snapshot)
 
         return root.toString(2)
     }
@@ -141,6 +159,170 @@ object Backup {
                     put("rule", item.rule)
                     put("nextDueMillis", item.nextDueMillis)
                     put("enabled", item.enabled)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+    }
+
+    /**
+     * 生活模块的四张表（备忘录 / 大事记 / 重要日期 / 习惯 + 打卡记录）。
+     * 字段名一律用实体自己的名字，读回来时能一一对上。
+     */
+    private fun appendLife(root: JSONObject, snapshot: DbSnapshot) {
+        root.put("memos", JSONArray().apply {
+            snapshot.memos.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("content", item.content)
+                    put("pinned", item.pinned)
+                    put("createdAt", item.createdAt)
+                    put("updatedAt", item.updatedAt)
+                })
+            }
+        })
+        root.put("milestones", JSONArray().apply {
+            snapshot.milestones.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("note", item.note)
+                    put("dateMillis", item.dateMillis)
+                    put("imageUri", item.imageUri)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("importantDates", JSONArray().apply {
+            snapshot.importantDates.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("dateMillis", item.dateMillis)
+                    put("lunar", item.lunar)
+                    put("lunarMonth", item.lunarMonth)
+                    put("lunarDay", item.lunarDay)
+                    put("lunarLeap", item.lunarLeap)
+                    // 枚举一律写名字，不写界面上显示的文案
+                    put("repeat", item.repeat)
+                    put("remindDaysBefore", item.remindDaysBefore)
+                    put("note", item.note)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("habits", JSONArray().apply {
+            snapshot.habits.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("name", item.name)
+                    put("emoji", item.emoji)
+                    put("targetPerDay", item.targetPerDay)
+                    put("unit", item.unit)
+                    put("daysPerWeek", item.daysPerWeek)
+                    put("sortOrder", item.sortOrder)
+                    put("archived", item.archived)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("habitLogs", JSONArray().apply {
+            snapshot.habitLogs.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("habitId", item.habitId)
+                    put("dateMillis", item.dateMillis)
+                    put("count", item.count)
+                    put("note", item.note)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+    }
+
+    /** 学习模块的五张表（课表 / 考试 + 复习计划 / 成绩 / 学分要求 / 奖助记录） */
+    private fun appendStudy(root: JSONObject, snapshot: DbSnapshot) {
+        root.put("courses", JSONArray().apply {
+            snapshot.courses.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("name", item.name)
+                    put("teacher", item.teacher)
+                    put("location", item.location)
+                    put("dayOfWeek", item.dayOfWeek)
+                    put("startPeriod", item.startPeriod)
+                    put("endPeriod", item.endPeriod)
+                    put("weeks", item.weeks)
+                    put("termStartMillis", item.termStartMillis)
+                    put("colorIndex", item.colorIndex)
+                    put("note", item.note)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("exams", JSONArray().apply {
+            snapshot.exams.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("name", item.name)
+                    put("courseName", item.courseName)
+                    put("examMillis", item.examMillis)
+                    put("location", item.location)
+                    put("note", item.note)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("studyTasks", JSONArray().apply {
+            snapshot.studyTasks.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("examId", item.examId)
+                    put("title", item.title)
+                    put("done", item.done)
+                    put("dateMillis", item.dateMillis)
+                    put("sortOrder", item.sortOrder)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("grades", JSONArray().apply {
+            snapshot.grades.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("term", item.term)
+                    put("courseName", item.courseName)
+                    put("credit", item.credit)
+                    put("score", item.score)
+                    put("scoreKind", item.scoreKind)
+                    put("point", item.point)
+                    put("category", item.category)
+                    put("note", item.note)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("creditTargets", JSONArray().apply {
+            snapshot.creditTargets.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("category", item.category)
+                    put("required", item.required)
+                    put("createdAt", item.createdAt)
+                })
+            }
+        })
+        root.put("awards", JSONArray().apply {
+            snapshot.awards.forEach { item ->
+                put(JSONObject().apply {
+                    put("id", item.id)
+                    put("title", item.title)
+                    put("kind", item.kind)
+                    put("dateMillis", item.dateMillis)
+                    put("level", item.level)
+                    put("note", item.note)
+                    put("imageUri", item.imageUri)
                     put("createdAt", item.createdAt)
                 })
             }
@@ -244,6 +426,144 @@ object Backup {
                         createdAt = o.optLong("createdAt", 0L)
                     )
                 }.filter { it.amountCents > 0L },
+                // ---- v5：生活模块 ----
+                memos = root.optJSONArray("memos").mapObjects { o ->
+                    MemoEntity(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", ""),
+                        content = o.optString("content", ""),
+                        pinned = o.optBoolean("pinned", false),
+                        createdAt = o.optLong("createdAt", 0L),
+                        updatedAt = o.optLong("updatedAt", 0L)
+                    )
+                }.filter { it.title.isNotBlank() },
+                milestones = root.optJSONArray("milestones").mapObjects { o ->
+                    MilestoneEntity(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", ""),
+                        note = o.optString("note", ""),
+                        dateMillis = o.optLong("dateMillis", 0L),
+                        imageUri = o.optString("imageUri", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.title.isNotBlank() },
+                importantDates = root.optJSONArray("importantDates").mapObjects { o ->
+                    ImportantDateEntity(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", ""),
+                        dateMillis = o.optLong("dateMillis", 0L),
+                        lunar = o.optBoolean("lunar", false),
+                        lunarMonth = o.optInt("lunarMonth", 1),
+                        lunarDay = o.optInt("lunarDay", 1),
+                        lunarLeap = o.optBoolean("lunarLeap", false),
+                        // 认不出来的重复方式退回「每年」，不丢这条日期
+                        repeat = runCatching { DateRepeat.valueOf(o.optString("repeat")) }
+                            .getOrDefault(DateRepeat.YEARLY).name,
+                        remindDaysBefore = o.optInt("remindDaysBefore", 0),
+                        note = o.optString("note", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.title.isNotBlank() },
+                habits = root.optJSONArray("habits").mapObjects { o ->
+                    HabitEntity(
+                        id = o.optLong("id", 0L),
+                        name = o.optString("name", ""),
+                        emoji = o.optString("emoji", "✅"),
+                        targetPerDay = o.optInt("targetPerDay", 1).coerceAtLeast(1),
+                        unit = o.optString("unit", "次"),
+                        daysPerWeek = o.optInt("daysPerWeek", 7).coerceIn(1, 7),
+                        sortOrder = o.optLong("sortOrder", 0L),
+                        archived = o.optBoolean("archived", false),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.name.isNotBlank() },
+                habitLogs = root.optJSONArray("habitLogs").mapObjects { o ->
+                    HabitLogEntity(
+                        id = o.optLong("id", 0L),
+                        habitId = o.optLong("habitId", 0L),
+                        dateMillis = o.optLong("dateMillis", 0L),
+                        count = o.optInt("count", 0),
+                        note = o.optString("note", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.habitId > 0L && it.dateMillis > 0L },
+                // ---- v5：学习模块 ----
+                courses = root.optJSONArray("courses").mapObjects { o ->
+                    CourseEntity(
+                        id = o.optLong("id", 0L),
+                        name = o.optString("name", ""),
+                        teacher = o.optString("teacher", ""),
+                        location = o.optString("location", ""),
+                        dayOfWeek = o.optInt("dayOfWeek", 1).coerceIn(1, 7),
+                        startPeriod = o.optInt("startPeriod", 1),
+                        endPeriod = o.optInt("endPeriod", 2),
+                        weeks = o.optString("weeks", ""),
+                        termStartMillis = o.optLong("termStartMillis", 0L),
+                        colorIndex = o.optInt("colorIndex", 0),
+                        note = o.optString("note", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.name.isNotBlank() },
+                exams = root.optJSONArray("exams").mapObjects { o ->
+                    ExamEntity(
+                        id = o.optLong("id", 0L),
+                        name = o.optString("name", ""),
+                        courseName = o.optString("courseName", ""),
+                        examMillis = o.optLong("examMillis", 0L),
+                        location = o.optString("location", ""),
+                        note = o.optString("note", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.name.isNotBlank() },
+                studyTasks = root.optJSONArray("studyTasks").mapObjects { o ->
+                    StudyTaskEntity(
+                        id = o.optLong("id", 0L),
+                        examId = o.optLong("examId", 0L),
+                        title = o.optString("title", ""),
+                        done = o.optBoolean("done", false),
+                        dateMillis = o.optLong("dateMillis", 0L),
+                        sortOrder = o.optLong("sortOrder", 0L),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.title.isNotBlank() },
+                grades = root.optJSONArray("grades").mapObjects { o ->
+                    GradeEntity(
+                        id = o.optLong("id", 0L),
+                        term = o.optString("term", ""),
+                        courseName = o.optString("courseName", ""),
+                        credit = o.optDouble("credit", 0.0),
+                        score = o.optString("score", ""),
+                        // 认不出来的计分方式退回百分制
+                        scoreKind = runCatching { ScoreKind.valueOf(o.optString("scoreKind")) }
+                            .getOrDefault(ScoreKind.PERCENT).name,
+                        point = o.optDouble("point", 0.0),
+                        category = o.optString("category", "必修"),
+                        note = o.optString("note", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.courseName.isNotBlank() },
+                creditTargets = root.optJSONArray("creditTargets").mapObjects { o ->
+                    CreditTargetEntity(
+                        id = o.optLong("id", 0L),
+                        category = o.optString("category", ""),
+                        required = o.optDouble("required", 0.0),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.category.isNotBlank() },
+                awards = root.optJSONArray("awards").mapObjects { o ->
+                    AwardEntity(
+                        id = o.optLong("id", 0L),
+                        title = o.optString("title", ""),
+                        // 认不出来的类别退回「其他」
+                        kind = runCatching { AwardKind.valueOf(o.optString("kind")) }
+                            .getOrDefault(AwardKind.OTHER).name,
+                        dateMillis = o.optLong("dateMillis", 0L),
+                        level = o.optString("level", ""),
+                        note = o.optString("note", ""),
+                        imageUri = o.optString("imageUri", ""),
+                        createdAt = o.optLong("createdAt", 0L)
+                    )
+                }.filter { it.title.isNotBlank() },
             ),
             budgetCents = root.optLong("budgetCents", 0L).coerceAtLeast(0L)
         )

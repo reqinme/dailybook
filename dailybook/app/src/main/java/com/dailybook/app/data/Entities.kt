@@ -157,6 +157,8 @@ data class TodoEntity(
     val priority: String = TodoPriority.NORMAL.name,
     /** 手动排序用的次序（越小越靠前），0 表示还没排过 */
     val sortOrder: Long = 0L,
+    /** 属于哪门课（作业 / DDL 用；普通待办为空串） */
+    val courseName: String = "",
     val createdAt: Long
 ) {
     val repeat: RepeatRule

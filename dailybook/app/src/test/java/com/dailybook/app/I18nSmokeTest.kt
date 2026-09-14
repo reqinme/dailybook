@@ -4,8 +4,10 @@ import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.CommonStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LedgerStrings
+import com.dailybook.app.i18n.LifeStrings
 import com.dailybook.app.i18n.SettingsStrings
 import com.dailybook.app.i18n.StatsStrings
+import com.dailybook.app.i18n.StudyStrings
 import com.dailybook.app.i18n.TodoStrings
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,7 +30,10 @@ class I18nSmokeTest {
         "TodoStrings" to TodoStrings,
         "StatsStrings" to StatsStrings,
         "SettingsStrings" to SettingsStrings,
-        "CommonStrings" to CommonStrings
+        "CommonStrings" to CommonStrings,
+        // 新模块的文案表也必须登记进来，否则「模板缺参数」这类崩溃会漏检
+        "LifeStrings" to LifeStrings,
+        "StudyStrings" to StudyStrings
     )
 
     @Test

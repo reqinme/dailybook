@@ -30,15 +30,20 @@ import com.dailybook.app.DayBar
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.data.Categories
+import com.dailybook.app.data.DayCount
+import com.dailybook.app.timer.TimerUiState
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
 import java.time.YearMonth
 import kotlin.math.roundToInt
 
+private val WEEKDAY_LABELS = listOf("一", "二", "三", "四", "五", "六", "日")
+
 @Composable
 fun StatsScreen(
     state: UiState,
+    timerState: TimerUiState,
     vm: MainViewModel,
     modifier: Modifier = Modifier
 ) {
@@ -64,6 +69,7 @@ fun StatsScreen(
             showToday = state.month != YearMonth.now()
         )
 
+        // ==================== 记账 ====================
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -150,6 +156,62 @@ fun StatsScreen(
                         SliceRow(slice, incomeColor())
                     }
                 }
+            }
+        }
+
+        // ==================== 专注 ====================
+        Spacer(Modifier.height(22.dp))
+        Text(
+            text = "专注",
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(6.dp))
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Row(modifier = Modifier.padding(vertical = 18.dp)) {
+                StatBlock(
+                    "今日",
+                    timerState.stats.todayCount.toString(),
+                    MaterialTheme.colorScheme.primary,
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    "连续",
+                    timerState.stats.streak.toString(),
+                    MaterialTheme.colorScheme.secondary,
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    "累计",
+                    timerState.stats.totalCount.toString(),
+                    MaterialTheme.colorScheme.onSurface,
+                    Modifier.weight(1f)
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 14.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(Modifier.padding(18.dp)) {
+                Text(
+                    text = "最近 7 天完成的专注",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(16.dp))
+                FocusWeekChart(timerState.stats.recentDays)
             }
         }
 
@@ -251,6 +313,54 @@ private fun DailyChart(bars: List<DayBar>, maxCents: Long) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FocusWeekChart(days: List<DayCount>) {
+    val maxCount = (days.maxOfOrNull { it.count } ?: 0).coerceAtLeast(1)
+    val maxBarHeight = 108.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        days.forEach { day ->
+            val fraction = day.count.toFloat() / maxCount.toFloat()
+            val height = (maxBarHeight * fraction).coerceAtLeast(if (day.count > 0) 4.dp else 2.dp)
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                Text(
+                    text = if (day.count > 0) day.count.toString() else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(
+                    modifier = Modifier
+                        .width(20.dp)
+                        .height(height)
+                        .background(
+                            if (day.count > 0) MaterialTheme.colorScheme.secondary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)
+                        )
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = WEEKDAY_LABELS[day.date.dayOfWeek.value - 1],
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

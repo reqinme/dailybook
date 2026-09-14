@@ -3,7 +3,9 @@ package com.dailybook.app.ui
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -47,6 +50,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -55,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.CategoryBudgetRow
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
+import com.dailybook.app.backup.AutoBackup
 import com.dailybook.app.backup.Backup
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
@@ -68,8 +73,12 @@ import com.dailybook.app.i18n.LedgerStrings
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.i18n.SettingsStrings
 import com.dailybook.app.i18n.TodoStrings
+import com.dailybook.app.security.AppLockStore
+import com.dailybook.app.security.PinCode
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.theme.ThemeMode
+import com.dailybook.app.ui.theme.ThemePalette
+import com.dailybook.app.ui.theme.lightSchemeOf
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.formatDueLabel
 import com.dailybook.app.util.parseAmountToCents
@@ -78,9 +87,13 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 /** 关于卡片里的版本号，「日常本 v1.4」里的 1.4 由它拼出来 */
 private const val APP_VERSION = "1.4"
+
+/** 自动备份「上次成功」的时间写法：本地时区的 2026-09-14 21:05，四语都用同一套数字格式 */
+private val BACKUP_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
 private enum class ClearTarget {
     TRANSACTIONS,
@@ -122,6 +135,18 @@ fun SettingsScreen(
     val summaryMode by vm.settings.summaryMode.collectAsStateWithLifecycle()
     val budgetAlert by vm.settings.budgetAlert.collectAsStateWithLifecycle()
     val focusGoal by vm.settings.focusGoal.collectAsStateWithLifecycle()
+    // v1.8：配色方案（跟随系统取色打开时会被系统取色盖掉，见 paletteDynamicHint）
+    val palette by vm.settings.palette.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    // v1.8：应用锁与自动备份都是「本机偏好」，单例直接拿，不走 VM
+    val appLock = remember { AppLockStore.get(context) }
+    val appLockEnabled by appLock.enabled.collectAsStateWithLifecycle()
+    val autoBackup = remember { AutoBackup.get(context) }
+    val autoBackupEnabled by autoBackup.enabled.collectAsStateWithLifecycle()
+    val autoBackupFolder by autoBackup.folderUri.collectAsStateWithLifecycle()
+    val lastBackupAt by autoBackup.lastBackupAt.collectAsStateWithLifecycle()
+    val lastBackupFailure by autoBackup.lastFailure.collectAsStateWithLifecycle()
 
     var clearing by remember { mutableStateOf<ClearTarget?>(null) }
     var showBudgetDialog by remember { mutableStateOf(false) }
@@ -132,8 +157,14 @@ fun SettingsScreen(
     var showCategoryManage by remember { mutableStateOf(false) }
     var showRecurring by remember { mutableStateOf(false) }
     var showReminderTime by remember { mutableStateOf(false) }
+    // 应用锁：是否开着设密码对话框、是「改」还是「设」，以及「还没密码」那行提示是否要显示
+    var showPinDialog by remember { mutableStateOf(false) }
+    var changePinMode by remember { mutableStateOf(false) }
+    var needsPin by remember { mutableStateOf(false) }
+    var confirmRemovePin by remember { mutableStateOf(false) }
+    // 自动备份：想在没选文件夹时就打开开关时给出的行内提示
+    var needsFolder by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val message by vm.message.collectAsStateWithLifecycle()
     LaunchedEffect(message) {
         message?.let {
@@ -162,6 +193,21 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> uri?.let { vm.importLedgerCsv(it) } }
 
+    // 自动备份的文件夹：OpenDocumentTree 选一个目录，授权由 AutoBackup.setFolder 持久化。
+    // 用户在系统界面里挑目录，所以同样不需要任何存储权限。
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let {
+            autoBackup.setFolder(it)
+            // 刚才是「想开但没文件夹」才被拦下来的话，选完文件夹就直接打开开关
+            if (needsFolder) {
+                autoBackup.setEnabled(true)
+                needsFolder = false
+            }
+        }
+    }
+
     val timerState by timerVm.state.collectAsStateWithLifecycle()
     val focusSettings = timerState.settings
 
@@ -189,6 +235,110 @@ fun SettingsScreen(
             }
             Spacer(Modifier.height(10.dp))
             LabeledSwitch(SettingsStrings.dynamicColor(lang), dynamicColor) { vm.setDynamicColor(it) }
+
+            Spacer(Modifier.height(12.dp))
+            FieldLabel(AppStrings.paletteTitle(lang))
+            Spacer(Modifier.height(6.dp))
+            ChipFlow {
+                ThemePalette.entries.forEach { entry ->
+                    PaletteChip(entry, palette) { vm.settings.setPalette(it) }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            // 只在动态取色开着的时候提示：配色会被系统取色盖掉；不禁用芯片（用户可以先选好）
+            if (dynamicColor) {
+                Text(
+                    text = SettingsStrings.paletteDynamicHint(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+        // v1.8 安全：应用锁（设密码 / 改密码 / 关锁清密码）
+        SectionCard(title = SettingsStrings.sectionSecurity(lang)) {
+            LabeledSwitch(AppStrings.appLockTitle(lang), appLockEnabled) { wanted ->
+                if (!wanted) {
+                    // 关掉开关：不清密码（清密码是下面那一行的事）
+                    appLock.setEnabled(false)
+                } else if (appLock.hasPin()) {
+                    appLock.setEnabled(true)
+                    needsPin = false
+                } else {
+                    // 想开但还没设过密码：不打开开关，改成弹「设置密码」；取消就什么都不改
+                    needsPin = true
+                    changePinMode = false
+                    showPinDialog = true
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    if (appLock.hasPin()) {
+                        Text(
+                            text = SettingsStrings.appLockPinState(lang),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = SettingsStrings.appLockChangePinHint(lang),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = AppStrings.appLockNeedsPin(lang),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                TextButton(onClick = {
+                    changePinMode = true
+                    needsPin = false
+                    showPinDialog = true
+                }) {
+                    Text(
+                        if (appLock.hasPin()) AppStrings.appLockChangePin(lang)
+                        else AppStrings.appLockSetPin(lang)
+                    )
+                }
+            }
+
+            if (needsPin && !appLockEnabled) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = SettingsStrings.appLockEnableNeedsPin(lang, PinCode.MIN_LENGTH),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (appLock.hasPin()) {
+                Spacer(Modifier.height(2.dp))
+                TextButton(onClick = { confirmRemovePin = true }) {
+                    Text(AppStrings.appLockRemovePin(lang))
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = AppStrings.appLockHint(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = AppStrings.appLockForgot(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(14.dp))
@@ -500,6 +650,95 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // ---- v1.8 自动备份：挑一个文件夹，开 App / 每晚提醒时自动写一份进去 ----
+            Spacer(Modifier.height(16.dp))
+            LabeledSwitch(AppStrings.autoBackupTitle(lang), autoBackupEnabled) { wanted ->
+                if (wanted && autoBackupFolder == null) {
+                    // 没有文件夹就没有备份目标：不打开开关，只把「先选文件夹」提示留在卡片上
+                    needsFolder = true
+                } else {
+                    needsFolder = false
+                    autoBackup.setEnabled(wanted)
+                }
+            }
+            if (needsFolder && autoBackupFolder == null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = AppStrings.autoBackupNeedsFolder(lang) + " · " + SettingsStrings.autoBackupNeedsFolderHint(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = SettingsStrings.autoBackupFolderLabel(lang),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = autoBackup.folderLabel() ?: AppStrings.autoBackupNone(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { folderLauncher.launch(null) },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        if (autoBackupFolder == null) AppStrings.autoBackupPickFolder(lang)
+                        else AppStrings.autoBackupChangeFolder(lang)
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        // 结果（成功 / 没配好 / 失败原因）由 VM 用 Toast 说，这里不自己报成功
+                        vm.backupNow()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) { Text(AppStrings.autoBackupNow(lang)) }
+            }
+
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = if (lastBackupAt > 0L) {
+                    AppStrings.autoBackupLast(
+                        lang,
+                        Instant.ofEpochMilli(lastBackupAt)
+                            .atZone(ZoneId.systemDefault())
+                            .format(BACKUP_TIME_FORMAT)
+                    )
+                } else {
+                    AppStrings.autoBackupNever(lang)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            lastBackupFailure?.let { code ->
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    // 原因码翻成人话再套进「上次备份失败：…」；失败不会伪装成成功
+                    text = AppStrings.autoBackupFailed(lang, AppStrings.backupFailure(lang, code.name)),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = AppStrings.autoBackupHint(lang),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (autoBackupEnabled && autoBackupFolder == null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = SettingsStrings.autoBackupNeedsFolderHint(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Text(SettingsStrings.clearData(lang), style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(8.dp))
@@ -631,6 +870,43 @@ fun SettingsScreen(
         )
     }
 
+    // 应用锁：设 / 改密码。开着这个对话框的时候开关还是关的（先把密码设好才算数）
+    if (showPinDialog) {
+        AppLockPinDialog(
+            change = changePinMode,
+            onConfirm = { pin ->
+                val saved = appLock.setPin(pin)
+                if (saved) {
+                    // setPin 成功时顺手把开关打开；这里按屏幕既有的 Toast 写法报一句「已保存」。
+                    // 不改 MainViewModel（只读没读到的公开入口），所以用屏幕自己的 Toast 直接说。
+                    needsPin = false
+                    Toast.makeText(context, AppStrings.appLockPinSaved(lang), Toast.LENGTH_LONG).show()
+                }
+                saved
+            },
+            onDismiss = {
+                showPinDialog = false
+                // 取消 = 什么都没发生，只把「还没设密码」留在卡片上说明为什么没打开
+                if (!appLockEnabled && !appLock.hasPin()) needsPin = true
+            }
+        )
+    }
+
+    if (confirmRemovePin) {
+        ConfirmDialog(
+            title = SettingsStrings.appLockRemovePinTitle(lang),
+            text = SettingsStrings.appLockRemovePinMessage(lang),
+            confirmText = AppStrings.appLockRemovePin(lang),
+            onConfirm = {
+                appLock.clear()
+                confirmRemovePin = false
+                needsPin = false
+                Toast.makeText(context, AppStrings.appLockPinRemoved(lang), Toast.LENGTH_LONG).show()
+            },
+            onDismiss = { confirmRemovePin = false }
+        )
+    }
+
     if (showBudgetDialog) {
         AlertDialog(
             onDismissRequest = { showBudgetDialog = false },
@@ -691,6 +967,145 @@ private fun ThemeChip(
         selected = current == mode,
         onClick = { onSelect(mode) },
         label = { Text(label) }
+    )
+}
+
+/**
+ * 配色芯片：前面一颗小圆点是这套配色**自己的**主色，选的不是当前这一套也能看出颜色。
+ *
+ * 点色取自 `lightSchemeOf(spec()).primary`（浅色方案的主色）。spec()/lightSchemeOf 都是
+ * internal，和本文件同一个模块，所以能直接调；深色模式下这几颗点仍然用浅色主色 ——
+ * 它们是「色卡」而不是主题色，固定用浅色那支反而六颗都好认。名字用 AppStrings.paletteXxx。
+ */
+@Composable
+private fun PaletteChip(
+    palette: ThemePalette,
+    current: ThemePalette,
+    onSelect: (ThemePalette) -> Unit
+) {
+    val lang = LocalLang.current
+    FilterChip(
+        selected = current == palette,
+        onClick = { onSelect(palette) },
+        label = { Text(palette.label(lang)) },
+        leadingIcon = {
+            Box(
+                Modifier
+                    .size(12.dp)
+                    .background(paletteDotColor(palette), CircleShape)
+            )
+        }
+    )
+}
+
+/** 配色的展示名（AppStrings 里的六个） */
+private fun ThemePalette.label(lang: Lang): String = when (this) {
+    ThemePalette.TEAL -> AppStrings.paletteTeal(lang)
+    ThemePalette.INDIGO -> AppStrings.paletteIndigo(lang)
+    ThemePalette.VIOLET -> AppStrings.paletteViolet(lang)
+    ThemePalette.ROSE -> AppStrings.paletteRose(lang)
+    ThemePalette.AMBER -> AppStrings.paletteAmber(lang)
+    ThemePalette.FOREST -> AppStrings.paletteForest(lang)
+}
+
+/** 色卡上的那颗点：这套配色的浅色主色 */
+private fun paletteDotColor(palette: ThemePalette): Color = lightSchemeOf(palette.spec()).primary
+
+/**
+ * 应用锁的设置 / 修改密码对话框。
+ *
+ * [change] = true 表示「修改密码」，否则是「设置密码」；两种都只填一个新密码
+ * （4~6 位数字，PinCode 自己会归一化全角数字）。
+ * [onConfirm] 返回 false 表示 `AppLockStore.setPin` 拒绝了这次输入，对话框留着并给一行错误，
+ * 不自己判断成功 —— 存没存上以 AppLockStore 为准。
+ */
+@Composable
+private fun AppLockPinDialog(
+    change: Boolean,
+    onConfirm: (String) -> Boolean,
+    onDismiss: () -> Unit
+) {
+    val lang = LocalLang.current
+    var pinText by remember { mutableStateOf("") }
+    var rejected by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                if (change) AppStrings.appLockChangePin(lang)
+                else AppStrings.appLockSetPin(lang)
+            )
+        },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = pinText,
+                    onValueChange = { input ->
+                        // 只收数字，长度卡在 PinCode.MAX_LENGTH 以内；全角数字由 PinCode 归一化
+                        if (input.length <= PinCode.MAX_LENGTH && input.all { it.isDigit() }) {
+                            pinText = input
+                            rejected = false
+                        }
+                    },
+                    label = {
+                        Text(
+                            if (change) AppStrings.appLockChangePin(lang)
+                            else AppStrings.appLockSetPin(lang)
+                        )
+                    },
+                    singleLine = true,
+                    isError = rejected,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = AppStrings.appLockPinRule(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (rejected) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = SettingsStrings.appLockPinInvalid(
+                            lang,
+                            PinCode.MIN_LENGTH,
+                            PinCode.MAX_LENGTH
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+                if (change) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = SettingsStrings.appLockChangePinHint(lang),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = AppStrings.appLockForgot(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                // 成功由调用方关对话框；失败就留在这儿，错误行靠 rejected 显示
+                if (onConfirm(pinText)) {
+                    onDismiss()
+                } else {
+                    rejected = true
+                }
+            }) { Text(AppStrings.save(lang)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(AppStrings.cancel(lang)) }
+        }
     )
 }
 

@@ -214,4 +214,75 @@ object SettingsStrings {
         "取り込みで既存のデータは置き換わりません。ファイル内の記録が追加され、既存の記録と完全に同じ行は自動でスキップされます。行数が多いと少し時間がかかります。"
     )
     fun pickCsvFile(lang: Lang) = pick(lang, "选择 CSV 文件", "選擇 CSV 檔案", "Pick CSV file", "CSV ファイルを選択")
+
+    // ---- v1.8 外观：配色方案 ----
+    // 六个配色名（青 / 靛蓝 / …）在 AppStrings.paletteTeal…paletteForest 里，
+    // 主题页也用得到，所以不在这里重复；这里只放配色独有的一句提示。
+    /** 跟随系统取色打开时的说明：配色会被系统取色盖掉 */
+    fun paletteDynamicHint(lang: Lang) = pick(
+        lang,
+        "已开启跟随系统取色，配色会被系统取色盖掉，关掉它才生效。",
+        "已開啟跟隨系統取色，配色會被系統取色蓋掉，關掉它才生效。",
+        "Dynamic colour is on, so the system palette overrides this choice — turn it off to use it.",
+        "システム連動の動的カラーがオンのため、この配色は使われません。オフにすると反映されます。"
+    )
+
+    // ---- v1.8 安全：应用锁 ----
+    // 密码规则、忘记密码、按钮名与保存提示都在 AppStrings（锁屏页共用）。
+    fun sectionSecurity(lang: Lang) = pick(lang, "安全", "安全", "Security", "セキュリティ")
+    /** 开关打开但还没设过密码时的行内提示；%1$d 是 PinCode.MIN_LENGTH，关掉对话框后也留着 */
+    fun appLockEnableNeedsPin(lang: Lang, minLength: Int) = pickf(
+        lang,
+        "还没设置密码，应用锁没有打开；先设一个至少 %1\$d 位的数字密码。",
+        "還沒設定密碼，應用鎖沒有打開；先設一個至少 %1\$d 位的數字密碼。",
+        "No passcode yet, so the app lock is still off — set one of at least %1\$d digits first.",
+        "パスコードが未設定のためアプリロックはオフのままです。まず %1\$d 桁以上の数字を設定してください。",
+        minLength
+    )
+    fun appLockPinState(lang: Lang) = pick(
+        lang,
+        "已设置密码", "已設定密碼", "Passcode is set", "パスコード設定済み"
+    )
+    /** 密码改成别的长度也合法（4~6 位），所以这里说「重新设置」而不是「修改」 */
+    fun appLockChangePinHint(lang: Lang) = pick(
+        lang,
+        "重新设置会覆盖旧密码，旧密码立刻失效。",
+        "重新設定會覆蓋舊密碼，舊密碼立刻失效。",
+        "Saving a new passcode replaces the old one, which stops working right away.",
+        "設定し直すと古いパスコードは上書きされ、すぐ使えなくなります。"
+    )
+    /** 行内报错：setPin 返回 false（不是 4~6 位纯数字），用 %d 把规则写清楚 */
+    fun appLockPinInvalid(lang: Lang, minLength: Int, maxLength: Int) = pickf(
+        lang,
+        "密码要是 %d~%d 位数字，请重新输入。",
+        "密碼要是 %d~%d 位數字，請重新輸入。",
+        "The passcode must be %d–%d digits — please try again.",
+        "パスコードは %d〜%d 桁の数字にしてください。",
+        minLength, maxLength
+    )
+    fun appLockRemovePinTitle(lang: Lang) = pick(
+        lang,
+        "关闭应用锁并清除密码？", "關閉應用鎖並清除密碼？",
+        "Turn off the app lock and clear the passcode?", "アプリロックをオフにしてパスコードを消去しますか？"
+    )
+    fun appLockRemovePinMessage(lang: Lang) = pick(
+        lang,
+        "App 之后不再需要密码即可打开，已保存的密码会被删除，无法恢复。",
+        "App 之後不再需要密碼即可打開，已儲存的密碼會被刪除，無法復原。",
+        "The app will open without a passcode, and the saved passcode is deleted for good.",
+        "次回からパスコードなしで開けるようになり、保存済みのパスコードは完全に削除されます。"
+    )
+
+    // ---- v1.8 数据：自动备份 ----
+    // 标题、说明、按钮名、失败原因的人话都在 AppStrings（VM 的 Toast 也用它），这里只补两处。
+    fun autoBackupFolderLabel(lang: Lang) =
+        pick(lang, "备份文件夹", "備份資料夾", "Backup folder", "バックアップ先フォルダ")
+    /** 开关打开但没有文件夹时的行内提示（AppStrings.autoBackupNeedsFolder 是 Toast 版，这里常驻在卡片上） */
+    fun autoBackupNeedsFolderHint(lang: Lang) = pick(
+        lang,
+        "还没有选文件夹，自动备份不会开始；先选一个文件夹再打开开关。",
+        "還沒有選資料夾，自動備份不會開始；先選一個資料夾再打開開關。",
+        "No folder chosen yet, so nothing is backed up — pick a folder first, then turn this on.",
+        "フォルダが未選択のため自動バックアップは動きません。先にフォルダを選んでからオンにしてください。"
+    )
 }

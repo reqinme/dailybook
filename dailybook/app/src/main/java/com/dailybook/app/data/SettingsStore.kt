@@ -4,6 +4,7 @@ import android.content.Context
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.ui.theme.ThemeMode
+import com.dailybook.app.ui.theme.ThemePalette
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -154,6 +155,19 @@ class SettingsStore private constructor(context: Context) {
         _budgetAlert.value = enabled
     }
 
+    /** 配色方案（v1.8） */
+    private val _palette = MutableStateFlow(loadPalette())
+    val palette: StateFlow<ThemePalette> = _palette.asStateFlow()
+
+    fun setPalette(value: ThemePalette) {
+        prefs.edit().putString(KEY_PALETTE, value.name).apply()
+        _palette.value = value
+    }
+
+    private fun loadPalette(): ThemePalette = runCatching {
+        ThemePalette.valueOf(prefs.getString(KEY_PALETTE, null) ?: ThemePalette.TEAL.name)
+    }.getOrDefault(ThemePalette.TEAL)
+
     /** 某个币种最近用过的汇率（×RATE_SCALE），下次记同一币种不用重填 */
     fun currencyRate(code: String): Long =
         prefs.getLong(KEY_RATE_PREFIX + code, Currencies.RATE_SCALE)
@@ -227,6 +241,7 @@ class SettingsStore private constructor(context: Context) {
         private const val KEY_BUDGET_ALERT = "budget_alert_enabled"
         private const val KEY_BUDGET_WARNED = "budget_warned_keys"
         private const val KEY_RATE_PREFIX = "currency_rate_"
+        private const val KEY_PALETTE = "theme_palette"
         private const val KEY_FOCUS_TASK_ID = "focus_task_id"
         private const val KEY_FOCUS_TASK_TITLE = "focus_task_title"
         private const val KEY_REMINDED = "reminded_keys"

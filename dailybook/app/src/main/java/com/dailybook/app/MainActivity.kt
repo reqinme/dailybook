@@ -41,14 +41,20 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dailybook.app.data.SettingsStore
@@ -60,6 +66,8 @@ import com.dailybook.app.ui.SettingsScreen
 import com.dailybook.app.ui.StatsScreen
 import com.dailybook.app.ui.TimerScreen
 import com.dailybook.app.ui.TodoScreen
+import com.dailybook.app.security.AppLockStore
+import com.dailybook.app.ui.LockScreen
 import com.dailybook.app.ui.theme.DailyBookTheme
 
 class MainActivity : ComponentActivity() {
@@ -120,6 +128,7 @@ fun DailyBookApp(
     val timerState by timerVm.state.collectAsStateWithLifecycle()
     val themeMode by vm.settings.themeMode.collectAsStateWithLifecycle()
     val dynamicColor by vm.settings.dynamicColor.collectAsStateWithLifecycle()
+    val palette by vm.settings.palette.collectAsStateWithLifecycle()
 
     val lang = LocalLang.current
 
@@ -140,7 +149,40 @@ fun DailyBookApp(
         if (tabRequestSeq > 0 && initialTab in tabs.indices) selectedTab = initialTab
     }
 
-    DailyBookTheme(themeMode = themeMode, dynamicColor = dynamicColor) {
+    DailyBookTheme(themeMode = themeMode, palette = palette, dynamicColor = dynamicColor) {
+        // ---- 应用锁：开了锁就必须先验证密码，验证前不渲染任何数据 ----
+        val context = LocalContext.current
+        val appLock = remember { AppLockStore.get(context) }
+        val lockEnabled by appLock.enabled.collectAsStateWithLifecycle()
+        var unlocked by rememberSaveable { mutableStateOf(false) }
+
+        // 退到后台就重新上锁：再回来还要验证一次
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner) {
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP) unlocked = false
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+
+        if (lockEnabled && !unlocked) {
+            LockScreen(
+                hasPin = appLock.hasPin(),
+                onUnlock = { pin ->
+                    val ok = appLock.verify(pin)
+                    if (ok) unlocked = true
+                    ok
+                },
+                onClear = {
+                    appLock.clear()
+                    unlocked = true
+                }
+            )
+            // 锁定期间不渲染主界面（也不去申请通知权限，免得权限弹窗盖在锁屏上）
+            return@DailyBookTheme
+        }
+
         // Android 13+ 需要授权才能弹出「专注结束」通知
         val permissionLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission(),

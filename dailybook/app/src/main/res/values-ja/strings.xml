@@ -7,4 +7,15 @@
     <string name="shortcut_add_todo_long">ToDo リストを開いて追加</string>
     <string name="shortcut_focus_short">集中を開始</string>
     <string name="shortcut_focus_long">タイマーを開いて集中を始める</string>
+
+    <!-- ホーム画面ウィジェット：文字は**システム**の言語に従います（システム UI のため、アプリ内の言語設定は効きません） -->
+    <string name="widget_today_expense">今日の支出</string>
+    <string name="widget_today_income">今日の収入</string>
+    <!-- %1$s = ¥ 付きの金額 -->
+    <string name="widget_money">¥%1$s</string>
+    <!-- %1$d = 未完了の ToDo 数、%2$d = 今日の集中（分） -->
+    <string name="widget_todo_focus">ToDo %1$d · 集中 %2$d 分</string>
+    <!-- レイアウト内のプレースホルダー。実行時に実際の数値へ置き換わります -->
+    <string name="widget_money_placeholder">¥0.00</string>
+    <string name="widget_todo_focus_placeholder">ToDo 0 · 集中 0 分</string>
 </resources>

@@ -58,6 +58,20 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- 桌面小组件：今日支出 / 收入 / 待办 / 专注。
+             只用了系统框架 API，没有新增依赖与权限 -->
+        <receiver
+            android:name=".widget.WidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_info" />
+        </receiver>
     </application>
 
 </manifest>

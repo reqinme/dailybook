@@ -402,4 +402,122 @@ object AppStrings {
     fun recurringNext(lang: Lang, date: String) = pickf(
         lang, "下次 %s", "下次 %s", "Next %s", "次回 %s", date
     )
+
+    // ---- 配色方案 ----
+    fun paletteTitle(lang: Lang) = pick(lang, "配色", "配色", "Colour scheme", "配色")
+    fun paletteTeal(lang: Lang) = pick(lang, "青", "青", "Teal", "ティール")
+    fun paletteIndigo(lang: Lang) = pick(lang, "靛蓝", "靛藍", "Indigo", "インディゴ")
+    fun paletteViolet(lang: Lang) = pick(lang, "紫罗兰", "紫羅蘭", "Violet", "バイオレット")
+    fun paletteRose(lang: Lang) = pick(lang, "玫红", "玫紅", "Rose", "ローズ")
+    fun paletteAmber(lang: Lang) = pick(lang, "琥珀", "琥珀", "Amber", "アンバー")
+    fun paletteForest(lang: Lang) = pick(lang, "森林", "森林", "Forest", "フォレスト")
+
+    // ---- 应用锁 ----
+    fun appLockTitle(lang: Lang) = pick(lang, "应用锁", "應用鎖", "App lock", "アプリロック")
+    fun appLockHint(lang: Lang) = pick(
+        lang, "打开 App 时先验证 4~6 位数字密码，挡住随手翻看手机的人。",
+        "打開 App 時先驗證 4~6 位數字密碼，擋住隨手翻看手機的人。",
+        "Ask for a 4–6 digit passcode when the app opens, so a borrowed phone stays private.",
+        "アプリを開くときに 4〜6 桁のパスコードを確認します。"
+    )
+    fun appLockNeedsPin(lang: Lang) = pick(
+        lang, "请先设置密码，再打开应用锁", "請先設定密碼，再打開應用鎖",
+        "Set a passcode first, then turn the lock on", "先にパスコードを設定してください"
+    )
+    fun appLockSetPin(lang: Lang) = pick(lang, "设置密码", "設定密碼", "Set passcode", "パスコードを設定")
+    fun appLockChangePin(lang: Lang) = pick(lang, "修改密码", "修改密碼", "Change passcode", "パスコードを変更")
+    fun appLockRemovePin(lang: Lang) = pick(lang, "关闭并清除密码", "關閉並清除密碼", "Turn off and clear", "オフにして消去")
+    fun appLockPinSaved(lang: Lang) = pick(lang, "密码已保存", "密碼已儲存", "Passcode saved", "パスコードを保存しました")
+    fun appLockPinRemoved(lang: Lang) = pick(lang, "已关闭应用锁", "已關閉應用鎖", "App lock turned off", "アプリロックをオフにしました")
+    fun appLockPinRule(lang: Lang) = pick(
+        lang, "4~6 位数字", "4~6 位數字", "4–6 digits", "4〜6 桁の数字"
+    )
+    fun appLockEnterPin(lang: Lang) = pick(lang, "请输入密码", "請輸入密碼", "Enter passcode", "パスコードを入力")
+    fun appLockWrongPin(lang: Lang) = pick(lang, "密码不对，再试一次", "密碼不對，再試一次", "Wrong passcode, try again", "パスコードが違います")
+    fun appLockForgot(lang: Lang) = pick(
+        lang, "忘记密码只能清除 App 数据后重新开始（密码只存在本机，无法找回）",
+        "忘記密碼只能清除 App 資料後重新開始（密碼只存在本機，無法找回）",
+        "A forgotten passcode can only be reset by clearing the app's data — it is stored only on this device.",
+        "パスコードを忘れた場合、アプリのデータを消去するしかありません（端末内にのみ保存されます）。"
+    )
+    fun appLockUnlock(lang: Lang) = pick(lang, "解锁", "解鎖", "Unlock", "ロック解除")
+    fun appLockClearPin(lang: Lang) = pick(lang, "清除", "清除", "Clear", "クリア")
+    fun appLockBackspace(lang: Lang) = pick(lang, "退格", "退格", "Backspace", "1 文字消す")
+
+    // ---- 自动备份 ----
+    fun autoBackupTitle(lang: Lang) =
+        pick(lang, "自动备份", "自動備份", "Automatic backup", "自動バックアップ")
+
+    fun autoBackupHint(lang: Lang) = pick(
+        lang, "选一个文件夹，之后打开 App 或每晚提醒时会自动把数据备份进去（每天最多一份，只保留最近 7 份）。",
+        "選一個資料夾，之後打開 App 或每晚提醒時會自動把資料備份進去（每天最多一份，只保留最近 7 份）。",
+        "Pick a folder and the app writes a backup there when you open it or at the evening reminder (at most one per day, newest 7 kept).",
+        "フォルダを選ぶと、アプリを開いた時や夜のリマインダー時に自動でバックアップします（1 日 1 件まで、最新 7 件を保持）。"
+    )
+
+    fun autoBackupPickFolder(lang: Lang) =
+        pick(lang, "选择文件夹", "選擇資料夾", "Choose folder", "フォルダを選ぶ")
+
+    fun autoBackupChangeFolder(lang: Lang) =
+        pick(lang, "更换文件夹", "更換資料夾", "Change folder", "フォルダを変更")
+
+    fun autoBackupNone(lang: Lang) =
+        pick(lang, "还没有选择文件夹", "還沒有選擇資料夾", "No folder chosen yet", "フォルダが未選択です")
+
+    fun autoBackupLast(lang: Lang, whenText: String) = pickf(
+        lang, "上次成功：%s", "上次成功：%s", "Last success: %s", "前回の成功：%s", whenText
+    )
+
+    fun autoBackupNever(lang: Lang) =
+        pick(lang, "还没有备份过", "還沒有備份過", "No backup yet", "まだバックアップはありません")
+
+    fun autoBackupFailed(lang: Lang, reason: String) = pickf(
+        lang, "上次备份失败：%s", "上次備份失敗：%s", "Last backup failed: %s", "前回のバックアップ失敗：%s", reason
+    )
+
+    fun autoBackupNotNow(lang: Lang) = pick(
+        lang, "今天已经备份过了", "今天已經備份過了", "Already backed up today", "本日はバックアップ済みです"
+    )
+
+    fun autoBackupDone(lang: Lang) = pick(lang, "已备份", "已備份", "Backed up", "バックアップしました")
+
+    fun autoBackupNow(lang: Lang) =
+        pick(lang, "立即备份", "立即備份", "Back up now", "今すぐバックアップ")
+
+    fun autoBackupNeedsFolder(lang: Lang) = pick(
+        lang, "请先选择文件夹", "請先選擇資料夾", "Choose a folder first", "先にフォルダを選んでください"
+    )
+
+    // 失败原因是「代码」不是句子，界面上按语言翻成一句人话
+    fun backupFailNoPermission(lang: Lang) = pick(
+        lang, "没有该文件夹的访问权限，请重新选择文件夹",
+        "沒有該資料夾的存取權限，請重新選擇資料夾",
+        "No access to that folder — please pick it again",
+        "フォルダへのアクセス権がありません。選び直してください"
+    )
+    fun backupFailCreate(lang: Lang) = pick(
+        lang, "无法在文件夹里新建备份文件", "無法在資料夾裡新建備份檔案",
+        "Could not create the backup file in that folder", "フォルダ内にバックアップファイルを作成できません"
+    )
+    fun backupFailWrite(lang: Lang) = pick(
+        lang, "写入备份失败（可能空间不足）", "寫入備份失敗（可能空間不足）",
+        "Writing the backup failed (maybe out of space)", "バックアップの書き込みに失敗しました（空き容量不足かも）"
+    )
+    fun backupFailList(lang: Lang) = pick(
+        lang, "备份已写入，但旧备份没能清理", "備份已寫入，但舊備份沒能清理",
+        "Backup written, but old backups could not be cleaned up",
+        "バックアップは作成できましたが、古いバックアップを削除できませんでした"
+    )
+    fun backupFailUnknown(lang: Lang) = pick(
+        lang, "备份失败，原因不明", "備份失敗，原因不明", "Backup failed for an unknown reason", "原因不明でバックアップに失敗しました"
+    )
+
+    /** 把失败代码翻成一句人话（传枚举名，避免文案层依赖备份包） */
+    fun backupFailure(lang: Lang, code: String?): String = when (code) {
+        "NO_PERMISSION" -> backupFailNoPermission(lang)
+        "CREATE_FAILED" -> backupFailCreate(lang)
+        "WRITE_FAILED" -> backupFailWrite(lang)
+        "LIST_FAILED" -> backupFailList(lang)
+        else -> backupFailUnknown(lang)
+    }
 }

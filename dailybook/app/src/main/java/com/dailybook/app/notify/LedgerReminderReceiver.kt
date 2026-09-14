@@ -3,6 +3,7 @@ package com.dailybook.app.notify
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.dailybook.app.backup.AutoBackup
 import com.dailybook.app.data.AppDatabase
 import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.SettingsStore
@@ -30,6 +31,8 @@ class LedgerReminderReceiver : BroadcastReceiver() {
             try {
                 // 到期的周期记账先落成真实记录，再把下次日期往后推
                 DailyRepository(context).materializeRecurring()
+                // 顺带做每日自动备份（用户选过文件夹且开启时才会真的写文件）
+                AutoBackup.runBackupIfDue(context)
 
                 val notifier = Notifier(context)
                 if (reminderOn) notifier.notifyLedgerReminder()

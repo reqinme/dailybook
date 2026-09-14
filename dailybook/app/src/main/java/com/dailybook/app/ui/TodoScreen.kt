@@ -52,6 +52,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -318,7 +319,7 @@ private fun ColumnScope.TodoListContent(
     var draggingId by remember { mutableStateOf<Long?>(null) }
     var rowHeightPx by remember { mutableFloatStateOf(0f) }
     var rawDrag by remember { mutableFloatStateOf(0f) }
-    var dropIndex by remember { mutableStateOf(0) }
+    var dropIndex by remember { mutableIntStateOf(0) }
     val haptics = LocalHapticFeedback.current
 
     // 列表内容变了（删除、改筛选）就把残留的位移清掉，避免错位

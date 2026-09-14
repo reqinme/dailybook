@@ -6,6 +6,8 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dailybook.app.backup.Backup
+import com.dailybook.app.backup.AutoBackup
+import com.dailybook.app.backup.BackupOutcome
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.CategoryStore
 import com.dailybook.app.data.Currencies
@@ -18,6 +20,7 @@ import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TodoPriority
 import com.dailybook.app.data.RecurringEntity
 import com.dailybook.app.data.SubtaskEntity
+import com.dailybook.app.widget.WidgetProvider
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
@@ -431,6 +434,20 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { repo.materializeRecurring() }
         }
+        // 顺带跑一次自动备份：24 小时内已备份过会自动跳过，没配置就什么都不做
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { AutoBackup.runBackupIfDue(app) }
+        }
+        // 数据一变就刷新桌面小组件（没放小组件时 refresh 内部会直接返回，开销可忽略）
+        viewModelScope.launch {
+            combine(
+                repo.transactions,
+                repo.todos,
+                repo.focusSessions
+            ) { _, _, _ -> Unit }.collect {
+                WidgetProvider.refresh(app)
+            }
+        }
         // 待办一变就重排提醒：完成 / 删除 / 改期都会自动撤销或顺延，不会留下幽灵提醒
         viewModelScope.launch {
             repo.todos.collect { todos ->
@@ -534,6 +551,25 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { repo.materializeRecurring() }
         }
     }
+
+    // ---- 自动备份 ----
+
+    /** 设置里点「立即备份」：绕过 24 小时限制，结果按实际情况回报（失败不会说成成功） */
+    fun backupNow() {
+        viewModelScope.launch {
+            val lang = settings.lang.value
+            val outcome = withContext(Dispatchers.IO) { AutoBackup.get(app).runBackupNow() }
+            _message.value = when (outcome) {
+                BackupOutcome.SUCCESS -> AppStrings.autoBackupDone(lang)
+                BackupOutcome.NOT_CONFIGURED -> AppStrings.autoBackupNeedsFolder(lang)
+                BackupOutcome.NOT_DUE -> AppStrings.autoBackupNotNow(lang)
+                BackupOutcome.FAILED ->
+                    AppStrings.backupFailure(lang, AutoBackup.get(app).lastFailureReason()?.name)
+            }
+        }
+    }
+
+    // ---- 周期记账 ----
 
     fun deleteRecurring(item: RecurringEntity) {
         viewModelScope.launch { repo.deleteRecurring(item) }

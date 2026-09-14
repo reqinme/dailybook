@@ -7,4 +7,15 @@
     <string name="shortcut_add_todo_long">開啟待辦頁，新增一筆</string>
     <string name="shortcut_focus_short">開始專注</string>
     <string name="shortcut_focus_long">開啟番茄鐘，開始一段專注</string>
+
+    <!-- 桌面小工具：文字跟隨系統語言（系統 UI，App 內語言設定管不到） -->
+    <string name="widget_today_expense">今日支出</string>
+    <string name="widget_today_income">今日收入</string>
+    <!-- %1$s = 帶 ¥ 的金額 -->
+    <string name="widget_money">¥%1$s</string>
+    <!-- %1$d = 未完成待辦數，%2$d = 今日專注分鐘 -->
+    <string name="widget_todo_focus">待辦 %1$d · 專注 %2$d 分鐘</string>
+    <!-- 版面裡的佔位文字，執行時會被真實數字覆蓋 -->
+    <string name="widget_money_placeholder">¥0.00</string>
+    <string name="widget_todo_focus_placeholder">待辦 0 · 專注 0 分鐘</string>
 </resources>

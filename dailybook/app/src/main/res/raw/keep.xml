@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  资源压缩白名单（release 开了 shrinkResources）。
+
+  桌面小组件那几个资源和普通界面不一样：布局是通过 RemoteViews 在代码里按名字取的，
+  provider 配置是通过 manifest 的 meta-data 引用的，静态扫描不一定认得全。
+  一旦被裁掉，就会出现「debug 包正常、release 包的组件是一片空白」这种最难查的问题，
+  所以这里显式声明必须保留。
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@layout/widget_dailybook,@drawable/widget_background,@xml/widget_info,@string/widget_today_expense,@string/widget_today_income,@string/widget_money,@string/widget_todo_focus,@string/widget_money_placeholder,@string/widget_todo_focus_placeholder" />

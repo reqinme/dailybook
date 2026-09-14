@@ -1,4 +1,4 @@
-# 日常本 DailyBook v1.7
+# 日常本 DailyBook v1.8
 
 **记账 + 待办 + 专注计时** 三合一安卓应用。
 Kotlin + Jetpack Compose + Room，纯离线，只申请通知、震动与开机重排提醒三个权限。
@@ -12,9 +12,9 @@ Kotlin + Jetpack Compose + Room，纯离线，只申请通知、震动与开机�
 | **待办** | 快速添加、完成勾选、星标重要、到期日与逾期标红、**子任务 / 清单（一条待办带一份小步骤清单，编辑弹窗里勾选 / 删除 / 添加，列表行显示进度 `2/5` 与一条细进度条；删待办时子任务级联删除，不留孤儿数据）**、**优先级四级（低 / 普通 / 高 / 紧急，弹窗里与列表行上都能改，行上带标记、普通不标记，老待办默认「普通」）**、**拖拽排序（长按拖动重排并落库，单击仍是打开编辑；搜索中 / 已完成筛选 / 看板视图下不支持排序，界面会直接说明）**、**列表 / 看板视图切换（看板按「今天到期 / 本周内 / 以后 / 没有日期 / 已完成」分组并显示各组条数，空组不显示）**、**重复任务（每天/每周/每月，勾完自动顺延出下一条）**、**到点提醒（到期日 9:00 通知，未完成次日再提醒一次；点击通知直接打开应用，通知上带「1 小时后」/「明天早上」两个稍后提醒按钮）**、**编辑弹窗里的「顺延到明天」（一键把到期日推到明天）**、状态筛选、**搜索**、**设为专注目标**、**一键清除已完成** |
 | **专注** | 番茄钟：专注/短休息/长休息三阶段圆环计时、开始/暂停/重置/跳过、每 N 个番茄长休息、结束通知 + 震动（通知文案随界面语言）、可自动进入下一阶段、显示当前专注目标、**正计时模式（只往上走的计时，点「完成」把这段时长记成一次专注）**、**中断记录（番茄模式下中途停止或跳过专注，已过 1 分钟就记一条并标 `interrupted`；休息阶段一律不记）**、**每日专注目标（1/2/3/4/6/8 或不设目标；到晚上提醒时间还没达标会再发一条通知）**、计时中屏幕常亮 |
 | **统计** | 记账：结余、分类占比、每日支出、收入来源、**账户支出分布**、**待报销 / 已报销汇总卡（待报销合计金额与笔数 + 累计已报销金额）**、**分类预算进度条（超支标红）**、**近 12 个月收支趋势图**、**年度汇总（年支出/年收入/年结余、笔数、花得最多的分类）**、**累计收支与净结余**、**环比对比卡（本月 vs 上月的支出与收入、今年 vs 去年的支出，带正负号的百分比；没有可比基数时说明两笔金额无法比较，而不是显示 0% 或 +100%）**、**智能洞察（最多 4 条：比上月多花/少花及拉动它的分类、本月最大分类、距上次记账多少天、预算还剩多少；本月无数据就一条都不显示）**、**月报导出（当月导出成可分享 PNG、独立 HTML（只用内联 CSS、无脚本无外部资源）与 PDF（A4，按需多页），三者都走系统文件选择器，仍不需要存储权限；本月无数据时提示没有可导出的内容）**；专注：今日/连续/累计、最近 7 天、**近 12 周专注热力图（一列一周，周一到周日，颜色越深当天专注越久）**、**本周次数 / 本周时长 / 本月时长与本月次数**、**今日专注目标进度条**、**按待办统计投入时间（只统计从该待办发起的专注，按时长取前 10 条）**、**今日专注明细（时段列表，中断的会标出来）** |
-| **设置** | **界面语言（简体中文 / 繁體中文 / English / 日本語，四个胶囊，切换立即生效）**、主题（跟随系统/浅色/深色）、动态取色、**记账分区：月度预算、分类预算（「管理」弹窗逐项设置）、分类管理（增删支出/收入分类，或一键恢复预置）、预算预警开关、每晚记账提醒开关 + 提醒时间（TimePicker）、周期记账（固定支出规则的新增 / 编辑 / 暂停恢复 / 删除，设置行显示现有规则条数与下次到期日）**、**每日专注目标**、**定期小结（关闭 / 每周 / 每月）**、各阶段时长、长休息间隔、震动、自动开始、屏幕常亮、**备份与恢复（JSON）、导出记账 CSV、导入记账 CSV**、分项清除数据 |
+| **设置** | **界面语言（简体中文 / 繁體中文 / English / 日本語，四个胶囊，切换立即生效）**、主题（跟随系统/浅色/深色）、动态取色、**配色方案（v1.8：青 / 靛蓝 / 紫罗兰 / 玫红 / 琥珀 / 森林六套，各配浅色与深色两版；跟随系统取色打开时系统取色优先，界面会说明这一点）**、**记账分区：月度预算、分类预算（「管理」弹窗逐项设置）、分类管理（增删支出/收入分类，或一键恢复预置）、预算预警开关、每晚记账提醒开关 + 提醒时间（TimePicker）、周期记账（固定支出规则的新增 / 编辑 / 暂停恢复 / 删除，设置行显示现有规则条数与下次到期日）**、**每日专注目标**、**定期小结（关闭 / 每周 / 每月）**、各阶段时长、长休息间隔、震动、自动开始、屏幕常亮、**安全分区（v1.8：应用锁开关 + 设置 / 修改密码弹窗 + 忘记密码的说明，默认关闭）**、**备份与恢复（JSON）**、**自动备份（v1.8：开关、用 `OpenDocumentTree` 挑文件夹 / 换文件夹、上次成功备份时间与失败原因、立即备份按钮）**、**导出记账 CSV、导入记账 CSV**、分项清除数据 |
 
-另外还有**桌面快捷方式**：长按启动器图标可直接「记一笔 / 加待办 / 开始专注」，点进去就落在对应标签页（启动器名称与快捷方式名称跟随系统语言，见下文「设计要点 → 界面语言」）。
+另外还有**桌面快捷方式**：长按启动器图标可直接「记一笔 / 加待办 / 开始专注」，点进去就落在对应标签页（启动器名称与快捷方式名称跟随系统语言，见下文「设计要点 → 界面语言」）。v1.8 还多了**桌面小组件**（今日支出 / 收入 / 待办 / 专注，见下文「设计要点 → 桌面小组件」）。
 
 ## 技术栈
 
@@ -25,24 +25,27 @@ Kotlin + Jetpack Compose + Room，纯离线，只申请通知、震动与开机�
 | Compose | BOM 2024.10.01 + Material 3 |
 | Room | 2.6.1（KSP 2.0.21-1.0.25），数据库 version 6（MIGRATION_1_2、MIGRATION_2_3、MIGRATION_3_4、MIGRATION_4_5、MIGRATION_5_6） |
 | DataStore | 1.1.1（专注计时设置） |
-| SharedPreferences | 主题 / 界面语言 / 月度预算 / 分类预算 / **自定义分类（支出与收入两份列表）** / **各币种汇率记忆** / 专注目标 / 每日专注目标 / 每晚提醒 / 定期小结 / 预算预警开关 / 已提醒与已预警记录 |
-| JUnit | 4.13.2（`testImplementation`，62 个 JVM 单元测试：RepeatAndReminderTest 22 + I18nTest 10 + CurrencyAndTagTest 11 + I18nSmokeTest 2 + ComparisonTest 5 + RecurringScheduleTest 6 + TodoBucketTest 6） |
+| SharedPreferences | 主题 / 界面语言 / **配色方案（v1.8）** / 月度预算 / 分类预算 / **自定义分类（支出与收入两份列表）** / **各币种汇率记忆** / 专注目标 / 每日专注目标 / 每晚提醒 / 定期小结 / 预算预警开关 / 已提醒与已预警记录；v1.8 另有两个独立 prefs：`dailybook_applock`（应用锁开关 + 盐 + 摘要）与 `dailybook_autobackup`（自动备份开关 / 文件夹 Uri / 上次成功时间 / 上次失败时间与原因），都单独成文件，不动这一个 |
+| JUnit | 4.13.2（`testImplementation`，72 个 JVM 单元测试：RepeatAndReminderTest 22 + I18nTest 10 + CurrencyAndTagTest 11 + I18nSmokeTest 2 + ComparisonTest 5 + RecurringScheduleTest 6 + TodoBucketTest 6 + **PinCodeTest 8 + PaletteContrastTest 2（v1.8 新增）**） |
 | SDK | compileSdk 35 · targetSdk 35 · minSdk 26（Android 8.0+） |
-| 版本 | versionCode 8 · versionName 1.7，正式版 APK 约 1.8 MB |
+| 版本 | versionCode 9 · versionName 1.8，正式版 APK 约 1.8 MB |
+| 新依赖 / 新权限 | **v1.8 一个都没有**：应用锁用系统自带的 `MessageDigest` / `SecureRandom` 加自设密码，小组件用框架的 `AppWidgetProvider` + `RemoteViews`（**不是 Glance**），自动备份走 SAF 的 `OpenDocumentTree` / `DocumentsContract`（**没有 WorkManager、没有前台服务**） |
 
 权限只有三个：`VIBRATE`、`POST_NOTIFICATIONS`、`RECEIVE_BOOT_COMPLETED`。**没有网络权限，也没有存储权限**
 （备份、CSV 导出、CSV 导入与月报导出都走系统文件选择器）。v1.5 新增的预算预警、定期小结、专注目标提醒，以及通知上的
 「稍后提醒」，全部走已有的 `POST_NOTIFICATIONS` 和同一套非精确闹钟；v1.6 的多币种、标签、待报销、自定义分类、
 日历视图、CSV 导入与正计时**全部是本地功能，同样没有新增任何权限**；v1.7 的子任务、优先级、拖拽排序、看板、
 环比对比、智能洞察、月报导出与周期记账**同样一个权限都没加，也没有新增任何第三方依赖**
-（月报的 PNG / HTML / PDF 都用系统自带的 `Canvas` 与 `PdfDocument` 自己画，不引图表库）。
+（月报的 PNG / HTML / PDF 都用系统自带的 `Canvas` 与 `PdfDocument` 自己画，不引图表库）；
+**v1.8 的应用锁、桌面小组件、自动备份与六套配色也一样：一个权限没加、一个第三方依赖没引**
+（应用锁是自设数字密码 + `MessageDigest`/`SecureRandom`，小组件是框架 `RemoteViews`，自动备份走系统文件选择器）。
 
 ## 工程结构
 
 ```
 app/src/main/java/com/dailybook/app/
-├── MainActivity.kt              入口 + 响应式导航（宽屏走 NavigationRail）+ 桌面快捷方式 Intent 处理（singleTop）+ 用 CompositionLocal 提供 LocalLang
-├── MainViewModel.kt             记账/待办/专注统计的聚合状态（UiState，含按待办聚合的投入时长、看板分组 `TodoBucket`/`TodoSection`、环比 `Comparison` 与洞察 `Insight`/`InsightKind`）+ 标签/日期/日历筛选、待报销汇总、分类列表、子任务 / 优先级 / 拖拽排序 / 周期记账动作、启动时补记到期固定支出、`importLedgerCsv()` 与分类增删
+├── MainActivity.kt              入口 + 响应式导航（宽屏走 NavigationRail）+ 桌面快捷方式 Intent 处理（singleTop）+ 用 CompositionLocal 提供 LocalLang + **v1.8：应用锁闸门（验证通过前不渲染主界面、也不申请通知权限），退到后台（`ON_STOP`）自动重新上锁**
+├── MainViewModel.kt             记账/待办/专注统计的聚合状态（UiState，含按待办聚合的投入时长、看板分组 `TodoBucket`/`TodoSection`、环比 `Comparison` 与洞察 `Insight`/`InsightKind`）+ 标签/日期/日历筛选、待报销汇总、分类列表、子任务 / 优先级 / 拖拽排序 / 周期记账动作、启动时补记到期固定支出、`importLedgerCsv()` 与分类增删；**v1.8 起还有 `backupNow()`（立即备份并按实际结果回报）、数据一变就刷新桌面小组件、启动时跑一次自动备份**
 ├── data/
 │   ├── Entities.kt              Room 实体（交易 / 待办 + `TodoPriority` 优先级与 sortOrder 手动顺序 + RepeatRule 重复规则与日期推算）+ 预置分类 + `Currencies` 币种表 + Accounts 账户预置（交易含 tags / 待报销 / 币种与汇率列）
 │   ├── Subtasks.kt              **v1.7 新增**：子任务实体 + DAO（subtasks 表，按 todoId 取、按 sortOrder 排，删待办时整批带走）
@@ -53,16 +56,23 @@ app/src/main/java/com/dailybook/app/
 │   ├── DailyRepository.kt       记账 / 待办 / 专注记录的数据入口（含整体导入导出用的快照、批量插入与 setReimbursed；v1.7 起还有子任务 CRUD、`reorderTodos`、周期记账 CRUD 与 `materializeRecurring`、删待办级联删子任务、快照与恢复扩到新表）
 │   ├── FocusRepository.kt       专注计时设置（DataStore）
 │   ├── CategoryStore.kt         用户自定义分类（支出 / 收入两份，存偏好设置；空列表回落预置，永不返回空）
-│   └── SettingsStore.kt         全局单例设置（主题/界面语言/月度预算/分类预算/自定义分类/币种汇率/每日专注目标/每晚提醒/定期小结/预算预警开关/已提醒与已预警记录）
+│   └── SettingsStore.kt         全局单例设置（主题/界面语言/**配色方案/月度预算**/分类预算/自定义分类/币种汇率/每日专注目标/每晚提醒/定期小结/预算预警开关/已提醒与已预警记录）
+├── security/                    **v1.8 新增目录：应用锁**
+│   ├── PinCode.kt               **v1.8 新增**：纯密码规则（4~6 位数字、全角归一化）+ 随机盐 + SHA-256 摘要 + 恒定时间比较；不含任何 Android 依赖，所以能直接跑 JVM 测试
+│   └── AppLockStore.kt          **v1.8 新增**：应用锁开关与密码的持久化（独立 prefs `dailybook_applock`）；**没设过密码就不允许开启**，`clear()` 关掉并清空（忘记密码的唯一出路）
+├── widget/                      **v1.8 新增目录：桌面小组件**
+│   └── WidgetProvider.kt        **v1.8 新增**：`AppWidgetProvider` + `RemoteViews`（不是 Glance）；查库算今日支出 / 收入 / 未完成待办 / 今日专注分钟，`refresh()` 广播给 App 内数据变化用，点一下打开 App
 ├── i18n/
 │   ├── Lang.kt                  四语言枚举（tag + 原文名）+ pick()/pickf() 四语取值 + LocalLang
-│   ├── AppStrings.kt            通用文案（导航、通知标题与正文、设置项、通知占位符替换；v1.7 起还有优先级名、看板分组名、环比百分比与智能洞察句子）
+│   ├── AppStrings.kt            通用文案（导航、通知标题与正文、设置项、通知占位符替换；v1.7 起还有优先级名、看板分组名、环比百分比与智能洞察句子；**v1.8 起还有应用锁（密码规则、输错、忘记密码、解锁 / 清除）、六套配色名、自动备份与备份失败原因的文案**）
 │   ├── LedgerStrings.kt         记账页文案
 │   ├── TodoStrings.kt           待办页文案（v1.7 起含子任务、优先级与列表/看板切换）
 │   ├── StatsStrings.kt          统计页文案（v1.7 起含环比对比、智能洞察与月报小节）
-│   ├── SettingsStrings.kt       设置页文案（v1.7 起含周期记账）
+│   ├── SettingsStrings.kt       设置页文案（v1.7 起含周期记账；**v1.8 起还有「安全」分区、密码弹窗校验提示与自动备份文件夹那一段**）
 │   └── CommonStrings.kt         公共组件文案（空状态、按钮、对话框…）
-├── backup/Backup.kt             备份 JSON 的读写（format 4：新增子任务与周期记账两段，待办多了优先级 / 手动顺序）+ 记账 CSV 导出（7 列，含标签）与 CSV 解析 `parseCsv()`（org.json，无第三方依赖；CSV 表头与类型列随界面语言）
+├── backup/
+│   ├── Backup.kt                备份 JSON 的读写（format 4：新增子任务与周期记账两段，待办多了优先级 / 手动顺序）+ 记账 CSV 导出（7 列，含标签）与 CSV 解析 `parseCsv()`（org.json，无第三方依赖；CSV 表头与类型列随界面语言）
+│   └── AutoBackup.kt            **v1.8 新增**：自动备份（SAF 树 Uri + `DocumentsContract`）。一天一份 `DailyBook-backup-YYYYMMDD.json`（同一天覆盖）、保留最新 7 份、只删 `DailyBook-backup-` 前缀的文件；结果回 `BackupOutcome`、失败原因回 `BackupFailureCode`（都是枚举，不含面向用户的句子）；**没有任何后台任务，只由「打开 App」与「每晚提醒闹钟」两条路径驱动**
 ├── report/
 │   └── MonthlyReport.kt         **v1.7 新增**：月报生成（`MonthlyReportData` 值对象 → PNG / HTML / PDF。HTML 只拼内联 CSS，不引脚本与外部资源；PDF 走 `android.graphics.pdf.PdfDocument`，A4 按需分页；图片用 `Canvas` 画，全程不依赖第三方库）
 ├── timer/
@@ -73,7 +83,7 @@ app/src/main/java/com/dailybook/app/
 │   ├── TodoReminder.kt          待办提醒排程（非精确闹钟，幂等重排）+ 稍后提醒排程（1 小时后 / 明天早上）
 │   ├── TodoReminderReceiver.kt  提醒接收器（到点重新查库再决定是否提醒；稍后提醒触发不占用正常两次提醒的额度）
 │   ├── LedgerReminder.kt        每晚记账提醒排程（非精确闹钟，按设置时间重排）
-│   ├── LedgerReminderReceiver.kt 记账提醒到点发通知，并顺手排下一天
+│   ├── LedgerReminderReceiver.kt 记账提醒到点发通知，并顺手排下一天；**v1.8 起到点先补记到期的周期记账、再做一次当日自动备份**（这个每日闹钟始终排着，两个开关都关时它只干活不发通知）
 │   ├── SummaryReminder.kt       定期小结排程（每周日 20:00 / 每月 1 日 10:00，纯函数算下次触发点与统计区间）
 │   ├── SummaryReceiver.kt       小结到点现算一遍数据再发通知，没数据就不打扰，并排下一次
 │   └── BootReceiver.kt          重启 / 覆盖安装后重新排程待办、记账与定期小结提醒
@@ -83,17 +93,27 @@ app/src/main/java/com/dailybook/app/
 │   ├── TodoScreen.kt            待办页 + 编辑弹窗（含「顺延到明天」；v1.7 起还有子任务清单、优先级、长按拖拽排序与看板视图）
 │   ├── TimerScreen.kt           专注页（番茄钟 + 正计时两种模式，自己结束或中途停止都会入库）
 │   ├── StatsScreen.kt           统计页（账户支出分布 / 待报销汇总卡 / 分类预算 / 专注热力图与周月报告 / 每日目标进度条 / 按待办统计投入时间 / 中断标记；v1.7 起还有环比对比卡、智能洞察卡与三个导出按钮）
-│   ├── SettingsScreen.kt        设置页（语言卡片 + 分类预算弹窗 + 分类管理弹窗 + CSV 导入 + 提醒时间 TimePicker + 专注目标 / 定期小结 / 预算预警开关；v1.7 起还有周期记账那一行与新增 / 编辑弹窗）
+│   ├── SettingsScreen.kt        设置页（语言卡片 + 分类预算弹窗 + 分类管理弹窗 + CSV 导入 + 提醒时间 TimePicker + 专注目标 / 定期小结 / 预算预警开关；v1.7 起还有周期记账那一行与新增 / 编辑弹窗；**v1.8 起还有六套配色选择、安全分区（应用锁开关 + 设置 / 修改密码弹窗 + 忘记密码说明）与自动备份那一段（挑文件夹 / 换文件夹 / 上次成功与失败原因 / 立即备份）**）
+│   ├── LockScreen.kt            **v1.8 新增**：数字键盘解锁界面。**不做「打满 4 位自动校验」**——密码可能是 5~6 位，那样长密码用户永远进不去，所以满 4 位后由「解锁」按钮提交；只画应用名、密码点阵与键盘，不渲染任何用户数据
 │   ├── RingTimer.kt             圆环进度（自适应尺寸 + 渐变 + 动画）
 │   └── theme/                   配色 / 主题 / 字体
+│       ├── Color.kt             中性底色与收支色（六套配色共用这一份中性色）
+│       ├── Palette.kt           **v1.8 新增**：`ThemePalette` 六套配色枚举 + `lightSchemeOf()` / `darkSchemeOf()`；只换品牌色（主色 / 次色 / 第三色），中性色沿用同一套
+│       ├── Theme.kt             `DailyBookTheme`（**v1.8 起多一个 `palette` 参数**；跟随系统取色打开时优先用系统取色）
+│       └── Type.kt              字体
 └── util/Format.kt               金额与日期格式化、解析（日期头、截止日、月份标签随语言）
 
 app/src/main/res/
-├── values/strings.xml           启动器名称与快捷方式名称的默认语言（英文，其他语言回落到这里）
-├── values-zh-rCN/strings.xml    简体中文系统下的启动器名称与快捷方式名称
-├── values-zh-rTW/strings.xml    繁體中文系統下的啟動器名稱與捷徑名稱
-├── values-ja/strings.xml        日本語システムでのランチャー名とショートカット名
-└── xml/shortcuts.xml            桌面快捷方式定义（记一笔 / 加待办 / 开始专注，各带一个标签页编号，文字走 @string）
+├── values/strings.xml           启动器名称与快捷方式名称的默认语言（英文，其他语言回落到这里）+ **v1.8 的小组件文案（今日支出 / 今日收入 / 金额 / 待办与专注那两行及占位文本）**
+├── values-zh-rCN/strings.xml    简体中文系统下的启动器名称、快捷方式名称与**小组件文案**
+├── values-zh-rTW/strings.xml    繁體中文系統下的啟動器名稱、捷徑名稱與**小工具文案**
+├── values-ja/strings.xml        日本語システムでのランチャー名・ショートカット名と**ウィジェットの文言**
+│   （`values/colors.xml` 窗口底色与图标底色、`values/themes.xml` 无 ActionBar 的 `Theme.DailyBook`：都是应用主题用的，和 v1.8 的六套配色无关）
+├── drawable/widget_background.xml  **v1.8 新增**：小组件圆角深色底（颜色写死，RemoteViews 在桌面上拿不到 App 主题）
+├── layout/widget_dailybook.xml  **v1.8 新增**：小组件布局，只用 RemoteViews 认得的 `LinearLayout` / `TextView` / `View`
+├── raw/keep.xml                 **v1.8 新增**：release 资源压缩白名单（`tools:keep`），保住小组件布局 / 背景 / provider 配置与那几条 `@string`
+├── xml/shortcuts.xml            桌面快捷方式定义（记一笔 / 加待办 / 开始专注，各带一个标签页编号，文字走 @string）
+└── xml/widget_info.xml          **v1.8 新增**：小组件元数据（180dp × 110dp、可横竖拉伸、`updatePeriodMillis` 30 分钟、初始布局 `@layout/widget_dailybook`）
 ```
 
 JVM 单元测试（`app/src/test/`）：
@@ -106,7 +126,9 @@ app/src/test/java/com/dailybook/app/
 ├── I18nSmokeTest.kt             四语文案表冒烟：每个文案函数 × 每种语言都用反射真跑一遍，共 2 个用例
 ├── ComparisonTest.kt            **v1.7 新增**：环比百分比（没有基数返回 null、带符号取整、整体归零是 −100%、月/年与支出/收入各用各的数），共 5 个用例
 ├── RecurringScheduleTest.kt     **v1.7 新增**：周期记账下次日期一定落在今天之后（长期没打开只补最近一期），共 6 个用例
-└── TodoBucketTest.kt            **v1.7 新增**：看板分桶边界（已完成优先、今天与逾期同组、第 7 天算「以后」、没有日期单独一组、每条待办只会落进一个组），共 6 个用例
+├── TodoBucketTest.kt            **v1.7 新增**：看板分桶边界（已完成优先、今天与逾期同组、第 7 天算「以后」、没有日期单独一组、每条待办只会落进一个组），共 6 个用例
+├── PinCodeTest.kt               **v1.8 新增**：应用锁的密码规则与摘要，共 8 个用例
+└── PaletteContrastTest.kt       **v1.8 新增**：六套配色 × 明暗两套的 WCAG 对比度，共 2 个用例
 ```
 
 ## 构建
@@ -119,7 +141,7 @@ $env:ANDROID_HOME = "C:\Users\hjc20\AppData\Local\Android\Sdk"
 cd "C:\Users\hjc20\Documents\DeepSeek Desktop\apk\github-upload\repo\dailybook"
 gradle assembleRelease     # 正式签名版（R8，约 1.8 MB）
 gradle assembleDebug       # 调试版
-gradle testDebugUnitTest   # 62 个 JVM 单元测试（重复日期 / 待办提醒 / 记账提醒时间 / CSV 导出与导入 / 四语界面 / 币种与标签 / 四语冒烟 / 环比百分比 / 周期记账补记 / 看板分桶）
+gradle testDebugUnitTest   # 72 个 JVM 单元测试（重复日期 / 待办提醒 / 记账提醒时间 / CSV 导出与导入 / 四语界面 / 币种与标签 / 四语冒烟 / 环比百分比 / 周期记账补记 / 看板分桶 / 应用锁密码 / 六套配色对比度）
 gradle lintRelease         # 静态检查
 ```
 
@@ -128,19 +150,22 @@ gradle lintRelease         # 静态检查
 
 | 文件 | 说明 |
 | --- | --- |
-| `DailyBook-v1.7-release.apk` | 正式签名版，约 1.8 MB，**装机用这个**（签名与历史版本同源，可直接覆盖安装） |
-| `DailyBook-v1.7-debug.apk` | 调试版备胎，约 17 MB，签名不同，覆盖不了正式版，需先卸载 |
-| `DailyBook-v1.6-release.apk` / `DailyBook-v1.6-release.zip` | 上一版（v1.6）正式版的归档，留档备用 |
+| `DailyBook-v1.8-release.apk` | 正式签名版，约 1.8 MB，**装机用这个**（签名与历史版本同源，可直接覆盖安装）。构建产物是 `app/build/outputs/apk/release/app-release.apk`，按上面的命名复制到 `dist\` |
+| `DailyBook-v1.7-release.apk` / `DailyBook-v1.7-debug.apk` | 上一版（v1.7）正式版与调试版 |
+| `DailyBook-v1.6-release.apk` / `DailyBook-v1.6-release.zip` | 更早的 v1.6 归档，留档备用 |
 | `DailyBook-v1.5-release.zip` | 更早的 v1.5 归档 |
 | `DailyBook-v1.4-release.zip` | 更早的 v1.4 归档 |
 
-构建产物本身在 `app/build/outputs/apk/{release,debug}/`，已经按上面的命名复制到工作区根目录的 `dist\`。
+调试版约 17 MB，签名与正式版不同，覆盖不了正式版，需先卸载。
+
+构建产物本身在 `app/build/outputs/apk/{release,debug}/`，再按上面的命名复制到工作区根目录的 `dist\`。
 
 ## 设计要点
 
 - **单一数据源**：专注统计（今日/连续/累计、本周/本月、热力图）全部从 `focus_sessions` 表实时派生，
   不再另存一份计数；v1.7 的看板分组、环比对比、智能洞察与月报同样是从这一份 UiState 现场派生的，
-  不另存快照；主题/界面语言/月度预算/分类预算/自定义分类/币种汇率/专注目标只有一份全局单例设置。
+  不另存快照；v1.8 的桌面小组件也不另存一份统计——它每次刷新直接查三张表当天/未完成的行现算；
+  主题/界面语言/配色方案/月度预算/分类预算/自定义分类/币种汇率/专注目标只有一份全局单例设置。
 - **界面语言（i18n）**：四种语言在 `i18n/Lang.kt` 里是一个枚举，取值一律走
   `pick(lang, zhCn, zhTw, en, ja)`——四个槽位必须在编译期全部给出，**漏翻一种语言是编译错误**，
   而不是运行期冒出一个空串或悄悄回落。这是整套方案唯一的强制手段，也是最有效的一条：
@@ -274,6 +299,10 @@ gradle lintRelease         # 静态检查
   `LedgerReminderReceiver` 发完通知立刻排下一天，不依赖 App 常驻。
   v1.5 起这个时间点还兼任「每日专注目标」的判定：`LedgerReminderReceiver` 到点先数一遍今天的番茄数，
   没达标就补一条通知（记账提醒和专注目标各看自己的开关，谁开着做谁的事，两个都关就什么都不做）。
+  这个每日闹钟**始终排着**：`LedgerReminder.sync()` 无论开关如何都会排下一次，
+  两个开关都关时它固定按 21:00 干活、不发通知——因为 v1.8 起它还兼任两件事：
+  ① `materializeRecurring()` 补记到期的周期记账（固定支出不能因为用户关了提醒就漏记），
+  ② `AutoBackup.runBackupIfDue()` 做当天那份自动备份（没开自动备份、或还没挑文件夹时它什么都不做）。
 - **定期小结**：`SummaryReminder` 复用同一套非精确闹钟做法，`nextTrigger()` 是纯函数
   （每周 → 下一个周日 20:00，每月 → 下一个 1 号 10:00；今天正好就是周日 / 1 号而点还没到，就用今天），
   `rangeFor()` 同样是纯函数（周日发的是「刚过去的周一到今天」，1 号发的是「上一个自然月」）。
@@ -302,6 +331,67 @@ gradle lintRelease         # 静态检查
 - **通知跳转**：所有通知（待办提醒、每晚记账提醒、预算预警、定期小结、专注目标）都带
   `PendingIntent` 指向 `MainActivity`，点通知即可回到应用；发送前统一过一遍 `canNotify()`
   检查通知权限，没授权就安静地不发（`POST_NOTIFICATIONS` 之外的权限一律不申请）。
+- **应用锁**：**默认关闭**，开不开由用户决定，不装锁的人感觉不到它存在。真正的启用条件是
+  「开关打开 **且** 存过摘要」（`AppLockStore.loadEnabled()`），所以不会出现「开关开着但没有密码」
+  这种把人锁在门外的状态；`setEnabled(true)` 在没有密码时直接拒绝并返回 false。
+  密码规则是一条条数出来的：`PinCode.isValid()` 只认 4~6 位数字，而且**先归一化再判断**——
+  中文 / 日文输入法很容易打出全角「１２３４」，若原样存下、解锁时又打半角，用户就被自己的锁挡在外面了，
+  所以 `normalize()` 把 U+FF10~U+FF19 折回 ASCII 数字，`isValid()` 与 `hash()` 都走同一份归一化结果，
+  用全角设、用半角解也能进得去。
+  存储上**只有盐和摘要**：`PinCode.newSalt()` 用 `SecureRandom` 取 16 字节（32 个十六进制字符），
+  摘要固定 64 个十六进制字符，`hash()` 算的是 `"<盐>:<归一化密码>"` 的 SHA-256，**明文一个字都不落盘**。
+  `verify()` 用的是恒定时间比较（逐字符异或累加，不做提前返回），摘要长度不对就当失败——
+  存坏的记录既不崩也不放行。**这里刻意不做 PBKDF2 / Argon2 这类密钥派生**：它是本地 4~6 位数字锁，
+  要挡的是「别人拿起你手机随手翻」，不是抗离线爆破；真按抗爆破标准做，4 位数字的空间也救不了。
+  上锁与解锁的时机也很简单：`MainActivity` 里 `lockEnabled && !unlocked` 就渲染 `LockScreen`
+  并**提前 return，主界面一行都不画**（顺带也不去申请通知权限，免得系统权限弹窗盖在锁屏上）；
+  生命周期观察者在 `ON_STOP` 时把 `unlocked` 置回 false，所以退到后台再回来就要重新验证。
+  `LockScreen` **不做「打满 4 位自动校验」**——密码可能是 5~6 位，那样长密码用户永远进不去——
+  满 4 位后由「解锁」按钮提交（按钮在此之前是禁用的），输错只清空输入并提示，不锁定、不延时。
+  **忘记密码无法找回**：密码只在本机、只有摘要，没有任何后门；唯一的出路是清除应用数据，
+  设置页里那一行就是明说的，界面上也给了「清除密码」这个出口。**没有指纹 / 人脸，也没有设备锁
+  （`BiometricPrompt` / `KeyguardManager`）这条路径**——那些要么要额外依赖、要么要改权限，
+  本版一个都不引；用例是「应用自己的密码」，不是「系统认证的代理」。
+- **桌面小组件**：`widget/WidgetProvider.kt` 继承框架的 `AppWidgetProvider`，
+  界面用 `RemoteViews` 拼（**不是 Glance**，所以一个依赖都不用加）。
+  刷新有三条路：系统按 `res/xml/widget_info.xml` 里的 `updatePeriodMillis`（1800000 ms = 30 分钟，
+  系统允许的最小值）唤起 `onUpdate`；App 数据一变就发一次自家广播 `ACTION_REFRESH`
+  （`refresh()` 用 `setPackage()` 只投给自己，不需要任何权限，桌面上没小组件时系统直接丢掉）；
+  用户把小组件拖到桌面时系统再发一次 `APPWIDGET_UPDATE`。
+  数字口径和 App 内一致：今日支出 / 收入按 `amountCents` 当天汇总（外币早在入库时就折算成人民币，
+  小组件不需要任何按币种分支），待办数 `!done`，专注分钟按当天会话累加。
+  `onUpdate` 跑在主线程，所以查库挪到 `Dispatchers.IO` 协程里，并用 `goAsync()` +
+  `finally { result.finish() }` 告诉系统「这次广播还没处理完」（和 `LedgerReminderReceiver` 同一套写法）；
+  异常一律吞在接收器里——小组件里冒异常会弹 ANR 对话框。
+  点击事件挂在根布局上，`PendingIntent.getActivity` 带 `FLAG_IMMUTABLE`（Android 12+ 的硬要求）
+  与 `FLAG_UPDATE_CURRENT`，点哪儿都打开应用。
+  文案走 `@string`：桌面上的文字跟随**系统**语言，若 App 内选的语言系统认识（中 / 日文）就用
+  `createConfigurationContext()` 重取一次资源，尽量贴近 App 内所见。
+  **release 有坑**：布局是代码里按名字取的（`R.layout.widget_dailybook`）、provider 配置只出现在
+  manifest 的 `meta-data` 里，静态扫描不一定认得全，R8 + `shrinkResources` 一旦裁掉就是
+  「debug 正常、release 一片空白」这种最难查的问题，所以 `res/raw/keep.xml` 用 `tools:keep`
+  把那几个 `@layout` / `@drawable` / `@xml` 与 `@string` 显式钉住。
+- **自动备份**：`backup/AutoBackup.kt` 把整份数据写成 JSON 放进**用户自己挑的文件夹**——
+  用 `ActivityResultContracts.OpenDocumentTree()` 选树，然后 `takePersistableUriPermission()`
+  申请持久读写授权（申请失败不算错：有的第三方文件管理器就是不支持，本次运行内照样能用，
+  下次真去写时发现没权限就如实报 `NO_PERMISSION`，让用户重挑）。
+  因为文件在 App 私有目录之外，**卸载重装、清数据都不会把它带走，换机直接拷走就行**——这才是自动备份的价值；
+  反过来也意味着它在别的 App 或云同步盘里是明文可读的（记账和待办），所以文档里明说「介意就别挑同步盘」。
+  **触发时机只有两个：App 打开时、每晚记账提醒闹钟响时**（`MainViewModel` 的启动协程与
+  `LedgerReminderReceiver`），**没有任何后台任务、没有 WorkManager、没有前台服务**，
+  所以长期不开 App 就不会有新备份——这是写明的已知限制，不是没做完。
+  文件名叫 `DailyBook-backup-YYYYMMDD.json`（本地日期，跟用户的「今天」一致）：
+  写之前先在树里找同名的，找到就**覆盖内容**，找不到才 `createDocument`，所以**一天最多一份**，
+  反复开 App 不会刷出一堆 `… (1).json`；两次备份之间还有 24 小时的下限（更细的粒度没有意义）。
+  轮换保留最新 **7** 份，排序键是**文件名里的 8 位日期**而不是提供方给的修改时间
+  （有些提供方根本不填 `COLUMN_LAST_MODIFIED`，而且覆盖写同一天文件时修改时间会变，用文件名才稳定）；
+  **只处理名字以 `DailyBook-backup-` 开头的文件**，用户在同一个文件夹里放的别的文件一律不删。
+  失败处理刻意「诚实」：结果回 `BackupOutcome` 四个值（成功 / 没配置 / 还没到点 / 真失败），
+  原因回 `BackupFailureCode`（没权限 / 建不了 / 写不进 / 清理失败 / 未知），
+  两个都是枚举、本模块里**没有任何面向用户的句子**（文案交给设置页按当前语言查词条）。
+  **失败不动「上次成功备份」的时间戳**，界面因此永远显示的是真正的上一次成功；
+  失败后还有 1 小时退避，免得每次开 App 都对着一个坏文件夹猛撞；清理那一步单独 `runCatching`，
+  「备份写成了、清理没成」会记成 `LIST_FAILED` 而不是假装全好。
 - **日历视图与筛选**：记账页可在列表 / 日历之间切换，日历显示所选月份的每日支出，
   颜色越深表示当天花得越多（按当月最大值归一化，所以月份换了配色跟着重算）。
   点某一天就把下方列表筛成那一天的流水，**再点同一天即取消**，因此「看某天」和「看全月」
@@ -310,6 +400,18 @@ gradle lintRelease         # 静态检查
 - **多尺寸适配**：分类标签走 `FlowRow` 自动换行；圆环尺寸由 `BoxWithConstraints`
   按可用空间计算；≥600dp 自动切换侧边导航并限宽 720dp；正文区域用最小高度约束，
   系统字体放大时不裁切文字。
+- **配色方案与对比度（v1.8）**：`ui/theme/Palette.kt` 里 `ThemePalette` 是六套配色
+  （青 `TEAL`（默认）/ 靛蓝 `INDIGO` / 紫罗兰 `VIOLET` / 玫红 `ROSE` / 琥珀 `AMBER` / 森林 `FOREST`），
+  每套给一组 `PaletteSpec`，再由 `lightSchemeOf()` / `darkSchemeOf()` 拼成 Material 3 的浅色 / 深色配色。
+  **只换品牌色**（主色 / 主色容器 / 次色 / 第三色），中性底色、表面色与描边六套共用同一份
+  （`Color.kt`），这样每套配色的层次与对比度基线完全一致，不会出现「某个配色在深色下糊成一团」。
+  选中的方案存在设置里（`SettingsStore.palette`，默认 `TEAL`），由 `DailyBookTheme(palette = …)`
+  套进 `MaterialTheme`；**`dynamicColor` 打开时优先用系统取色**（`dynamicLight/DarkColorScheme`，
+  Android 12+），此时用户选的配色不生效——设置页会直接说明这一点，而不是让人以为开关坏了。
+  对比度不是靠看截图，而是**算出来的**：`PaletteContrastTest` 对六套 × 明暗两套逐个跑 WCAG 相对亮度公式，
+  正文（底色上的正文）要求 **≥ 4.5:1**、控件与主色按钮上的文字 / 图标要求 **≥ 3:1**，
+  另有一条要求六套主色互不相同（防止某个配色写错、切了没变化）。
+  深色下最容易出事的次色 / 第三色就是被这两条钉住的。
 - **正计时与中断记录**：专注页有两种模式，番茄钟走倒计时，正计时只往上走、点「完成」把已经过去的
   这段时长记成一条会话；**中断记录**则发生在番茄模式里——中途停止或跳过专注阶段时，
   只要这一段已经过 1 分钟就照样入库，并给 `focus_sessions.interrupted` 置 1，
@@ -322,7 +424,7 @@ gradle lintRelease         # 静态检查
 
 ## 单元测试
 
-`app/src/test/java/com/dailybook/app/` 下七个文件共 62 个用例，跑在 JVM 上
+`app/src/test/java/com/dailybook/app/` 下九个文件共 72 个用例，跑在 JVM 上
 （不需要设备或模拟器），用 JUnit 4 的 `org.junit.Test` + `org.junit.Assert`：
 
 | 测试类 | 覆盖内容 |
@@ -337,16 +439,21 @@ gradle lintRelease         # 静态检查
 | `ComparisonTest`（5） | **v1.7 新增**：环比百分比的算法——没有可比基数（上月 / 去年为 0）时返回 null、带符号且取整（+50 / −25 / 0）、整体归零是 −100%、三对数字（月/年 × 支出/收入）各用各的 |
 | `RecurringScheduleTest`（6） | **v1.7 新增**：周期记账的下次日期**一定落在今天之后**——不重复返回 null、三个月前设的每月房租推到未来的同一天、每周不会回落到过去且不超过一周、今天到期的每天任务推到明天（所以补记过的当天不会再记一次）、十年前的老基准也不会死循环、1 月 31 日的每月任务夹到 2 月 28 日 |
 | `TodoBucketTest`（6） | **v1.7 新增**：看板分桶的边界——已完成永远归「已完成」（即使已经逾期）、今天到期与逾期同归「今天到期」、明天到第 6 天是「本周内」、第 7 天起算「以后」、没有到期日单独一组，而且每条待办只会落进一个组 |
+| `PinCodeTest`（8） | **v1.8 新增**：应用锁的密码规则与摘要——只认 4~6 位数字（3 位、7 位、含字母、空串、含空格一律拒绝）、同样密码 + 同样盐摘要固定且**摘要里不出现明文**（长度固定 64 个十六进制字符）、同一密码换盐得到不同摘要、只有正确密码能通过校验、**存坏的摘要（空串 / 不是摘要）既不崩也不放行**、随机盐固定 32 个十六进制字符，以及**全角数字归一化**（用全角 １２３４ 设、用半角 1234 解锁照样进得去） |
+| `PaletteContrastTest`（2） | **v1.8 新增**：六套配色 × 明暗两套逐个算 WCAG 对比度——正文（background / surface 上的 onSurface）达到 4.5:1，控件与主色按钮上的文字 / 图标（onSurfaceVariant、onPrimary、onSecondary、onTertiary、onPrimaryContainer）达到 3:1，主色与底色也要拉得开（1.4:1）；另一条要求**六套主色互不相同**，避免某个配色写错、用户切了却没变化 |
 
 跑法：`gradle testDebugUnitTest`（依赖 `testImplementation(libs.junit)` = JUnit 4.13.2）。
 
 ## 已知取舍
 
-- 未做真机运行验证（构建机没有连接安卓设备）：**v1.7 已通过静态验证**——`gradle testDebugUnitTest`
-  （62 个用例全绿）、`gradle lintRelease`（0 error）、`gradle assembleRelease` + `assembleDebug` 成功，
+- 未做真机运行验证（构建机没有连接安卓设备）：**v1.8 已通过静态验证**——`gradle testDebugUnitTest`
+  （72 个用例全绿）、`gradle lintRelease`（0 error）、`gradle assembleRelease` + `assembleDebug` 成功，
   `aapt2` / `apksigner` 核对过包名、版本号、权限与签名，数据库迁移 SQL（v4→v5 的七条加列、
-  v5→v6 的两条加列与两张新表）另用真实 SQLite 跑过结构与老数据保留。
-  但**界面在真机上的行为（拖拽手感、PDF 排版、通知弹出）没验证过**，装机试用后如有问题需再修。
+  v5→v6 的两条加列与两张新表）另用真实 SQLite 跑过结构与老数据保留（v1.8 没有再改表结构，所以没有新迁移）。
+  但**界面在真机上的行为（应用锁键盘手感、桌面小组件在真机启动器上的排版与刷新、
+  PDF 排版、通知弹出）没验证过**，装机试用后如有问题需再修。
+  另外 v1.8 的「release 资源压缩」只是**用 `tools:keep` 声明**（`res/raw/keep.xml`）加静态核对，
+  真机上「debug 正常、release 空白」这类问题最好还是装一次 release 包亲眼确认。
 - 记账的 CSV 导出**现在也有对应的导入**：导入认本应用自己导出的 5 列 / 6 列 / 7 列三种列数与四种语言的表头，
   **不认第三方账单 App 或银行导出的表头**。去重指纹是「日期 + 金额 + 类型 + 分类 + 账户 + 备注」，
   所以**同一天同金额同分类同账户同备注的两笔真实消费只会留下第一笔**（想都留住，就得让备注或账户有区别）。
@@ -394,3 +501,36 @@ gradle lintRelease         # 静态检查
 - **环比和洞察只跟「已经记下的数据」说话**：没有可比基数时宁可说「无法比较」，或者干脆一条都不显示，
   所以本月刚开张、上月也没数据时，这两张卡会比较安静；洞察最多 4 条，都是固定模板句，
   不能自定义、也不做预测或建议。
+- **应用锁是「自设数字密码」，不是系统认证**：没有指纹 / 人脸（不引 `androidx.biometric`），
+  也没有设备锁 / PIN 这条路径（不用 `KeyguardManager` 的 `createConfirmDeviceCredentialIntent`），
+  更没有「锁了以后整个 App 的数据加密」——数据库、备份 JSON、CSV 都还是明文，
+  应用锁挡的是「别人拿起你手机直接翻界面」。它也不抗离线爆破：只有盐 + 单轮 SHA-256，
+  4 位数字的组合本来就不多，真要防的是随手翻而不是专业取证。**忘记密码无法找回**，
+  唯一的出路是清除应用数据（界面和文档都这么写）；密码只在本机、只有摘要，服务端与云端都没有副本。
+  另外退到后台（`ON_STOP`）就会重新上锁，转屏、切标签不会，但**拿起手机回个消息再回来就要重新输密码**——
+  这是有意取的安全侧，代价是频繁切换时要多输几次。
+- **桌面小组件只报「今天」**：今日支出 / 收入 / 未完成待办 / 今日专注分钟四项，
+  **没有本月汇总、没有预算进度、没有热力图**，也不做交互（没有勾选待办、没有快速记一笔的按钮），
+  点一下只会打开 App。它的数字口径跟随 App 内的当天口径，**但不会实时变**：
+  除了 App 内数据变化时主动推一次，其余靠系统 30 分钟唤起一次，
+  所以「在别的地方改了数据」或者长时间不用时，桌面上的数字可能滞后最多半小时；
+  系统本身也可能因为省电策略把 `updatePeriodMillis` 的唤起往后拖。
+  多个小组件实例共用同一份数据与同一个点击行为；桌面上拿不到 App 主题，
+  所以它的配色是写死的（深色圆角底 + 白字，`res/drawable/widget_background.xml` 的实色），
+  **不跟随六套配色**——文字跟随系统语言，只有系统认识 App 内选的语言时才贴近 App 内所见。
+- **自动备份只在两个时刻发生**：打开 App，或每晚提醒闹钟响时。**没有 WorkManager、没有后台服务、
+  没有「定时备份」开关**，所以**一直不打开 App 的人不会有新的备份**——这是明确的取舍，
+  真要做到「不开 App 也备份」就得引 WorkManager 并多一个后台约束，本版故意不引。
+  同一次触发里一天最多一份（同一天覆盖），加上 24 小时下限，所以「一天备份好几次」不可能；
+  失败后还有 1 小时退避，短时间连开 App 不会连续重试。
+  **备份文件是明文 JSON**，放在用户自己挑的文件夹里（可能是云同步盘），里面是记账与待办的全部内容——
+  介意的话别挑同步盘，应用不会替它加密，也没有密码保护。轮换保留最新 7 份、
+  只删 `DailyBook-backup-` 前缀的文件，所以**同名规则之外的旧备份不会被清理**，
+  手工复制的备份也不在轮换范围内。恢复仍然只能走「备份与恢复」里手动挑文件那一条路，
+  自动备份不会自动写回数据库。
+- **六套配色只换品牌色**：中性底色、表面色与描边是六套共用的，所以换配色不会改变界面层次，
+  也不会换字体或圆角；**没有自定义取色器、没有按页面单独设色**，只有这六个选项。
+  跟随系统取色（Android 12+）打开时会盖掉所选配色，配色胶囊仍在但不起作用（设置页有说明）；
+  对比度是**按配色取值算出来的**（`PaletteContrastTest` 跑 WCAG 相对亮度），
+  但那只保证「文字与背景、图标与底色」达到阈值，**不保证用户自己放大字体、开高对比度无障碍设置、
+  或换成第三方壁纸时的观感**——那些要在真机上再看。

@@ -10,4 +10,15 @@
     <string name="shortcut_add_todo_long">Open the to-do list and add one</string>
     <string name="shortcut_focus_short">Start focus</string>
     <string name="shortcut_focus_long">Open the timer and start a focus session</string>
+
+    <!-- 桌面小组件：文字跟随系统语言（系统 UI，App 内语言设置管不到） -->
+    <string name="widget_today_expense">Today\'s expense</string>
+    <string name="widget_today_income">Today\'s income</string>
+    <!-- %1$s = amount with ¥ -->
+    <string name="widget_money">¥%1$s</string>
+    <!-- %1$d = open to-dos, %2$d = focus minutes -->
+    <string name="widget_todo_focus">To-dos %1$d · Focus %2$d min</string>
+    <!-- 布局里的占位文案，运行时会被真实数字覆盖 -->
+    <string name="widget_money_placeholder">¥0.00</string>
+    <string name="widget_todo_focus_placeholder">To-dos 0 · Focus 0 min</string>
 </resources>

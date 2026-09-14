@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 长按桌面图标弹出的快捷入口，tab 的编号与 MainActivity 里的标签顺序一致：
+     0 记账 / 1 待办 / 2 专注 -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="add_transaction"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_add_tx_short"
+        android:shortcutLongLabel="@string/shortcut_add_tx_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.dailybook.app"
+            android:targetClass="com.dailybook.app.MainActivity">
+            <extra
+                android:name="tab"
+                android:value="0" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="add_todo"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_add_todo_short"
+        android:shortcutLongLabel="@string/shortcut_add_todo_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.dailybook.app"
+            android:targetClass="com.dailybook.app.MainActivity">
+            <extra
+                android:name="tab"
+                android:value="1" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="focus"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_focus_short"
+        android:shortcutLongLabel="@string/shortcut_focus_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.dailybook.app"
+            android:targetClass="com.dailybook.app.MainActivity">
+            <extra
+                android:name="tab"
+                android:value="2" />
+        </intent>
+    </shortcut>
+</shortcuts>

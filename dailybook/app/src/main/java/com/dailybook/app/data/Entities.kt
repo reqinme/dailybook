@@ -20,6 +20,8 @@ data class TransactionEntity(
     /** 存枚举名，避免依赖 Room 的枚举转换 */
     val typeName: String,
     val category: String,
+    /** 账户（现金 / 微信 / 支付宝 / 银行卡，或自定义），老数据默认「现金」 */
+    val account: String = Accounts.DEFAULT,
     val note: String = "",
     /** 记账日期（当天 00:00 的毫秒时间戳） */
     val dateMillis: Long,
@@ -27,6 +29,23 @@ data class TransactionEntity(
 ) {
     val type: TxType
         get() = runCatching { TxType.valueOf(typeName) }.getOrDefault(TxType.EXPENSE)
+}
+
+/** 账户：预置几个常用渠道，也允许用户自己写 */
+object Accounts {
+    const val DEFAULT = "现金"
+
+    val PRESETS = listOf("现金", "微信", "支付宝", "银行卡", "其他")
+
+    fun emojiOf(account: String): String = when (account) {
+        "现金" -> "💵"
+        "微信" -> "💬"
+        "支付宝" -> "🅰️"
+        "银行卡" -> "💳"
+        "信用卡" -> "💳"
+        "其他" -> "📦"
+        else -> "🏷️"
+    }
 }
 
 /** 待办的重复规则 */

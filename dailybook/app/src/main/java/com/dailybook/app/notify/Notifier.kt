@@ -3,7 +3,9 @@ package com.dailybook.app.notify
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.VibrationEffect
@@ -12,6 +14,7 @@ import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.dailybook.app.MainActivity
 import com.dailybook.app.R
 
 /** 专注阶段结束时的通知与震动提醒 */
@@ -37,8 +40,16 @@ class Notifier(private val context: Context) {
         ).apply {
             description = context.getString(R.string.todo_channel_description)
         }
+        val ledger = NotificationChannel(
+            LEDGER_CHANNEL_ID,
+            context.getString(R.string.ledger_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = context.getString(R.string.ledger_channel_description)
+        }
         nm.createNotificationChannel(focus)
         nm.createNotificationChannel(todo)
+        nm.createNotificationChannel(ledger)
     }
 
     fun notifyPhaseFinished(title: String, text: String) {
@@ -76,6 +87,7 @@ class Notifier(private val context: Context) {
             .setContentText(text)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(openAppIntent())
             .setAutoCancel(true)
             .build()
         try {
@@ -84,6 +96,38 @@ class Notifier(private val context: Context) {
         } catch (_: SecurityException) {
             // 权限可能在运行期间被用户撤销，忽略即可
         }
+    }
+
+    /** 每晚记账提醒 */
+    fun notifyLedgerReminder() {
+        if (!canNotify()) return
+        val notification = NotificationCompat.Builder(context, LEDGER_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("今天的账记了吗？")
+            .setContentText("花一分钟记一下，月底就不会糊里糊涂")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(openAppIntent())
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(LEDGER_NOTIFY_ID, notification)
+        } catch (_: SecurityException) {
+            // 同上
+        }
+    }
+
+    /** 点通知直接回到 App */
+    private fun openAppIntent(): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun canNotify(): Boolean =
@@ -113,7 +157,9 @@ class Notifier(private val context: Context) {
     private companion object {
         const val CHANNEL_ID = "dailybook_focus_timer"
         const val TODO_CHANNEL_ID = "dailybook_todo_reminder"
+        const val LEDGER_CHANNEL_ID = "dailybook_ledger_reminder"
         const val NOTIFY_ID = 1001
         const val TODO_NOTIFY_BASE = 2000
+        const val LEDGER_NOTIFY_ID = 3000
     }
 }

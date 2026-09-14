@@ -2,6 +2,7 @@ package com.dailybook.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import com.dailybook.app.DayGroup
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
+import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
@@ -131,12 +134,54 @@ fun LedgerScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
 
+            // 用过两个以上账户才显示筛选条，只有一个账户时不必占地方
+            if (state.accounts.size > 1) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = state.accountFilter == null,
+                        onClick = { vm.setAccountFilter(null) },
+                        label = { Text("全部账户") }
+                    )
+                    state.accounts.forEach { account ->
+                        FilterChip(
+                            selected = state.accountFilter == account,
+                            onClick = {
+                                vm.setAccountFilter(
+                                    if (state.accountFilter == account) null else account
+                                )
+                            },
+                            label = { Text("${Accounts.emojiOf(account)} $account") }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
             if (!state.hasMonthData) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    val filtered = state.accountFilter != null
                     EmptyHint(
-                        emoji = if (state.isSearching) "🔍" else "🧾",
-                        title = if (state.isSearching) "没有匹配的记录" else "这个月还没有记账",
-                        subtitle = if (state.isSearching) "换个关键词试试" else "点右下角「记一笔」开始"
+                        emoji = when {
+                            state.isSearching -> "🔍"
+                            filtered -> "💳"
+                            else -> "🧾"
+                        },
+                        title = when {
+                            state.isSearching -> "没有匹配的记录"
+                            filtered -> "${state.accountFilter} 这个月没有记录"
+                            else -> "这个月还没有记账"
+                        },
+                        subtitle = when {
+                            state.isSearching -> "换个关键词试试"
+                            filtered -> "点上面的「全部账户」看全部流水"
+                            else -> "点右下角「记一笔」开始"
+                        }
                     )
                 }
             } else {
@@ -165,16 +210,17 @@ fun LedgerScreen(
     if (sheetOpen) {
         TransactionSheet(
             editing = editing,
+            knownAccounts = state.accounts,
             onDismiss = {
                 sheetOpen = false
                 editing = null
             },
-            onSave = { amountCents, type, category, note, dayMillis ->
+            onSave = { amountCents, type, category, note, dayMillis, account ->
                 val target = editing
                 if (target == null) {
-                    vm.addTransaction(amountCents, type, category, note, dayMillis)
+                    vm.addTransaction(amountCents, type, category, note, dayMillis, account)
                 } else {
-                    vm.updateTransaction(target, amountCents, type, category, note, dayMillis)
+                    vm.updateTransaction(target, amountCents, type, category, note, dayMillis, account)
                 }
                 sheetOpen = false
                 editing = null
@@ -320,7 +366,11 @@ private fun TransactionRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             val subtitle = buildString {
-                if (tx.note.isNotBlank()) append(tx.note)
+                if (tx.account != Accounts.DEFAULT) append("${Accounts.emojiOf(tx.account)} ${tx.account}")
+                if (tx.note.isNotBlank()) {
+                    if (isNotEmpty()) append(" · ")
+                    append(tx.note)
+                }
                 if (tx.dateMillis.toLocalDate() != LocalDate.now()) {
                     if (isNotEmpty()) append(" · ")
                     append("${tx.dateMillis.toLocalDate().monthValue}月${tx.dateMillis.toLocalDate().dayOfMonth}日")
@@ -368,8 +418,16 @@ private fun TransactionRow(
 @Composable
 private fun TransactionSheet(
     editing: TransactionEntity?,
+    knownAccounts: List<String>,
     onDismiss: () -> Unit,
-    onSave: (cents: Long, type: TxType, category: String, note: String, dayMillis: Long) -> Unit
+    onSave: (
+        cents: Long,
+        type: TxType,
+        category: String,
+        note: String,
+        dayMillis: Long,
+        account: String
+    ) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -380,11 +438,18 @@ private fun TransactionSheet(
     var category by remember(editing) {
         mutableStateOf(editing?.category ?: Categories.EXPENSE.first())
     }
+    var account by remember(editing) { mutableStateOf(editing?.account ?: Accounts.DEFAULT) }
     var note by remember(editing) { mutableStateOf(editing?.note ?: "") }
     var selectedDate by remember(editing) {
         mutableStateOf(editing?.dateMillis?.toLocalDate() ?: LocalDate.now())
     }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showCustomAccount by remember { mutableStateOf(false) }
+
+    // 预置账户 + 数据里出现过的账户（比如从备份恢复进来的自定义账户）
+    val accountOptions = remember(knownAccounts, account) {
+        (Accounts.PRESETS + knownAccounts + account).distinct()
+    }
 
     val cents = parseAmountToCents(amountText)
     val categories = Categories.forType(type)
@@ -491,6 +556,24 @@ private fun TransactionSheet(
                 )
             }
 
+            Spacer(Modifier.height(16.dp))
+            FieldLabel("账户")
+            Spacer(Modifier.height(8.dp))
+            ChipFlow {
+                accountOptions.forEach { item ->
+                    FilterChip(
+                        selected = account == item,
+                        onClick = { account = item },
+                        label = { Text("${Accounts.emojiOf(item)} $item") }
+                    )
+                }
+                FilterChip(
+                    selected = false,
+                    onClick = { showCustomAccount = true },
+                    label = { Text("＋ 自定义") }
+                )
+            }
+
             Spacer(Modifier.height(14.dp))
             OutlinedTextField(
                 value = note,
@@ -504,7 +587,7 @@ private fun TransactionSheet(
             Button(
                 onClick = {
                     val value = parseAmountToCents(amountText) ?: return@Button
-                    onSave(value, type, category, note.trim(), selectedDate.toDayMillis())
+                    onSave(value, type, category, note.trim(), selectedDate.toDayMillis(), account)
                 },
                 enabled = cents != null,
                 modifier = Modifier
@@ -523,6 +606,42 @@ private fun TransactionSheet(
                 )
             }
         }
+    }
+
+    if (showCustomAccount) {
+        var text by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showCustomAccount = false },
+            title = { Text("自定义账户") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { if (it.length <= 10) text = it },
+                        label = { Text("账户名") },
+                        placeholder = { Text("例如：招商银行、饭卡") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "账户名会跟着记录一起保存，可以随时按账户筛选和统计。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val name = text.trim()
+                    if (name.isNotEmpty()) account = name
+                    showCustomAccount = false
+                }) { Text("确定") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCustomAccount = false }) { Text("取消") }
+            }
+        )
     }
 
     if (showDatePicker) {

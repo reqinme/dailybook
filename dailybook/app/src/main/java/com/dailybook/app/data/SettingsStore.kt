@@ -5,6 +5,7 @@ import com.dailybook.app.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONObject
 
 /**
  * 轻量设置存储（SharedPreferences），全局单例。
@@ -31,6 +32,20 @@ class SettingsStore private constructor(context: Context) {
     private val _monthlyBudgetCents = MutableStateFlow(prefs.getLong(KEY_BUDGET, 0L))
     val monthlyBudgetCents: StateFlow<Long> = _monthlyBudgetCents.asStateFlow()
 
+    /** 分类预算：分类名 → 每月上限（分），只保存大于 0 的项 */
+    private val _categoryBudgets = MutableStateFlow(loadCategoryBudgets())
+    val categoryBudgets: StateFlow<Map<String, Long>> = _categoryBudgets.asStateFlow()
+
+    /** 每晚记账提醒 */
+    private val _ledgerReminderEnabled = MutableStateFlow(prefs.getBoolean(KEY_LEDGER_REMIND, false))
+    val ledgerReminderEnabled: StateFlow<Boolean> = _ledgerReminderEnabled.asStateFlow()
+
+    private val _ledgerReminderHour = MutableStateFlow(prefs.getInt(KEY_LEDGER_REMIND_HOUR, 21))
+    val ledgerReminderHour: StateFlow<Int> = _ledgerReminderHour.asStateFlow()
+
+    private val _ledgerReminderMinute = MutableStateFlow(prefs.getInt(KEY_LEDGER_REMIND_MINUTE, 0))
+    val ledgerReminderMinute: StateFlow<Int> = _ledgerReminderMinute.asStateFlow()
+
     /** 当前选中的专注目标（某条待办） */
     private val _focusTaskId = MutableStateFlow(prefs.getLong(KEY_FOCUS_TASK_ID, NO_TASK))
     val focusTaskId: StateFlow<Long> = _focusTaskId.asStateFlow()
@@ -52,6 +67,47 @@ class SettingsStore private constructor(context: Context) {
         val safe = cents.coerceAtLeast(0L)
         prefs.edit().putLong(KEY_BUDGET, safe).apply()
         _monthlyBudgetCents.value = safe
+    }
+
+    /** 设置某个分类的月度预算；传 0 或负数表示取消这个分类的预算 */
+    fun setCategoryBudget(category: String, cents: Long) {
+        val key = category.trim()
+        if (key.isEmpty()) return
+        val next = _categoryBudgets.value.toMutableMap()
+        if (cents <= 0L) next.remove(key) else next[key] = cents
+        _categoryBudgets.value = next
+        prefs.edit().putString(KEY_CATEGORY_BUDGETS, JSONObject(next).toString()).apply()
+    }
+
+    fun clearCategoryBudgets() {
+        _categoryBudgets.value = emptyMap()
+        prefs.edit().remove(KEY_CATEGORY_BUDGETS).apply()
+    }
+
+    fun setLedgerReminder(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_LEDGER_REMIND, enabled).apply()
+        _ledgerReminderEnabled.value = enabled
+    }
+
+    fun setLedgerReminderTime(hour: Int, minute: Int) {
+        val h = hour.coerceIn(0, 23)
+        val m = minute.coerceIn(0, 59)
+        prefs.edit()
+            .putInt(KEY_LEDGER_REMIND_HOUR, h)
+            .putInt(KEY_LEDGER_REMIND_MINUTE, m)
+            .apply()
+        _ledgerReminderHour.value = h
+        _ledgerReminderMinute.value = m
+    }
+
+    private fun loadCategoryBudgets(): Map<String, Long> {
+        val raw = prefs.getString(KEY_CATEGORY_BUDGETS, null) ?: return emptyMap()
+        return runCatching {
+            val json = JSONObject(raw)
+            json.keys().asSequence()
+                .associateWith { key -> json.optLong(key, 0L) }
+                .filterValues { it > 0L }
+        }.getOrDefault(emptyMap())
     }
 
     fun setFocusTask(id: Long, title: String) {
@@ -88,6 +144,10 @@ class SettingsStore private constructor(context: Context) {
         private const val KEY_THEME = "theme_mode"
         private const val KEY_DYNAMIC = "dynamic_color"
         private const val KEY_BUDGET = "monthly_budget_cents"
+        private const val KEY_CATEGORY_BUDGETS = "category_budgets"
+        private const val KEY_LEDGER_REMIND = "ledger_reminder_enabled"
+        private const val KEY_LEDGER_REMIND_HOUR = "ledger_reminder_hour"
+        private const val KEY_LEDGER_REMIND_MINUTE = "ledger_reminder_minute"
         private const val KEY_FOCUS_TASK_ID = "focus_task_id"
         private const val KEY_FOCUS_TASK_TITLE = "focus_task_title"
         private const val KEY_REMINDED = "reminded_keys"

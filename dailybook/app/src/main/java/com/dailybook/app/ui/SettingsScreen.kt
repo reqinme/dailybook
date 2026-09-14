@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -27,9 +30,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,9 +46,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dailybook.app.CategoryBudgetRow
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.backup.Backup
+import com.dailybook.app.data.Categories
 import com.dailybook.app.timer.TimerViewModel
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.util.formatAmount
@@ -64,11 +72,16 @@ fun SettingsScreen(
 ) {
     val themeMode by vm.settings.themeMode.collectAsStateWithLifecycle()
     val dynamicColor by vm.settings.dynamicColor.collectAsStateWithLifecycle()
+    val ledgerReminder by vm.settings.ledgerReminderEnabled.collectAsStateWithLifecycle()
+    val reminderHour by vm.settings.ledgerReminderHour.collectAsStateWithLifecycle()
+    val reminderMinute by vm.settings.ledgerReminderMinute.collectAsStateWithLifecycle()
 
     var clearing by remember { mutableStateOf<ClearTarget?>(null) }
     var showBudgetDialog by remember { mutableStateOf(false) }
     var budgetText by remember { mutableStateOf("") }
     var confirmImport by remember { mutableStateOf(false) }
+    var showCategoryBudget by remember { mutableStateOf(false) }
+    var showReminderTime by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val message by vm.message.collectAsStateWithLifecycle()
@@ -143,6 +156,46 @@ fun SettingsScreen(
                     budgetText = if (state.hasBudget) formatAmount(state.budgetCents) else ""
                     showBudgetDialog = true
                 }) { Text("设置") }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("分类预算", style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = if (state.hasCategoryBudget) {
+                            val over = state.categoryBudgets.count { it.over }
+                            "${state.categoryBudgets.size} 个分类已设置" +
+                                if (over > 0) " · $over 个超支" else ""
+                        } else {
+                            "给常超支的分类单独设上限"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { showCategoryBudget = true }) { Text("管理") }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            LabeledSwitch("每晚记账提醒", ledgerReminder) { vm.setLedgerReminder(it) }
+            if (ledgerReminder) {
+                Spacer(Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("提醒时间", style = MaterialTheme.typography.bodyMedium)
+                    TextButton(onClick = { showReminderTime = true }) {
+                        Text("%02d:%02d".format(reminderHour, reminderMinute))
+                    }
+                }
             }
         }
 
@@ -270,7 +323,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(14.dp))
         SectionCard {
             Text(
-                text = "日常本 v1.3",
+                text = "日常本 v1.4",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -314,6 +367,23 @@ fun SettingsScreen(
                 restoreLauncher.launch(arrayOf("application/json", "*/*"))
             },
             onDismiss = { confirmImport = false }
+        )
+    }
+
+    if (showCategoryBudget) {
+        CategoryBudgetDialog(
+            budgets = state.categoryBudgets.associate { it.category to it.budgetCents },
+            onSet = { category, cents -> vm.setCategoryBudget(category, cents) },
+            onDismiss = { showCategoryBudget = false }
+        )
+    }
+
+    if (showReminderTime) {
+        ReminderTimeDialog(
+            hour = reminderHour,
+            minute = reminderMinute,
+            onConfirm = { h, m -> vm.setLedgerReminderTime(h, m) },
+            onDismiss = { showReminderTime = false }
         )
     }
 
@@ -377,5 +447,124 @@ private fun ThemeChip(
         selected = current == mode,
         onClick = { onSelect(mode) },
         label = { Text(label) }
+    )
+}
+
+/** 分类预算：逐个支出分类填上限，留空表示不限 */
+@Composable
+private fun CategoryBudgetDialog(
+    budgets: Map<String, Long>,
+    onSet: (String, Long) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val texts = remember(budgets) {
+        mutableStateMapOf<String, String>().apply {
+            Categories.EXPENSE.forEach { category ->
+                put(category, budgets[category]?.let { formatAmount(it) } ?: "")
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("分类预算") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = "给常超支的分类单独设每月上限，留空表示不限。超支的分类会在统计页标红。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                Categories.EXPENSE.forEach { category ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${Categories.emojiOf(category)} $category",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = texts[category].orEmpty(),
+                            onValueChange = { input ->
+                                if (input.length <= 8 &&
+                                    input.count { it == '.' } <= 1 &&
+                                    input.all { it.isDigit() || it == '.' }
+                                ) {
+                                    texts[category] = input
+                                }
+                            },
+                            prefix = { Text("¥") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.width(124.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                Categories.EXPENSE.forEach { category ->
+                    onSet(category, parseAmountToCents(texts[category].orEmpty()) ?: 0L)
+                }
+                onDismiss()
+            }) { Text("保存") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}
+
+/** 记账提醒时间选择 */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderTimeDialog(
+    hour: Int,
+    minute: Int,
+    onConfirm: (Int, Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val pickerState = rememberTimePickerState(
+        initialHour = hour,
+        initialMinute = minute,
+        is24Hour = true
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("每晚提醒时间") },
+        text = {
+            Column {
+                // 常用时段一键选，省得在小屏上拨表盘
+                ChipFlow {
+                    listOf(20 to 0, 21 to 0, 22 to 0).forEach { (h, m) ->
+                        FilterChip(
+                            selected = pickerState.hour == h && pickerState.minute == m,
+                            onClick = {
+                                pickerState.hour = h
+                                pickerState.minute = m
+                            },
+                            label = { Text("%02d:%02d".format(h, m)) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                TimePicker(state = pickerState)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onConfirm(pickerState.hour, pickerState.minute)
+                onDismiss()
+            }) { Text("确定") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
     )
 }

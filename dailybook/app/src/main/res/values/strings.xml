@@ -5,4 +5,12 @@
     <string name="channel_description">专注或休息阶段结束时通知你</string>
     <string name="todo_channel_name">待办提醒</string>
     <string name="todo_channel_description">待办到期时提醒你</string>
+    <string name="ledger_channel_name">记账提醒</string>
+    <string name="ledger_channel_description">每晚提醒你记下当天的收支</string>
+    <string name="shortcut_add_tx_short">记一笔</string>
+    <string name="shortcut_add_tx_long">打开记账页，记一笔收支</string>
+    <string name="shortcut_add_todo_short">加待办</string>
+    <string name="shortcut_add_todo_long">打开待办页，新建一条</string>
+    <string name="shortcut_focus_short">开始专注</string>
+    <string name="shortcut_focus_long">打开番茄钟，开始一段专注</string>
 </resources>

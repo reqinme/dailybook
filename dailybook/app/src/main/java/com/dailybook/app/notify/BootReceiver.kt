@@ -27,6 +27,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val todos = AppDatabase.get(context).todoDao().getAll()
                 TodoReminder.sync(context, todos)
+                LedgerReminder.sync(context)
             } catch (_: Exception) {
                 // 排程失败无伤大雅，下次打开 App 会再排
             } finally {

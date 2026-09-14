@@ -5,6 +5,7 @@ import com.dailybook.app.data.RepeatRule
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.data.nextDueMillisOf
+import com.dailybook.app.notify.LedgerReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.util.toDayMillis
 import org.junit.Assert.assertEquals
@@ -12,6 +13,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 
 /**
@@ -187,5 +189,38 @@ class CsvExportTest {
         val lines = csv.trim().split("\r\n")
         assertEquals("2026-09-01,支出,餐饮,2.00,早", lines[1])
         assertEquals("2026-09-20,支出,餐饮,1.00,晚", lines[2])
+    }
+}
+
+/** 每晚记账提醒的时间推算：过了点就排明天，别原地重复触发 */
+class LedgerReminderTimeTest {
+
+    private val zone: ZoneId = ZoneId.systemDefault()
+
+    private fun at(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
+        LocalDateTime.of(year, month, day, hour, minute).atZone(zone).toInstant().toEpochMilli()
+
+    @Test
+    fun sameDayWhenTimeIsStillAhead() {
+        val now = LocalDateTime.of(2026, 9, 14, 8, 0)
+        assertEquals(at(2026, 9, 14, 21, 0), LedgerReminder.nextTriggerMillis(21, 0, now))
+    }
+
+    @Test
+    fun nextDayWhenTimeAlreadyPassed() {
+        val now = LocalDateTime.of(2026, 9, 14, 22, 30)
+        assertEquals(at(2026, 9, 15, 21, 0), LedgerReminder.nextTriggerMillis(21, 0, now))
+    }
+
+    @Test
+    fun exactlyAtTheTimeRollsToTomorrow() {
+        val now = LocalDateTime.of(2026, 9, 14, 21, 0)
+        assertEquals(at(2026, 9, 15, 21, 0), LedgerReminder.nextTriggerMillis(21, 0, now))
+    }
+
+    @Test
+    fun customTimeIsRespected() {
+        val now = LocalDateTime.of(2026, 9, 14, 7, 0)
+        assertEquals(at(2026, 9, 14, 7, 30), LedgerReminder.nextTriggerMillis(7, 30, now))
     }
 }

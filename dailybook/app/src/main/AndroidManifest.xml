@@ -19,6 +19,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
             android:theme="@style/Theme.DailyBook">
@@ -26,11 +27,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- 长按图标直达：记一笔 / 加待办 / 开始专注 -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- 待办到点提醒：闹钟到点后重新查库再决定要不要提醒 -->
         <receiver
             android:name=".notify.TodoReminderReceiver"
+            android:exported="false" />
+
+        <!-- 每晚记账提醒 -->
+        <receiver
+            android:name=".notify.LedgerReminderReceiver"
             android:exported="false" />
 
         <!-- 重启 / 覆盖安装后，系统会清掉闹钟，这里重新排一遍 -->

@@ -2,6 +2,7 @@ package com.dailybook.app.backup
 
 import android.content.Context
 import android.net.Uri
+import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.DbSnapshot
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.data.RepeatRule
@@ -25,8 +26,13 @@ data class ParsedBackup(val snapshot: DbSnapshot, val budgetCents: Long)
  */
 object Backup {
 
-    /** 备份格式版本，将来结构变化时用来判断兼容性 */
-    const val FORMAT = 1
+    /**
+     * 备份格式版本。
+     * 1：只有记账 / 待办 / 专注记录 + 预算
+     * 2：记账多了「账户」，待办多了「重复规则」
+     * 读取时兼容更旧的版本（缺字段就取默认值），比当前版本更新的才拒绝。
+     */
+    const val FORMAT = 2
 
     // ---------- 导出 ----------
 
@@ -48,6 +54,7 @@ object Backup {
                     put("amountCents", tx.amountCents)
                     put("typeName", tx.typeName)
                     put("category", tx.category)
+                    put("account", tx.account)
                     put("note", tx.note)
                     put("dateMillis", tx.dateMillis)
                     put("createdAt", tx.createdAt)
@@ -111,6 +118,7 @@ object Backup {
                 amountCents = o.optLong("amountCents", 0L),
                 typeName = o.optString("typeName", TxType.EXPENSE.name),
                 category = o.optString("category", "其他"),
+                account = o.optString("account", Accounts.DEFAULT).ifBlank { Accounts.DEFAULT },
                 note = o.optString("note", ""),
                 dateMillis = o.optLong("dateMillis", 0L),
                 createdAt = o.optLong("createdAt", 0L)

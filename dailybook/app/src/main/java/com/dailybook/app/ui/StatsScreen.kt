@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,12 +23,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.dailybook.app.AccountSlice
+import com.dailybook.app.CategoryBudgetRow
 import com.dailybook.app.CategorySlice
 import com.dailybook.app.DayBar
 import com.dailybook.app.FocusDay
+import com.dailybook.app.HeatCell
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.MonthBar
 import com.dailybook.app.UiState
+import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.ui.theme.expenseColor
@@ -98,6 +103,34 @@ fun StatsScreen(
                 state.expenseSlices.forEachIndexed { index, slice ->
                     if (index > 0) Spacer(Modifier.height(12.dp))
                     SliceRow(slice, expenseColor())
+                }
+            }
+        }
+
+        if (state.accountSlices.size > 1) {
+            Spacer(Modifier.height(14.dp))
+            SectionCard(title = "账户支出分布") {
+                state.accountSlices.forEachIndexed { index, slice ->
+                    if (index > 0) Spacer(Modifier.height(12.dp))
+                    AccountSliceRow(slice)
+                }
+            }
+        }
+
+        if (state.hasCategoryBudget) {
+            Spacer(Modifier.height(14.dp))
+            SectionCard(title = "分类预算") {
+                state.categoryBudgets.forEachIndexed { index, row ->
+                    if (index > 0) Spacer(Modifier.height(14.dp))
+                    CategoryBudgetView(row)
+                }
+                if (state.hasOverBudgetCategory) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = "标红的分类已经超支，下个月从这几个下手最省事。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = expenseColor()
+                    )
                 }
             }
         }
@@ -234,6 +267,47 @@ fun StatsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Spacer(Modifier.height(14.dp))
+            Row {
+                StatBlock(
+                    "本周次数",
+                    focus.weekCount.toString(),
+                    MaterialTheme.colorScheme.primary,
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    "本周时长",
+                    "${focus.weekMinutes} 分",
+                    MaterialTheme.colorScheme.secondary,
+                    Modifier.weight(1f)
+                )
+                StatBlock(
+                    "本月时长",
+                    "${focus.monthMinutes} 分",
+                    MaterialTheme.colorScheme.onSurface,
+                    Modifier.weight(1f)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "本月已完成 ${focus.monthCount} 次专注 · 累计 ${
+                    focus.heatWeeks.flatten().sumOf { it.minutes.coerceAtLeast(0) }
+                } 分钟（近 12 周）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        SectionCard(title = "专注热力图（近 12 周）") {
+            Spacer(Modifier.height(4.dp))
+            FocusHeatmap(focus.heatWeeks, focus.heatMaxMinutes)
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "每一列是一周，从上到下为周一到周日；颜色越深，当天专注的时间越长。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
         Spacer(Modifier.height(14.dp))
@@ -502,6 +576,135 @@ private fun YearTrendChart(bars: List<MonthBar>, maxCents: Long) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AccountSliceRow(slice: AccountSlice) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = Accounts.emojiOf(slice.account),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = slice.account,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "¥${formatAmount(slice.cents)}  ${(slice.ratio * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            ThinProgressBar(
+                ratio = slice.ratio,
+                color = MaterialTheme.colorScheme.primary,
+                height = 6.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun CategoryBudgetView(row: CategoryBudgetRow) {
+    val accent = if (row.over) expenseColor() else MaterialTheme.colorScheme.primary
+
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "${Categories.emojiOf(row.category)} ${row.category}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = if (row.over) "超支 ¥${formatAmount(row.overCents)}"
+                else "还可花 ¥${formatAmount(row.remainingCents)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = accent
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        ThinProgressBar(ratio = row.ratio, color = accent, height = 6.dp)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "已用 ¥${formatAmount(row.spentCents)} / 预算 ¥${formatAmount(row.budgetCents)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** 近 12 周专注热力图：一列一周，7 行（周一到周日） */
+@Composable
+private fun FocusHeatmap(weeks: List<List<HeatCell>>, maxMinutes: Int) {
+    if (weeks.isEmpty()) return
+    val cell = 13.dp
+    val gap = 3.dp
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(gap)
+    ) {
+        weeks.forEach { week ->
+            Column(verticalArrangement = Arrangement.spacedBy(gap)) {
+                week.forEach { day ->
+                    val color = when {
+                        // 还没到的日子留空
+                        day.minutes < 0 -> Color.Transparent
+                        day.minutes == 0 -> MaterialTheme.colorScheme.surfaceVariant
+                        else -> {
+                            val ratio =
+                                if (maxMinutes <= 0) 1f
+                                else day.minutes.toFloat() / maxMinutes.toFloat()
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f + 0.7f * ratio)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(cell)
+                            .background(color, RoundedCornerShape(3.dp))
+                    )
+                }
+            }
+        }
+    }
+
+    Spacer(Modifier.height(10.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "少",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.width(6.dp))
+        listOf(0.3f, 0.5f, 0.75f, 1f).forEach { alpha ->
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(
+                        MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+                        RoundedCornerShape(2.dp)
+                    )
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+        Spacer(Modifier.width(2.dp))
+        Text(
+            text = "多",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

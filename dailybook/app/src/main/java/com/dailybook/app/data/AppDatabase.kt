@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TodoEntity::class,
         FocusSessionEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -47,6 +47,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v1.3 → v1.4：记账新增「账户」列（老数据一律算作现金） */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `transactions` ADD COLUMN `account` TEXT NOT NULL DEFAULT '现金'"
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -57,7 +66,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "dailybook.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }

@@ -26,6 +26,7 @@ class DailyRepository(context: Context) {
         category: String,
         note: String,
         dateMillis: Long,
+        account: String = Accounts.DEFAULT,
         nowMillis: Long = System.currentTimeMillis()
     ) {
         txDao.insert(
@@ -33,6 +34,7 @@ class DailyRepository(context: Context) {
                 amountCents = amountCents,
                 typeName = type.name,
                 category = category,
+                account = account.ifBlank { Accounts.DEFAULT },
                 note = note,
                 dateMillis = dateMillis,
                 createdAt = nowMillis
@@ -46,13 +48,15 @@ class DailyRepository(context: Context) {
         type: TxType,
         category: String,
         note: String,
-        dateMillis: Long
+        dateMillis: Long,
+        account: String = item.account
     ) {
         txDao.update(
             item.copy(
                 amountCents = amountCents,
                 typeName = type.name,
                 category = category,
+                account = account.ifBlank { Accounts.DEFAULT },
                 note = note,
                 dateMillis = dateMillis
             )

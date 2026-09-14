@@ -6,6 +6,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dailybook.app.backup.Backup
+import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.DailyRepository
 import com.dailybook.app.data.FocusSessionEntity
 import com.dailybook.app.data.RepeatRule
@@ -13,6 +14,7 @@ import com.dailybook.app.data.SettingsStore
 import com.dailybook.app.data.TodoEntity
 import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
+import com.dailybook.app.notify.LedgerReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.ui.theme.ThemeMode
 import com.dailybook.app.util.formatMonthLabel
@@ -47,6 +49,33 @@ data class DayGroup(
 /** 分类占比 */
 @Immutable
 data class CategorySlice(val category: String, val cents: Long, val ratio: Float)
+
+/** 账户占比（支出按账户分布） */
+@Immutable
+data class AccountSlice(val account: String, val cents: Long, val ratio: Float)
+
+/** 某个分类的预算执行情况 */
+@Immutable
+data class CategoryBudgetRow(
+    val category: String,
+    val budgetCents: Long,
+    val spentCents: Long
+) {
+    val ratio: Float
+        get() = if (budgetCents <= 0L) 0f
+        else (spentCents.toFloat() / budgetCents.toFloat()).coerceIn(0f, 1f)
+
+    val over: Boolean get() = budgetCents > 0L && spentCents > budgetCents
+
+    val remainingCents: Long get() = (budgetCents - spentCents).coerceAtLeast(0L)
+
+    /** 超支金额，没超就是 0 */
+    val overCents: Long get() = (spentCents - budgetCents).coerceAtLeast(0L)
+}
+
+/** 专注热力图里的一格 */
+@Immutable
+data class HeatCell(val date: LocalDate, val minutes: Int)
 
 /** 每日支出（柱状图） */
 @Immutable
@@ -85,8 +114,15 @@ data class FocusStats(
     val todayMinutes: Int = 0,
     val totalCount: Int = 0,
     val streak: Int = 0,
+    val weekCount: Int = 0,
+    val weekMinutes: Int = 0,
+    val monthCount: Int = 0,
+    val monthMinutes: Int = 0,
     val recentDays: List<FocusDay> = emptyList(),
-    val todaySessions: List<FocusSessionEntity> = emptyList()
+    val todaySessions: List<FocusSessionEntity> = emptyList(),
+    /** 近 12 周热力图：外层是周（列），内层是周一到周日（行） */
+    val heatWeeks: List<List<HeatCell>> = emptyList(),
+    val heatMaxMinutes: Int = 0
 )
 
 @Immutable
@@ -105,6 +141,14 @@ data class UiState(
     val ledgerQuery: String = "",
     val isSearching: Boolean = false,
     val budgetCents: Long = 0L,
+    /** 全部出现过的账户，默认账户排最前 */
+    val accounts: List<String> = emptyList(),
+    /** 记账页当前选中的账户筛选，null 表示全部 */
+    val accountFilter: String? = null,
+    /** 本月支出按账户分布 */
+    val accountSlices: List<AccountSlice> = emptyList(),
+    /** 设了预算的分类，按使用比例从高到低 */
+    val categoryBudgets: List<CategoryBudgetRow> = emptyList(),
     val visibleTodos: List<TodoEntity> = emptyList(),
     val todoFilter: TodoFilter = TodoFilter.ALL,
     val todoQuery: String = "",
@@ -132,6 +176,12 @@ data class UiState(
 
     val overBudget: Boolean get() = budgetCents > 0L && monthExpense > budgetCents
 
+    /** 有分类预算超支了吗 */
+    val hasOverBudgetCategory: Boolean get() = categoryBudgets.any { it.over }
+
+    /** 有没有设过分类预算 */
+    val hasCategoryBudget: Boolean get() = categoryBudgets.isNotEmpty()
+
     /** 有史以来的净结余 */
     val totalBalance: Long get() = totalIncomeCents - totalExpenseCents
 }
@@ -141,7 +191,15 @@ private data class LedgerInputs(
     val all: List<TransactionEntity>,
     val month: YearMonth,
     val query: String,
-    val budgetCents: Long
+    val budgetCents: Long,
+    val accountFilter: String?,
+    val categoryBudgets: Map<String, Long>
+)
+
+/** 只跟筛选有关的两个设置项，单独拼一层，避免 combine 超过 5 个参数 */
+private data class LedgerFilters(
+    val account: String?,
+    val categoryBudgets: Map<String, Long>
 )
 
 /** 待办侧的输入聚合 */
@@ -162,14 +220,30 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     private val todoFilter = MutableStateFlow(TodoFilter.ALL)
     private val ledgerQuery = MutableStateFlow("")
     private val todoQuery = MutableStateFlow("")
+    private val ledgerAccount = MutableStateFlow<String?>(null)
+
+    private val ledgerFilters = combine(
+        ledgerAccount,
+        settings.categoryBudgets
+    ) { account, budgets ->
+        LedgerFilters(account, budgets)
+    }
 
     private val ledgerInputs = combine(
         repo.transactions,
         selectedMonth,
         ledgerQuery,
-        settings.monthlyBudgetCents
-    ) { transactions, month, query, budget ->
-        LedgerInputs(transactions, month, query, budget)
+        settings.monthlyBudgetCents,
+        ledgerFilters
+    ) { transactions, month, query, budget, filters ->
+        LedgerInputs(
+            all = transactions,
+            month = month,
+            query = query,
+            budgetCents = budget,
+            accountFilter = filters.account,
+            categoryBudgets = filters.categoryBudgets
+        )
     }
 
     private val todoInputs = combine(
@@ -203,6 +277,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.IO) { TodoReminder.sync(app, todos) }
             }
         }
+        // 每晚记账提醒：开关或时间一变就重排闹钟
+        viewModelScope.launch {
+            combine(
+                settings.ledgerReminderEnabled,
+                settings.ledgerReminderHour,
+                settings.ledgerReminderMinute
+            ) { _, _, _ -> Unit }.collect {
+                withContext(Dispatchers.IO) { LedgerReminder.sync(app) }
+            }
+        }
     }
 
     // ---- 月份切换 ----
@@ -217,6 +301,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun setLedgerQuery(query: String) { ledgerQuery.value = query }
 
+    /** 记账页按账户筛选；传 null 表示看全部 */
+    fun setAccountFilter(account: String?) { ledgerAccount.value = account }
+
     fun setTodoFilter(filter: TodoFilter) { todoFilter.value = filter }
 
     fun setTodoQuery(query: String) { todoQuery.value = query }
@@ -228,10 +315,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         type: TxType,
         category: String,
         note: String,
-        dateMillis: Long
+        dateMillis: Long,
+        account: String = Accounts.DEFAULT
     ) {
         viewModelScope.launch {
-            repo.addTransaction(amountCents, type, category, note, dateMillis)
+            repo.addTransaction(amountCents, type, category, note, dateMillis, account)
         }
     }
 
@@ -242,10 +330,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         type: TxType,
         category: String,
         note: String,
-        dateMillis: Long
+        dateMillis: Long,
+        account: String = item.account
     ) {
         viewModelScope.launch {
-            repo.updateTransaction(item, amountCents, type, category, note, dateMillis)
+            repo.updateTransaction(item, amountCents, type, category, note, dateMillis, account)
         }
     }
 
@@ -318,6 +407,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun setDynamicColor(enabled: Boolean) = settings.setDynamicColor(enabled)
 
     fun setMonthlyBudget(cents: Long) = settings.setMonthlyBudget(cents)
+
+    /** 设置 / 取消某个分类的月度预算（传 0 表示取消） */
+    fun setCategoryBudget(category: String, cents: Long) =
+        settings.setCategoryBudget(category, cents)
+
+    fun clearCategoryBudgets() = settings.clearCategoryBudgets()
+
+    /** 每晚记账提醒 */
+    fun setLedgerReminder(enabled: Boolean) = settings.setLedgerReminder(enabled)
+
+    fun setLedgerReminderTime(hour: Int, minute: Int) =
+        settings.setLedgerReminderTime(hour, minute)
 
     // ---- 备份 / 恢复 / 导出 ----
 
@@ -399,8 +500,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             tx.category.contains(query, ignoreCase = true) ||
                 tx.note.contains(query, ignoreCase = true)
         }
+        // 账户筛选只影响列表（和搜索一样），上方的月度汇总是整月的口径
+        val accountFilter = ledger.accountFilter
+        val listed = if (accountFilter == null) searched
+        else searched.filter { it.account == accountFilter }
 
-        val groups = searched
+        val groups = listed
             .groupBy { it.dateMillis.toLocalDate() }
             .toSortedMap(compareByDescending<LocalDate> { it })
             .map { (date, items) ->
@@ -434,6 +539,38 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             .groupBy { it.dateMillis.toLocalDate().dayOfMonth }
             .mapValues { entry -> entry.value.sumOf { it.amountCents } }
 
+        // ---- 账户 ----
+        val accounts = ledger.all
+            .map { it.account }
+            .distinct()
+            .sortedWith(compareBy({ it != Accounts.DEFAULT }, { it }))
+
+        val accountSlices = if (monthExpense <= 0L) emptyList()
+        else monthTx
+            .filter { it.type == TxType.EXPENSE }
+            .groupBy { it.account }
+            .map { (account, items) ->
+                val cents = items.sumOf { it.amountCents }
+                AccountSlice(account, cents, cents.toFloat() / monthExpense.toFloat())
+            }
+            .sortedByDescending { it.cents }
+
+        // ---- 分类预算执行情况 ----
+        val spentByCategory = monthTx
+            .filter { it.type == TxType.EXPENSE }
+            .groupBy { it.category }
+            .mapValues { entry -> entry.value.sumOf { it.amountCents } }
+
+        val categoryBudgetRows = ledger.categoryBudgets
+            .map { (category, budget) ->
+                CategoryBudgetRow(
+                    category = category,
+                    budgetCents = budget,
+                    spentCents = spentByCategory[category] ?: 0L
+                )
+            }
+            .sortedWith(compareByDescending<CategoryBudgetRow> { it.over }.thenByDescending { it.ratio })
+
         val dayBars = (1..month.lengthOfMonth()).map { day ->
             DayBar(day, expenseByDay[day] ?: 0L)
         }
@@ -465,13 +602,42 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             cursor = cursor.minusDays(1)
         }
 
+        // ---- 本周 / 本月汇总（周一为一周之始）----
+        val monday = today.minusDays((today.dayOfWeek.value - 1).toLong())
+        val weekSessions = sessions.filter {
+            !it.startedAtMillis.toLocalDate().isBefore(monday)
+        }
+        val currentMonth = YearMonth.from(today)
+        val monthSessions = sessions.filter {
+            YearMonth.from(it.startedAtMillis.toLocalDate()) == currentMonth
+        }
+
+        // ---- 近 12 周热力图：列是周，行是周一到周日；未来日期记 -1，界面画成空格 ----
+        val minutesByDay = sessions
+            .groupBy { it.startedAtMillis.toLocalDate() }
+            .mapValues { entry -> entry.value.sumOf { it.minutes } }
+        val heatWeeks = (11 downTo 0).map { back ->
+            val weekStart = monday.minusWeeks(back.toLong())
+            (0..6).map { offset ->
+                val date = weekStart.plusDays(offset.toLong())
+                HeatCell(date, if (date.isAfter(today)) -1 else (minutesByDay[date] ?: 0))
+            }
+        }
+        val heatMaxMinutes = heatWeeks.flatten().maxOfOrNull { it.minutes }?.coerceAtLeast(0) ?: 0
+
         val focusStats = FocusStats(
             todayCount = todaySessions.size,
             todayMinutes = todaySessions.sumOf { it.minutes },
             totalCount = sessions.size,
             streak = streak,
+            weekCount = weekSessions.size,
+            weekMinutes = weekSessions.sumOf { it.minutes },
+            monthCount = monthSessions.size,
+            monthMinutes = monthSessions.sumOf { it.minutes },
             recentDays = recentDays,
-            todaySessions = todaySessions
+            todaySessions = todaySessions,
+            heatWeeks = heatWeeks,
+            heatMaxMinutes = heatMaxMinutes
         )
 
         // ---- 年度报表（近 12 个月趋势 + 当年汇总）----
@@ -522,6 +688,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             ledgerQuery = ledger.query,
             isSearching = query.isNotEmpty(),
             budgetCents = ledger.budgetCents,
+            accounts = accounts,
+            accountFilter = accountFilter,
+            accountSlices = accountSlices,
+            categoryBudgets = categoryBudgetRows,
             visibleTodos = visible,
             todoFilter = todo.filter,
             todoQuery = todo.query,

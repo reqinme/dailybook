@@ -1,6 +1,7 @@
 package com.dailybook.app
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -58,12 +59,36 @@ import com.dailybook.app.ui.TodoScreen
 import com.dailybook.app.ui.theme.DailyBookTheme
 
 class MainActivity : ComponentActivity() {
+
+    /** 桌面快捷方式带来的目标标签页；requestSeq 让「连续点同一个快捷方式」也能重新切过去 */
+    private var requestedTab by mutableIntStateOf(0)
+    private var requestSeq by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        consumeShortcut(intent)
         setContent {
-            DailyBookApp()
+            DailyBookApp(initialTab = requestedTab, tabRequestSeq = requestSeq)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeShortcut(intent)
+    }
+
+    private fun consumeShortcut(intent: Intent?) {
+        val tab = intent?.getStringExtra(EXTRA_TAB)?.toIntOrNull() ?: return
+        if (tab !in 0..4) return
+        requestedTab = tab
+        requestSeq++
+    }
+
+    companion object {
+        /** shortcuts.xml 里写进 Intent 的标签页编号 */
+        const val EXTRA_TAB = "tab"
     }
 }
 
@@ -77,6 +102,8 @@ private val MAX_CONTENT_WIDTH = 720.dp
 
 @Composable
 fun DailyBookApp(
+    initialTab: Int = 0,
+    tabRequestSeq: Int = 0,
     vm: MainViewModel = viewModel(),
     timerVm: TimerViewModel = viewModel()
 ) {
@@ -94,8 +121,13 @@ fun DailyBookApp(
             Tab("设置", Icons.Filled.Settings)
         )
     }
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableIntStateOf(initialTab) }
     val wideScreen = LocalConfiguration.current.screenWidthDp >= WIDE_SCREEN_DP
+
+    // 从桌面快捷方式进来时切到对应标签页（连续点同一个也会重新切）
+    LaunchedEffect(tabRequestSeq) {
+        if (tabRequestSeq > 0 && initialTab in tabs.indices) selectedTab = initialTab
+    }
 
     DailyBookTheme(themeMode = themeMode, dynamicColor = dynamicColor) {
         // Android 13+ 需要授权才能弹出「专注结束」通知

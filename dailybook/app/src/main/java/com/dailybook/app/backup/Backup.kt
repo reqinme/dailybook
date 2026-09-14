@@ -169,13 +169,14 @@ object Backup {
     fun toCsv(transactions: List<TransactionEntity>): String {
         val sb = StringBuilder()
         sb.append('\uFEFF')
-        sb.append("日期,类型,分类,金额,备注\r\n")
+        sb.append("日期,类型,分类,账户,金额,备注\r\n")
         transactions
             .sortedWith(compareBy({ it.dateMillis }, { it.id }))
             .forEach { tx ->
                 sb.append(csvCell(tx.dateMillis.toLocalDate().toString())).append(',')
                 sb.append(csvCell(tx.type.label)).append(',')
                 sb.append(csvCell(tx.category)).append(',')
+                sb.append(csvCell(tx.account)).append(',')
                 sb.append(csvCell(formatAmount(tx.amountCents))).append(',')
                 sb.append(csvCell(tx.note))
                 sb.append("\r\n")

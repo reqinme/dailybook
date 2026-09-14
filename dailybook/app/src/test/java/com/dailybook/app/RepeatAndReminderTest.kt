@@ -168,9 +168,9 @@ class CsvExportTest {
         )
         val lines = csv.trim().split("\r\n")
         assertTrue("应以 UTF-8 BOM 开头，Excel 才不会乱码", csv.startsWith("\uFEFF"))
-        assertEquals("日期,类型,分类,金额,备注", lines[0].removePrefix("\uFEFF"))
-        assertEquals("2026-09-14,支出,餐饮,12.34,午饭", lines[1])
-        assertEquals("2026-09-14,收入,工资,500.00,", lines[2])
+        assertEquals("日期,类型,分类,账户,金额,备注", lines[0].removePrefix("\uFEFF"))
+        assertEquals("2026-09-14,支出,餐饮,现金,12.34,午饭", lines[1])
+        assertEquals("2026-09-14,收入,工资,现金,500.00,", lines[2])
     }
 
     @Test
@@ -187,8 +187,8 @@ class CsvExportTest {
         val second = LocalDate.of(2026, 9, 20).toDayMillis()
         val csv = Backup.toCsv(listOf(tx(100, "餐饮", "晚", second), tx(200, "餐饮", "早", first)))
         val lines = csv.trim().split("\r\n")
-        assertEquals("2026-09-01,支出,餐饮,2.00,早", lines[1])
-        assertEquals("2026-09-20,支出,餐饮,1.00,晚", lines[2])
+        assertEquals("2026-09-01,支出,餐饮,现金,2.00,早", lines[1])
+        assertEquals("2026-09-20,支出,餐饮,现金,1.00,晚", lines[2])
     }
 }
 

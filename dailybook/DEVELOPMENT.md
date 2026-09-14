@@ -65,7 +65,7 @@ app/src/main/java/com/dailybook/app/
 │   ├── DailyRepository.kt       记账 / 待办 / 专注记录的数据入口（含整体导入导出用的快照、批量插入与 setReimbursed、子任务 CRUD、`reorderTodos`、周期记账 CRUD 与 `materializeRecurring`、删待办级联删子任务、快照与恢复扩到新表；**v1.9 起快照再扩到生活与学习那 11 张表**）
 │   ├── FocusRepository.kt       专注计时设置（DataStore）
 │   ├── CategoryStore.kt         用户自定义分类（支出 / 收入两份，存偏好设置；空列表回落预置，永不返回空）
-│   └── SettingsStore.kt         全局单例设置（主题/界面语言/**配色方案/月度预算**/分类预算/自定义分类/币种汇率/每日专注目标/每晚提醒/定期小结/预算预警开关/已提醒与已预警记录；**v1.9 起还有学期起始日 / GPA 口径 / 上课提醒的偏好键（目前只用于显示状态，未接调度），以及自定义背景图 Uri 与蒙版浓度**）
+│   └── SettingsStore.kt         全局单例设置（主题/界面语言/**配色方案/月度预算**/分类预算/自定义分类/币种汇率/每日专注目标/每晚提醒/定期小结/预算预警开关/已提醒与已预警记录；**v1.9 起还有学期起始日 / GPA 口径 / 上课提醒开关与提前量（课程新增起止时间，数据库 v8），以及自定义背景图 Uri 与蒙版浓度**）
 ├── widget/                      桌面小组件（v1.8 新增目录）
 │   ├── WidgetProvider.kt        **v1.8 新增**：`AppWidgetProvider` + `RemoteViews`（不是 Glance）；查库算今日支出 / 收入 / 未完成待办 / 今日专注分钟，`refresh()` 广播给 App 内数据变化用，点一下打开 App
 │   └── **CountdownWidgetProvider.kt**  **v1.9 新增**：考试倒计时小组件——`AppWidgetProvider` + `RemoteViews`；默认显示最近一场未开考的考试（名称 / 日期 / N 天 / 今天 / 已结束 / 课程 / 地点），`ACTION_NEXT` 带 `EXTRA_APPWIDGET_ID` 让**这个实例**换下一场并把选择按实例记住，`ACTION_REFRESH` 由 App 在考试数据变化后广播

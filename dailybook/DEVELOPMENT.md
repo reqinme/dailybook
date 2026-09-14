@@ -37,47 +37,62 @@ Kotlin + Jetpack Compose + Room，纯离线，只申请通知、震动与开机�
 
 ```
 app/src/main/java/com/dailybook/app/
-├── MainActivity.kt              入口 + 响应式导航（宽屏走 NavigationRail）+ 桌面快捷方式 Intent 处理（singleTop）
-├── MainViewModel.kt             记账/待办/专注统计的聚合状态（UiState）
+├── MainActivity.kt              入口 + 响应式导航（宽屏走 NavigationRail）+ 桌面快捷方式 Intent 处理（singleTop）+ 用 CompositionLocal 提供 LocalLang
+├── MainViewModel.kt             记账/待办/专注统计的聚合状态（UiState，含按待办聚合的投入时长）
 ├── data/
 │   ├── Entities.kt              Room 实体（交易 / 待办 + RepeatRule 重复规则与日期推算）+ 预置分类 + Accounts 账户预置
-│   ├── FocusSession.kt          Room 实体 + DAO（专注记录）
+│   ├── FocusSession.kt          Room 实体 + DAO（专注记录，多存一个开始时的 taskTitle 供按待办统计）
 │   ├── Daos.kt                  交易 DAO / 待办 DAO
-│   ├── AppDatabase.kt           数据库单例 + v1→v2、v2→v3、v3→v4 迁移
+│   ├── AppDatabase.kt           数据库单例 + v1→v2、v2→v3、v3→v4 迁移（v1.5 未动表结构，仍是 version 4）
 │   ├── DailyRepository.kt       记账 / 待办 / 专注记录的数据入口（含整体导入导出用的快照）
 │   ├── FocusRepository.kt       专注计时设置（DataStore）
-│   └── SettingsStore.kt         全局单例设置（主题/月度预算/分类预算/专注目标/每晚提醒/已提醒记录）
-├── backup/Backup.kt             备份 JSON 的读写 + 记账 CSV 导出（org.json，无第三方依赖）
+│   └── SettingsStore.kt         全局单例设置（主题/界面语言/月度预算/分类预算/每日专注目标/每晚提醒/定期小结/预算预警开关/已提醒与已预警记录）
+├── i18n/
+│   ├── Lang.kt                  四语言枚举（tag + 原文名）+ pick()/pickf() 四语取值 + LocalLang
+│   ├── AppStrings.kt            通用文案（导航、通知标题与正文、设置项、通知占位符替换）
+│   ├── LedgerStrings.kt         记账页文案
+│   ├── TodoStrings.kt           待办页文案
+│   ├── StatsStrings.kt          统计页文案
+│   ├── SettingsStrings.kt       设置页文案
+│   └── CommonStrings.kt         公共组件文案（空状态、按钮、对话框…）
+├── backup/Backup.kt             备份 JSON 的读写 + 记账 CSV 导出（org.json，无第三方依赖；CSV 表头与类型列随界面语言）
 ├── timer/
 │   ├── Phase.kt                 三个阶段
-│   └── TimerViewModel.kt        计时状态机（时间戳驱动，跨页面不中断）
+│   └── TimerViewModel.kt        计时状态机（时间戳驱动，跨页面不中断；阶段结束通知按当前语言生成）
 ├── notify/
-│   ├── Notifier.kt              通知渠道 + 震动 + 记账提醒通知（带跳转 Intent）
-│   ├── TodoReminder.kt          待办提醒排程（非精确闹钟，幂等重排）
-│   ├── TodoReminderReceiver.kt  提醒接收器（到点重新查库再决定是否提醒）
+│   ├── Notifier.kt              通知渠道（新增「定期小结与提醒」渠道）+ 震动 + 阶段结束 / 待办到期（带稍后提醒按钮）/ 预算预警 / 定期小结 / 专注目标 / 记账提醒通知
+│   ├── TodoReminder.kt          待办提醒排程（非精确闹钟，幂等重排）+ 稍后提醒排程（1 小时后 / 明天早上）
+│   ├── TodoReminderReceiver.kt  提醒接收器（到点重新查库再决定是否提醒；稍后提醒触发不占用正常两次提醒的额度）
 │   ├── LedgerReminder.kt        每晚记账提醒排程（非精确闹钟，按设置时间重排）
 │   ├── LedgerReminderReceiver.kt 记账提醒到点发通知，并顺手排下一天
-│   └── BootReceiver.kt          重启 / 覆盖安装后重新排程待办与记账提醒
+│   ├── SummaryReminder.kt       定期小结排程（每周日 20:00 / 每月 1 日 10:00，纯函数算下次触发点与统计区间）
+│   ├── SummaryReceiver.kt       小结到点现算一遍数据再发通知，没数据就不打扰，并排下一次
+│   └── BootReceiver.kt          重启 / 覆盖安装后重新排程待办、记账与定期小结提醒
 ├── ui/
 │   ├── Components.kt            公共组件（卡片/指标/空状态/搜索/滑块/换行标签…）
-│   ├── LedgerScreen.kt          记账页 + 记一笔/编辑弹窗（账户选择 + 自定义账户）+ 账户筛选
-│   ├── TodoScreen.kt            待办页 + 编辑弹窗
+│   ├── LedgerScreen.kt          记账页 + 记一笔/编辑弹窗（账户选择 + 自定义账户）+ 账户筛选 + 预算预警判定
+│   ├── TodoScreen.kt            待办页 + 编辑弹窗（含「顺延到明天」）
 │   ├── TimerScreen.kt           专注页
-│   ├── StatsScreen.kt           统计页（账户支出分布 / 分类预算 / 专注热力图与周月报告）
-│   ├── SettingsScreen.kt        设置页（分类预算弹窗 + 提醒时间 TimePicker）
+│   ├── StatsScreen.kt           统计页（账户支出分布 / 分类预算 / 专注热力图与周月报告 / 每日目标进度条 / 按待办统计投入时间）
+│   ├── SettingsScreen.kt        设置页（语言卡片 + 分类预算弹窗 + 提醒时间 TimePicker + 专注目标 / 定期小结 / 预算预警开关）
 │   ├── RingTimer.kt             圆环进度（自适应尺寸 + 渐变 + 动画）
 │   └── theme/                   配色 / 主题 / 字体
-└── util/Format.kt               金额与日期格式化、解析
+└── util/Format.kt               金额与日期格式化、解析（日期头、截止日、月份标签随语言）
 
-app/src/main/res/xml/
-└── shortcuts.xml                桌面快捷方式定义（记一笔 / 加待办 / 开始专注，各带一个标签页编号）
+app/src/main/res/
+├── values/strings.xml           启动器名称与快捷方式名称的默认语言（英文，其他语言回落到这里）
+├── values-zh-rCN/strings.xml    简体中文系统下的启动器名称与快捷方式名称
+├── values-zh-rTW/strings.xml    繁體中文系統下的啟動器名稱與捷徑名稱
+├── values-ja/strings.xml        日本語システムでのランチャー名とショートカット名
+└── xml/shortcuts.xml            桌面快捷方式定义（记一笔 / 加待办 / 开始专注，各带一个标签页编号，文字走 @string）
 ```
 
 JVM 单元测试（`app/src/test/`）：
 
 ```
 app/src/test/java/com/dailybook/app/
-└── RepeatAndReminderTest.kt     RepeatRuleTest / ReminderScheduleTest / LedgerReminderTimeTest / CsvExportTest，共 19 个用例
+├── RepeatAndReminderTest.kt     RepeatRuleTest / ReminderScheduleTest / LedgerReminderTimeTest / CsvExportTest，共 19 个用例
+└── I18nTest.kt                  四语界面的基础校验（语言解析 / 日期格式 / CSV 表头 / 占位符），共 10 个用例
 ```
 
 ## 构建
@@ -90,24 +105,37 @@ $env:ANDROID_HOME = "C:\Users\hjc20\AppData\Local\Android\Sdk"
 cd "C:\Users\hjc20\Documents\DeepSeek Desktop\apk\github-upload\repo\dailybook"
 gradle assembleRelease     # 正式签名版（R8，约 1.6 MB）
 gradle assembleDebug       # 调试版
-gradle testDebugUnitTest   # 19 个 JVM 单元测试（重复日期 / 待办提醒 / 记账提醒时间 / CSV 导出）
+gradle testDebugUnitTest   # 29 个 JVM 单元测试（重复日期 / 待办提醒 / 记账提醒时间 / CSV 导出 / 四语界面）
 gradle lintRelease         # 静态检查
 ```
 
-已构建的安装包统一收在工作区根目录的 `dist\`（即 `apk\dist\`）：
+已构建的安装包统一收在工作区根目录的 `dist\`（即 `apk\dist\`），文件名按 `DailyBook-v<版本>-{release,debug}.apk` 归档，
+上一版则留下 `-release.zip` 存档：
 
 | 文件 | 说明 |
 | --- | --- |
-| `DailyBook-v1.4-release.apk` | 正式签名版，约 1.6 MB，**装机用这个**（签名与历史版本同源，可直接覆盖安装） |
-| `DailyBook-v1.4-debug.apk` | 调试版备胎，约 17 MB，签名不同，覆盖不了正式版，需先卸载 |
-| `DailyBook-v1.3-release.zip` | 上一版（v1.3）正式版的归档，留档备用 |
+| `DailyBook-v1.5-release.apk` | 正式签名版，约 1.6 MB，**装机用这个**（签名与历史版本同源，可直接覆盖安装） |
+| `DailyBook-v1.5-debug.apk` | 调试版备胎，约 17 MB，签名不同，覆盖不了正式版，需先卸载 |
+| `DailyBook-v1.4-release.apk` / `DailyBook-v1.4-release.zip` | 上一版（v1.4）正式版的归档，留档备用 |
+| `DailyBook-v1.3-release.zip` | 更早的 v1.3 归档 |
 
-构建产物本身在 `app/build/outputs/apk/{release,debug}/`。
+构建产物本身在 `app/build/outputs/apk/{release,debug}/`；v1.5 的产物已在这里构建出来，按上面的命名复制到 `dist\` 即可（`dist\` 里目前还只有 v1.4 及更早的归档）。
 
 ## 设计要点
 
 - **单一数据源**：专注统计（今日/连续/累计、本周/本月、热力图）全部从 `focus_sessions` 表实时派生，
   不再另存一份计数；主题/月度预算/分类预算/专注目标只有一份全局单例设置。
+- **界面语言（i18n）**：四种语言在 `i18n/Lang.kt` 里是一个枚举，取值一律走
+  `pick(lang, zhCn, zhTw, en, ja)`——四个槽位必须在编译期全部给出，**漏翻一种语言是编译错误**，
+  而不是运行期冒出一个空串或悄悄回落。这是整套方案唯一的强制手段，也是最有效的一条：
+  加新文案时编译器会直接逼你把四种语言补齐，不靠人盯。带参数的文案走 `pickf()`，
+  内部用 `Locale.ROOT` 格式化，免得小数点被本地化成逗号。
+  语言存在设置里（`SettingsStore.lang`），由 `MainActivity` 通过 `LocalLang` 这个 CompositionLocal 往下传，
+  所以一切换整棵 Compose 树重组、**立即生效不用重启**；屏幕、通知、CSV 表头、日期与截止日/月份标签
+  全都按同一个 `lang` 取值（`TimerViewModel`、`Notifier`、`SummaryReceiver` 这些非 Composable 的地方
+  直接读 `SettingsStore.lang.value`）。语言是**应用内设置**、不跟随系统，只有启动器名称和长按快捷方式
+  的标签例外——那是系统 UI，走 `res/values/`、`res/values-zh-rCN/`、`res/values-zh-rTW/`、`res/values-ja/`
+  里的 `@string`，跟随系统语言。
 - **多账户**：交易表的 `account` 列存账户名（字符串，不建外键也不建单独的表，方便用户随手加一个）。
   `Accounts.PRESETS` 是「现金 / 微信 / 支付宝 / 银行卡 / 其他」五个预置项，记录弹窗在此基础上把
   「历史用过的账户 ∪ 当前值」并进去，所以自己输入过的账户下次直接能点。
@@ -117,6 +145,10 @@ gradle lintRelease         # 静态检查
   月预算管「这个月总共花多少」，分类预算管「这个分类这个月花多少」。
   统计页把当月支出按分类聚合后算出进度与是否超支，超支的进度条走红色；
   分类预算只对支出分类有意义，收入不受影响。
+- **预算预警**：记完一笔（`MainViewModel.checkBudgetAlert()`）后重算一遍当月支出，命中三种情况各推一条通知：
+  月度预算用到 80%、月度预算超支、某个分类预算超支。去重键是「月份 + 阈值」
+  （`2026-05:near` / `2026-05:over` / `2026-05:cat:餐饮`），所以**同一个月里同一个阈值只打扰一次**，
+  换月后键变了会自动重新计；总开关在设置里（`budgetAlert`），关掉就整段不检查。
 - **数据库迁移**：v1→v2 用 `Migration` 新增 `focus_sessions` 表；v2→v3 用
   `ALTER TABLE todos ADD COLUMN repeatRule TEXT NOT NULL DEFAULT 'NONE'` 补上重复规则列；
   v3→v4 再用 `ALTER TABLE transactions ADD COLUMN account TEXT NOT NULL DEFAULT '现金'` 补上账户列。
@@ -135,11 +167,19 @@ gradle lintRelease         # 静态检查
 - **重复任务日期推算**：`nextDueMillisOf()` 是纯函数（可直接跑 JVM 测试）——
   每天/每周/每月顺延，顺延结果落在过去时继续往后推，不补一串过期任务；
   月末夹取用 `plusMonths` 的自然夹取（1 月 31 日的下一个月是 2 月 28 日）。
+- **按待办统计投入时间**：专注记录里存的是**开始专注时那个待办的标题快照**（`taskTitle`），
+  统计时先滤掉空标题、再按标题分组，按时长倒序取前 10 条，所以「没有从待办发起」的普通番茄
+  不会混进这张卡片。用标题快照而不是外键，是为了不动表结构（v1.5 仍然是 version 4）；
+  代价是**待办改名后旧记录仍算在旧标题下**，不会跟着改。
 - **待办提醒**：用 AlarmManager 的**非精确**闹钟 `setAndAllowWhileIdle`，不申请
   `SCHEDULE_EXACT_ALARM`，Android 12+ 也不用再引导用户去系统设置授权。排程是幂等的
   （先撤销上一轮再按需重排），提醒接收器到点重新查库确认还没完成才通知；
   「已提醒」以 `id:到期日` 为键存在设置里，最多打扰两次（到期日 9:00 + 次日 9:00），
   改期后键变了会重新提醒；通知带跳转 Intent，点一下直接回到应用。
+  v1.5 起通知上多了「1 小时后」/「明天早上」两个动作：点下去先撤掉当前通知，再排一个延迟闹钟
+  （`data` 里带上触发时刻，所以它和常规排程是两个不同的 `PendingIntent`，幂等 `sync()` 重排时不会误撤），
+  到点再提醒一次；这次触发带 `snooze_fire` 标记，**不写「已提醒」记账**，
+  因此稍后提醒不会吃掉正常的两档额度。
 - **每晚记账提醒**：`LedgerReminder` 和待办提醒共用同一套做法（`setAndAllowWhileIdle`、
   同一个幂等 `sync()`），只是时间由设置决定（默认 21:00，可在「设置 → 记账 → 提醒时间」用
   TimePicker 改成任意时刻），`nextTriggerMillis()` 是纯函数：今天的点还没到就排今天，过了就排明天，
@@ -147,6 +187,14 @@ gradle lintRelease         # 静态检查
   而且每次都按**当时的系统时间**重新算触发点，所以手机时间或时区被改过之后，
   最迟到下一次重排（触发一次、重启、或打开应用）就会自动回到用户设置的钟点上，不必手动关开开关。
   `LedgerReminderReceiver` 发完通知立刻排下一天，不依赖 App 常驻。
+  v1.5 起这个时间点还兼任「每日专注目标」的判定：`LedgerReminderReceiver` 到点先数一遍今天的番茄数，
+  没达标就补一条通知（记账提醒和专注目标各看自己的开关，谁开着做谁的事，两个都关就什么都不做）。
+- **定期小结**：`SummaryReminder` 复用同一套非精确闹钟做法，`nextTrigger()` 是纯函数
+  （每周 → 下一个周日 20:00，每月 → 下一个 1 号 10:00；今天正好是当天而点还没到就用今天），
+  `rangeFor()` 同样是纯函数（周日发的是「刚过去的周一到今天」，1 号发的是「上一个自然月」）。
+  到点由 `SummaryReceiver` 现场重算这段时间的支出、收入、专注时长与次数再发一条通知，
+  **完全没数据就不发**（只统计区间里有记录或专注才会打扰），且无论算不算得出来都排下一次，
+  免得小结从此断掉；重启 / 覆盖安装后由 `BootReceiver` 一并重排。
 - **桌面快捷方式**：`res/xml/shortcuts.xml` 声明「记一笔 / 加待办 / 开始专注」三个静态快捷方式，
   各自往 `MainActivity` 塞一个 `tab` 编号；Activity 是 `launchMode="singleTop"`，
   `onCreate` 与 `onNewIntent` 都走同一个 `consumeShortcut()`，并用一个自增的 `requestSeq`
@@ -162,7 +210,7 @@ gradle lintRelease         # 静态检查
 
 ## 单元测试
 
-`app/src/test/java/com/dailybook/app/RepeatAndReminderTest.kt` 共 19 个用例，跑在 JVM 上
+`app/src/test/java/com/dailybook/app/` 下两个文件共 29 个用例，跑在 JVM 上
 （不需要设备或模拟器），用 JUnit 4 的 `org.junit.Test` + `org.junit.Assert`：
 
 | 测试类 | 覆盖内容 |
@@ -171,13 +219,14 @@ gradle lintRelease         # 静态检查
 | `ReminderScheduleTest`（6） | 未来到期排 9:00、当天 9:00 之后立即提醒、逾期补提醒一次、第二次排在次日 9:00、两次之后返回 null、已提醒过的未来任务不重复排 |
 | `LedgerReminderTimeTest`（4） | 提醒点还没到排今天、已经过了排明天、正好卡在提醒时刻顺延到明天、自定义时间（7:30）按设置排 |
 | `CsvExportTest`（3） | BOM 与表头、行内容、含逗号/引号的单元格转义、按日期排序 |
+| `I18nTest`（10） | 语言标签解析与未知值回落默认语言、四种语言的原文名互不相同且不为空、核心文案在四语下都非空且不互相抄、日期头（今天/昨天）与截止日、月份标签按语言取值、CSV 表头与数据行在四种语言下都是 6 列且类型列用译文、预算预警通知的占位符替换与分类名保留 |
 
 跑法：`gradle testDebugUnitTest`（依赖 `testImplementation(libs.junit)` = JUnit 4.13.2）。
 
 ## 已知取舍
 
 - 未做真机运行验证（构建机没有连接安卓设备）：
-  已验证编译通过、19 个单元测试全部通过、Lint 零问题、APK 结构与签名正常、
+  已验证编译通过、29 个单元测试全部通过、Lint 零问题、APK 结构与签名正常、
   数据库迁移 SQL 结构正确。
 - 记账支持导出 CSV（含账户列），但**不支持导入 CSV**（只有 JSON 备份可以整份恢复）；
   账户只是一个名字标签，**没有账户间转账、没有账户余额、也没有多币种**，
@@ -185,7 +234,18 @@ gradle lintRelease         # 静态检查
 - 分类预算只对支出分类生效，且只按月计；它按分类名存在设置里，和分类数据不强绑定——
   把某个分类的记录全删了，预算条目依然留着，要去「设置 → 记账 → 分类预算 → 管理」里手动清掉。
 - 待办提醒和每晚记账提醒都是**非精确**闹钟，9:00 / 21:00 的通知可能晚几分钟；
-  待办只提醒两次，不做「稍后提醒」的交互；每晚提醒每天一条，不会判断「今天是不是已经记过了」。
+  待办最多自动提醒两次（到期日 9:00 + 次日 9:00），而「1 小时后 / 明天早上」两个稍后提醒
+  **不计入这两次**——它们只是「再响一次」，所以用户可以一直点下去，应用不会拦；
+  每晚提醒每天一条，不会判断「今天是不是已经记过了」。
+- **分类名和账户名是数据，不是界面文案，因此刻意不翻译**：它们随记录一起存进数据库
+  （`transactions.category` / `transactions.account`），换个语言去翻译会直接让老记录
+  对不上筛选胶囊和分类预算的键。所以界面切成 English / 日本語 之后，
+  记账页里看到的仍然是当初存进去的中文分类名与账户名——这是有意为之，不是漏翻。
+  类似的还有 `focus_sessions.taskTitle`（专注开始时取的待办标题快照）。
+- 语言只覆盖应用内的界面、通知和导出内容：启动器名称与桌面快捷方式名称属于系统 UI，
+  跟随**系统**语言，在应用里切语言不会改变它们。
+- 定期小结的发送时刻是写死的（每周日 20:00 / 每月 1 日 10:00），设置里只能选关闭 / 每周 / 每月，
+  不能改时间；预算预警只在「记完一笔」之后判定，改预算或导入备份不会立刻触发预警。
 - 桌面快捷方式只能跳到标签页，不会自动把「记一笔 / 加待办」的弹窗也一并打开。
 - 从 v1.1 升级时，v1.1 若曾用 DataStore 记过专注次数，那部分历史计数不会迁移
   （v1.2 起专注统计以记录表为准）。

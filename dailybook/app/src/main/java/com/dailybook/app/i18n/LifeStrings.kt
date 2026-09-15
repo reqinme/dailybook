@@ -300,12 +300,25 @@ object LifeStrings {
         "閏月は毎年あるとは限りません。ない年は通常の月として扱います"
     )
 
-    /** 弹窗底部说明：提醒与导出 */
+    /** 弹窗底部说明：提醒与导出（v1.10 起提醒不再只靠导出的 .ics，应用内也会发） */
     fun dateDialogHint(lang: Lang) = pick(
-        lang, "保存后可以在列表里导出 .ics，导入系统日历后由日历负责提醒",
-        "儲存後可以在清單裡匯出 .ics，匯入系統行事曆後由行事曆負責提醒",
-        "After saving you can export .ics from the list; the system calendar handles the reminder",
-        "保存後にリストから .ics を書き出せます。通知はカレンダーアプリが担当します"
+        lang, "农历日期按每年重复算；列表里每条都能导出 .ics 给系统日历，提醒也会在应用内按你设的「提前 N 天」发一次",
+        "農曆日期按每年重複算；清單裡每條都能匯出 .ics 給系統行事曆，提醒也會在應用程式內按你設的「提前 N 天」發一次",
+        "Lunar dates repeat every year; each entry can also be exported as .ics for your system calendar, and the reminder you set fires inside the app as well",
+        "旧暦の日付は毎年繰り返します。各項目は .ics としてシステムのカレンダーに書き出せるほか、設定した「N 日前」の通知はアプリ内でも出ます"
+    )
+
+    /**
+     * 农历日期换算不出来时的提示：这个月没有这一天。
+     *
+     * 触发场景：小月只有 29 天，用户却选了「三十」。以前这种情况会**静默**改用阳历选择器的日期，
+     * 用户以为记的是农历那天、实际存的是另一天 —— 现在直接说明并且不保存。
+     */
+    fun dateLunarNotExist(lang: Lang) = pick(
+        lang, "这个农历月没有这一天（小月只有 29 天，没有「三十」）—— 请换一天",
+        "這個農曆月沒有這一天（小月只有 29 天，沒有「三十」）—— 請換一天",
+        "That day does not exist in this lunar month (a short month has only 29 days, so there is no 三十) — please pick another day",
+        "この旧暦の月にはその日がありません（小の月は 29 日までで「三十」は存在しません）—— 別の日を選んでください"
     )
 
     fun dateFieldRepeat(lang: Lang) = pick(lang, "重复", "重複", "Repeat", "繰り返し")

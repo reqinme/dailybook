@@ -592,8 +592,14 @@ private val ICS_STAMP: DateTimeFormatter =
 /** 提前提醒的可选天数（0 = 当天） */
 private val REMIND_OPTIONS = listOf(0, 1, 3, 7)
 
-/** 农历日的可选值：1 / 5 / 10 / 15 / 20 / 25 / 30（常用日子里挑，避免 30 个芯片铺满屏幕） */
-private val LUNAR_DAY_PRESETS = listOf(1, 5, 10, 15, 20, 25, 30)
+/**
+ * 农历「日」的可选值：**初一…三十，整 30 天**。
+ *
+ * 原来这里是 `listOf(1, 5, 10, 15, 20, 25, 30)`（只有 7 个，注释写的是「避免芯片铺满屏幕」），
+ * 但用户想选「初三」「廿二」这种日子根本没得选 —— 农历日子就该给满。
+ * 大月 30 天、小月 29 天，万一选到不存在的「三十」，由保存校验拦住并说明原因。
+ */
+private val LUNAR_DAY_PRESETS = (1..30).toList()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -627,6 +633,8 @@ private fun DateDialog(
     var remind by remember { mutableStateOf(item?.remindDaysBefore ?: 0) }
     var note by remember { mutableStateOf(item?.note.orEmpty()) }
     var showPicker by remember { mutableStateOf(false) }
+    // 农历日期换算不出来时（例如小月没有「三十」）置 true，界面给出原因并且不保存
+    var rejected by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -786,26 +794,53 @@ private fun DateDialog(
                 }
 
                 item(key = "hint") {
-                    Text(
-                        text = LifeStrings.dateDialogHint(lang),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // 换算不出来时把原因顶到最前面（用错误色），否则显示常规说明
+                    if (rejected) {
+                        Text(
+                            text = LifeStrings.dateLunarNotExist(lang),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text(
+                            text = LifeStrings.dateDialogHint(lang),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    // 农历模式下也要落一个阳历日期（排序和 ICS 导出都用它）：
-                    // 能换算就换成换算结果，换不出来（比如今年没有这个闰月）就先按今天存。
-                    val dateMillis = if (lunar) {
+                    // 农历模式要落一个阳历日期（排序与 ICS 导出都用它）。
+                    // 先按「闰月（若勾了）」换算；闰月今年不存在就退回同一个普通月
+                    // （与展示、提醒的规则一致：闰月不是每年都有，没有的年份按普通月算）。
+                    // 两者都换不出来 = 这个月根本没有这一天（例如小月没有三十）——
+                    // 这种情况**不能存**：以前会静默改用阳历选择器的日期，
+                    // 用户以为记的是农历那天，实际存下来的是另一天。
+                    val dateMillis: Long
+                    if (lunar) {
                         val today = LocalDate.now()
-                        Lunar.toSolar(Lunar.LunarDate(today.year, lunarMonth, lunarDay, lunarLeap))
-                            ?.toDayMillis()
-                            ?: date.toDayMillis()
+                        val exact = Lunar.toSolar(
+                            Lunar.LunarDate(today.year, lunarMonth, lunarDay, lunarLeap)
+                        )
+                        val fallback = if (exact == null && lunarLeap) {
+                            Lunar.toSolar(
+                                Lunar.LunarDate(today.year, lunarMonth, lunarDay, leap = false)
+                            )
+                        } else {
+                            null
+                        }
+                        val resolved = exact ?: fallback
+                        if (resolved == null) {
+                            rejected = true
+                            return@TextButton
+                        }
+                        dateMillis = resolved.toDayMillis()
                     } else {
-                        date.toDayMillis()
+                        dateMillis = date.toDayMillis()
                     }
                     if (title.isNotBlank()) {
                         onSave(

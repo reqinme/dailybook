@@ -251,11 +251,6 @@ object StatsStrings {
     fun perTodoTitle(lang: Lang) =
         pick(lang, "按待办统计投入时间", "依待辦統計投入時間", "Time spent per to-do", "ToDo 別の集中時間")
 
-    fun noPerTodo(lang: Lang) = pick(
-        lang, "还没有关联待办的专注记录", "還沒有關聯待辦的專注紀錄",
-        "No focus sessions linked to a to-do yet", "ToDo に紐づいた集中記録はまだありません"
-    )
-
     fun perTodoHint(lang: Lang) = pick(
         lang, "只统计设了「专注目标」的那些待办。",
         "只統計設了「專注目標」的那些待辦。",

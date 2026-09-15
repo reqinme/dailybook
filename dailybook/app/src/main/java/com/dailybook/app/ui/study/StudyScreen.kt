@@ -28,11 +28,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.data.CourseEntity
@@ -47,6 +49,7 @@ import com.dailybook.app.ui.Shapes
 import com.dailybook.app.ui.StatBlock
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.util.toDayMillis
+import com.dailybook.app.util.toLocalDate
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -76,8 +79,12 @@ fun StudyScreen(
     val todayIndex = today.dayOfWeek.value - 1
 
     // 本周 / 今日课程：周次用课表那套算法（见 CoursesScreen.kt 里 weeksMatch 的 KDoc）。
+    // 学期起始日的来源与上课提醒一致：课自己的优先，都没填就用设置里那个（见 termStartOf）。
     // 一门课都没有时，weekNumberFor 会退化成「忽略周次」。
-    val termStart = remember(state.courses) { termStartOf(state.courses) }
+    val settingTermStart by vm.settings.termStartMillis.collectAsStateWithLifecycle()
+    val termStart = remember(state.courses, settingTermStart) {
+        termStartOf(state.courses, settingTermStart)
+    }
     val weekNumber = remember(termStart, today) { weekNumberFor(termStart, today) }
     val todayCourses = remember(state.courses, weekNumber, todayIndex) {
         state.courses
@@ -119,7 +126,10 @@ fun StudyScreen(
             title = AppStrings.tabCredits(lang),
             hint = StudyStrings.hubHintCredits(
                 lang,
-                formatCredits(state.totalCredits),
+                // 和成绩页 / 学分进度页同一个口径（只算拿到学分的课，见 GradesScreen.earnedCredit 的 KDoc）。
+                // 父级的 state.totalCredits 目前是「所有成绩的学分之和」，两边对不上，
+                // 所以这里按同一口径重算一遍，三处显示的数字才不会各说各话。
+                formatCredits(earnedCredits(state.grades)),
                 formatCredits(state.creditTargets.sumOf { it.required })
             ),
             route = Route.Credits
@@ -403,7 +413,34 @@ internal fun periodText(lang: Lang, start: Int, end: Int): String =
     if (start == end) StudyStrings.coursesPeriodOne(lang, start)
     else StudyStrings.coursesPeriodRange(lang, start, end)
 
-/** 所有课程里最早的学期起始日：新建课程时拿它当默认值 */
-internal fun termStartOf(courses: List<CourseEntity>): Long =
+/**
+ * 课表用的「学期起始日」（第 1 周的锚点）。
+ *
+ * **优先级和上课提醒完全一致**（[com.dailybook.app.util.ClassSchedule.nextOccurrence]）：
+ * 1. 各门课自己的 [CourseEntity.termStartMillis]：填了的课各自以自己为准，
+ *    这里取其中最早的（= 本学期从哪天开始），课表 / 首页 / 新建课程的默认值都用它；
+ * 2. 一门课都没填（全是 0）→ 设置里的「学期起始日」（[settingMillis]）；
+ * 3. 设置里也没设 → 今天往前一周（纯兜底，只是为了有个能算周次的锚点）。
+ *
+ * 以前第 2 步是缺的：上课提醒拿设置兜底、课表却只看课程自身的字段，
+ * 于是「设置 → 学期起始日」改了以后闹钟按新周次响、课表上的「第 N 周」纹丝不动，
+ * 同一门没填起始日的课在两处显示的周次可以完全不一样。
+ */
+internal fun termStartOf(courses: List<CourseEntity>, settingMillis: Long = 0L): Long =
     courses.filter { it.termStartMillis > 0L }.minOfOrNull { it.termStartMillis }
+        ?: settingMillis.takeIf { it > 0L }
         ?: LocalDate.now().minusWeeks(1).toDayMillis()
+
+/**
+ * 把某一天归到它所在那一周的周一（当天 00:00）。
+ *
+ * [weekNumberFor] 内部就是这么算的（「第 1 周」以周一为始），所以存进
+ * [CourseEntity.termStartMillis] 的值也归一下，界面上写的日期、设置里的日期
+ * 和「第几周」的算法才是同一个锚点：字段标签写着「学期起始日（第 1 周的周一）」，
+ * 用户选了周三时如果不归位，标签说的和实际算的就不是一回事。
+ */
+internal fun weekStartOf(millis: Long): Long {
+    if (millis <= 0L) return 0L
+    val date = millis.toLocalDate()
+    return date.minusDays((date.dayOfWeek.value - 1).toLong()).toDayMillis()
+}

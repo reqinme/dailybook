@@ -110,7 +110,7 @@ class I18nTest {
     }
 
     @Test
-    fun csvHeaderHasSixColumnsInEveryLanguage() {
+    fun csvHeaderHasElevenColumnsInEveryLanguage() {
         val day = LocalDate.of(2026, 9, 14).toDayMillis()
         val tx = com.dailybook.app.data.TransactionEntity(
             amountCents = 1234,
@@ -123,9 +123,10 @@ class I18nTest {
         allLangs.forEach { lang ->
             val csv = Backup.toCsv(listOf(tx), lang)
             val header = csv.trim().split("\r\n")[0].removePrefix("\uFEFF")
-            assertEquals("语言 $lang 的 CSV 表头列数不对：$header", 7, header.split(",").size)
+            // 11 列 = 日期 / 类型 / 分类 / 账户 / 金额 / 备注 / 标签 + 币种 / 原币金额 / 汇率 / 报销
+            assertEquals("语言 $lang 的 CSV 表头列数不对：$header", 11, header.split(",").size)
             val row = csv.trim().split("\r\n")[1]
-            assertEquals("语言 $lang 的数据行列数不对：$row", 7, row.split(",").size)
+            assertEquals("语言 $lang 的数据行列数不对：$row", 11, row.split(",").size)
             // 类型列必须是该语言的译文
             assertTrue(row.contains(TxType.EXPENSE.label(lang)))
         }

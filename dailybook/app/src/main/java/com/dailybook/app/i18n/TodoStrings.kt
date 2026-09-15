@@ -73,6 +73,39 @@ object TodoStrings {
         lang, "确定清除", "確定清除", "Clear now", "削除する"
     )
 
+    // ---- 删除待办（二次确认）----
+
+    /**
+     * 编辑弹窗里的「删除」要先问一句：它删掉的是这条待办**以及它下面的全部子任务**
+     * （仓库的 `DailyRepository.deleteTodo` 就是先删子任务再删父记录），
+     * 误点一下就整份清单没了，所以走和「清除已完成」同一套二次确认。
+     */
+    fun confirmDeleteTodoTitle(lang: Lang) = pick(
+        lang, "删除这条待办？", "刪除這條待辦？",
+        "Delete this to-do?", "この ToDo を削除しますか？"
+    )
+
+    /**
+     * 删除确认的正文。有子任务时必须把「子任务会一起删」说出来 ——
+     * 这正是编辑弹窗里那个删除按钮和普通删除最不一样的地方；
+     * 没有子任务时只留一句「无法恢复」，不硬塞一个「0 条子任务」。
+     */
+    fun confirmDeleteTodoText(lang: Lang, subtaskCount: Int): String = if (subtaskCount <= 0) {
+        pick(
+            lang, "删除后无法恢复。", "刪除後無法復原。",
+            "This cannot be undone.", "削除すると元に戻せません。"
+        )
+    } else {
+        pickf(
+            lang,
+            "删除后无法恢复；这条待办下的 %d 条子任务也会一起删除。",
+            "刪除後無法復原；這條待辦下的 %d 條子任務也會一起刪除。",
+            "This cannot be undone. Its %d subtasks will be deleted too.",
+            "削除すると元に戻せません。この ToDo のサブタスク %d 件も一緒に削除されます。",
+            subtaskCount
+        )
+    }
+
     // ---- 编辑弹窗 ----
     fun editTitle(lang: Lang) = pick(lang, "编辑待办", "編輯待辦", "Edit to-do", "ToDo を編集")
     fun fieldContent(lang: Lang) = pick(lang, "内容", "內容", "Title", "内容")

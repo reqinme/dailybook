@@ -75,6 +75,12 @@ import java.time.ZoneOffset
  *
  * 分组：已逾期 / 今天到期 / 本周内 / 以后 / 没有日期 / 已完成。
  * 逾期那一组的标题与日期会用错误色标出来 —— 那是整页最该被一眼看到的东西。
+ *
+ * 「课程」这个字段：作业的判定就是 `courseName` 非空（见上），所以**新建时必填**
+ * （不填就只会进待办，点了保存却在这一页看不到，像是保存失败），
+ * **编辑时清空要先确认**（这条会离开作业页回到待办）—— 以前两种情况都没有任何提示，
+ * 用户只看到自己的作业「凭空消失」。字段本身仍标着「可选」，因此不硬性禁止清空，
+ * 只把后果说清楚（[StudyStrings.assignmentsCourseRule] 常驻在字段下面）。
  */
 
 /** 分组枚举：ordinal 就是显示顺序 */
@@ -374,6 +380,10 @@ private fun AssignmentDialog(
     var due by remember { mutableStateOf(existing?.dueMillis?.toLocalDate()) }
     var showDatePicker by remember { mutableStateOf(false) }
     var rejected by remember { mutableStateOf(false) }
+    // 课程名空着：新建时是「没填完」（不填这条不会出现在作业页），保存前拦下；
+    // 编辑时是「要把它从作业页拿走」，保存前用二次确认说清楚（见文件头注释）
+    var courseRejected by remember { mutableStateOf(false) }
+    var confirmUnlink by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -419,6 +429,15 @@ private fun AssignmentDialog(
                         }
                     }
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    // 常驻说明「填 / 不填分别会发生什么」，新建时没填转成错误色 ——
+                    // 和课表页「时间不合法」是同一个做法
+                    text = StudyStrings.assignmentsCourseRule(lang),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (courseRejected) expenseColor()
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 Spacer(Modifier.height(10.dp))
                 FieldLabel(StudyStrings.assignmentsDueField(lang))
@@ -454,10 +473,18 @@ private fun AssignmentDialog(
             TextButton(
                 onClick = {
                     val clean = title.trim()
+                    val cleanCourse = course.trim()
+                    rejected = clean.isEmpty()
                     if (clean.isEmpty()) {
-                        rejected = true
+                        // 没写作业内容，先让用户补上
+                    } else if (cleanCourse.isEmpty() && existing == null) {
+                        // 新建：课程空着就会变成一条普通待办，在这一页根本看不到 —— 拦住
+                        courseRejected = true
+                    } else if (cleanCourse.isEmpty()) {
+                        // 编辑时清空：这条会离开作业页，先确认（不做静默搬家）
+                        confirmUnlink = true
                     } else {
-                        onSave(clean, course.trim(), due?.toDayMillis())
+                        onSave(clean, cleanCourse, due?.toDayMillis())
                     }
                 }
             ) { Text(AppStrings.save(lang)) }
@@ -471,6 +498,18 @@ private fun AssignmentDialog(
             }
         }
     )
+
+    // 清空课程的二次确认：说清楚这条将离开作业页（[StudyStrings.assignmentsCourseRule] 就是
+    // 那句说明），并把是哪条作业写在正文里。确认后照常保存（课程名存空）。
+    if (confirmUnlink) {
+        ConfirmDialog(
+            title = StudyStrings.assignmentsCourseRule(lang),
+            text = title.trim(),
+            confirmText = AppStrings.save(lang),
+            onConfirm = { onSave(title.trim(), "", due?.toDayMillis()) },
+            onDismiss = { confirmUnlink = false }
+        )
+    }
 
     if (showDatePicker) {
         val pickerState = rememberDatePickerState(

@@ -316,7 +316,6 @@ private fun Route.title(lang: Lang): String = when (this) {
     Route.Update -> AppStrings.checkUpdate(lang)
     Route.Habits -> AppStrings.tabHabits(lang)
     Route.Memos -> AppStrings.tabMemos(lang)
-    is Route.MemoDetail -> AppStrings.tabMemos(lang)
     Route.Milestones -> AppStrings.tabMilestones(lang)
     Route.ImportantDates -> AppStrings.tabImportantDates(lang)
     Route.Courses -> AppStrings.tabCourses(lang)
@@ -356,7 +355,6 @@ private fun ScreenHost(
 
         Route.Habits -> HabitsScreen(state, vm, nav)
         Route.Memos -> MemosScreen(state, vm, nav)
-        is Route.MemoDetail -> MemosScreen(state, vm, nav)
         Route.Milestones -> MilestonesScreen(state, vm, nav)
         Route.ImportantDates -> ImportantDatesScreen(state, vm, nav)
 

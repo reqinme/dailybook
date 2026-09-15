@@ -452,14 +452,18 @@ private fun info(pageNumber: Int) = PdfDocument.PageInfo.Builder(
     pageNumber
 ).create()
 
-private fun textPaint(size: Float, colorHex: String, bold: Boolean = false) = Paint().apply {
+/**
+ * 画图用的三个小工具：月报的 PDF / PNG 和学习周报的 PNG 共用一份，
+ * 所以是 internal（周报在 ui.study 包里，同模块可见）。
+ */
+internal fun textPaint(size: Float, colorHex: String, bold: Boolean = false) = Paint().apply {
     isAntiAlias = true
     textSize = size
     color = Color.parseColor(colorHex)
     typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
 }
 
-private fun fillPaint(colorHex: String) = Paint().apply {
+internal fun fillPaint(colorHex: String) = Paint().apply {
     isAntiAlias = true
     color = Color.parseColor(colorHex)
     style = Paint.Style.FILL

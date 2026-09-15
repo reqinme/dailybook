@@ -25,11 +25,8 @@ object AppStrings {
     fun tabStudy(lang: Lang) = pick(lang, "学习", "學習", "Study", "学習")
 
     // ---- 设置里的大分类（系统设置式） ----
-    fun settingsAppearance(lang: Lang) = pick(lang, "外观", "外觀", "Appearance", "外観")
-
     fun settingsTitle(lang: Lang) = pick(lang, "设置", "設定", "Settings", "設定")
     fun settingsLanguage(lang: Lang) = pick(lang, "语言", "語言", "Language", "言語")
-    fun settingsLedger(lang: Lang) = pick(lang, "记账", "記帳", "Ledger", "家計簿")
     fun settingsFocus(lang: Lang) = pick(lang, "专注", "專注", "Focus", "集中")
     fun settingsStudy(lang: Lang) = pick(lang, "学习", "學習", "Study", "学習")
     fun settingsData(lang: Lang) = pick(lang, "数据与备份", "資料與備份", "Data & backup", "データとバックアップ")
@@ -91,7 +88,6 @@ object AppStrings {
     // ---- 其它 ----
     fun back(lang: Lang) = pick(lang, "返回", "返回", "Back", "戻る")
     fun checkUpdate(lang: Lang) = pick(lang, "检查更新", "檢查更新", "Check for updates", "更新を確認")
-    fun tabMore(lang: Lang) = pick(lang, "更多", "更多", "More", "もっと")
 
     // ---- 通用动作 ----
     fun save(lang: Lang) = pick(lang, "保存", "儲存", "Save", "保存")

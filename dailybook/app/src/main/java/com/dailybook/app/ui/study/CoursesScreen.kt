@@ -51,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
 import com.dailybook.app.data.CourseEntity
@@ -226,8 +227,13 @@ fun CoursesScreen(
     var adding by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<CourseEntity?>(null) }
 
-    // 学期起始日：所有课程里最早的那个（新课程默认沿用，免得每次重填）
-    val defaultTermStart = remember(state.courses) { termStartOf(state.courses) }
+    // 学期起始日：优先用课程自己填的（取最早的那个），一门课都没填就用设置里那个 ——
+    // 和上课提醒的兜底顺序完全一致（见 termStartOf 的 KDoc），否则会出现
+    // 「改了设置：闹钟按新周次响、课表上的第 N 周不变」这种自相矛盾。
+    val settingTermStart by vm.settings.termStartMillis.collectAsStateWithLifecycle()
+    val defaultTermStart = remember(state.courses, settingTermStart) {
+        termStartOf(state.courses, settingTermStart)
+    }
     val weekNumber = remember(defaultTermStart, today) { weekNumberFor(defaultTermStart, today) }
 
     // 本周视图用的列表：当前周次命中的全部课程（与「今天」开关无关，切回来时不用重算）
@@ -906,8 +912,21 @@ private fun CourseDialog(
     var startTimeText by remember { mutableStateOf(ClassSchedule.formatMinutes(existing?.startMinutes ?: -1)) }
     var endTimeText by remember { mutableStateOf(ClassSchedule.formatMinutes(existing?.endMinutes ?: -1)) }
 
+    // 学期起始日一律归到那一周的周一（第 1 周的周一）：字段标签就是这么写的，
+    // 而 weekNumberFor 内部也是先归位再算周次 —— 存回未归位的日期会让「标签说的」
+    // 和「算出来的」差几天（选了周三时，第 1 周其实从周一开始）。
+    val termStartMonday = remember(termStart) { weekStartOf(termStart) }
+    // 选了周中的日子就明说实际会存哪一天，不做静默改动
+    val snappedToMonday = termStartMonday != termStart && termStartMonday > 0L
+
     val start = startText.trim().toIntOrNull()?.coerceIn(1, MAX_PERIOD) ?: 1
     val end = endText.trim().toIntOrNull()?.coerceIn(start, MAX_PERIOD) ?: start
+    // 用户填的值和真正会存下来的节次对不上时（超出 1~12、或结束早于开始）：
+    // 课表只有 12 行，存进去以后画出来的是被夹过的结果，所以这里明说存成什么，
+    // 不让「填的」「存的」「画的」变成三个数。空着不算填错（下面按默认值处理）。
+    val rawStart = startText.trim().toIntOrNull()
+    val rawEnd = endText.trim().toIntOrNull()
+    val periodsClamped = (rawStart != null && rawStart != start) || (rawEnd != null && rawEnd != end)
 
     val startMinutes = parseClock(startTimeText)
     val endMinutes = parseClock(endTimeText)
@@ -1002,6 +1021,14 @@ private fun CourseDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                if (periodsClamped) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = StudyStrings.coursesPeriodsClamped(lang, start, end),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = expenseColor()
+                    )
+                }
 
                 // ---- 上课 / 下课钟点：上课提醒就靠这两个时间 ----
                 // 第几节是教学安排，换算不出钟点，所以提醒必须单独填真实时间；
@@ -1078,8 +1105,8 @@ private fun CourseDialog(
                 OutlinedTextField(
                     value = AppStrings.monthDay(
                         lang,
-                        termStart.toLocalDate().monthValue,
-                        termStart.toLocalDate().dayOfMonth
+                        termStartMonday.toLocalDate().monthValue,
+                        termStartMonday.toLocalDate().dayOfMonth
                     ),
                     onValueChange = { },
                     readOnly = true,
@@ -1088,6 +1115,21 @@ private fun CourseDialog(
                         .fillMaxWidth()
                         .clickable { showDatePicker = true }
                 )
+                if (snappedToMonday) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = StudyStrings.coursesTermStartMonday(
+                            lang,
+                            AppStrings.monthDay(
+                                lang,
+                                termStartMonday.toLocalDate().monthValue,
+                                termStartMonday.toLocalDate().dayOfMonth
+                            )
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 Spacer(Modifier.height(10.dp))
                 FieldLabel(StudyStrings.coursesColor(lang))
@@ -1135,7 +1177,7 @@ private fun CourseDialog(
                             start,
                             end,
                             weeks.trim(),
-                            termStart,
+                            termStartMonday,
                             startMinutes.toStoredMinutes(),
                             endMinutes.toStoredMinutes(),
                             colorIndex
@@ -1155,7 +1197,8 @@ private fun CourseDialog(
     )
 
     if (showDatePicker) {
-        val pickerState = rememberDatePickerState(initialSelectedDateMillis = termStart)
+        // 选择器打开时选中「实际会存下来的那一天」（归位后的周一），和上面输入框显示的一致
+        val pickerState = rememberDatePickerState(initialSelectedDateMillis = termStartMonday)
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {

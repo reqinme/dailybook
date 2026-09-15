@@ -1,13 +1,9 @@
 package com.dailybook.app.ui.study
 
-import android.content.Context
 import com.dailybook.app.ui.theme.incomeColor
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,6 +44,9 @@ import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.i18n.StatsStrings
 import com.dailybook.app.i18n.StudyStrings
+import com.dailybook.app.report.fillPaint
+import com.dailybook.app.report.textPaint
+import com.dailybook.app.report.writePng
 import com.dailybook.app.ui.EmptyHint
 import com.dailybook.app.ui.Navigator
 import com.dailybook.app.ui.SectionCard
@@ -541,7 +540,9 @@ private fun ExpenseBarChart(days: List<WeeklyDay>, maxCents: Long) {
 }
 
 // ============================================================
-// 导出图片（Canvas + Paint + SAF，全部自包含在本文件里）
+// 导出图片（Canvas + Paint + SAF）
+// writePng / textPaint / fillPaint 与月报导出（report/MonthlyReport.kt）共用一份，
+// 其余（配色常量、行模型、布局、折行）是本文件自己的。
 // ============================================================
 
 // 导出图的固定配色：和「月报导出」一样用一套不跟随主题的品牌色，
@@ -767,34 +768,14 @@ private fun renderWeeklyBitmap(
     return bitmap
 }
 
-/** 把 [bitmap] 写成 PNG；失败时抛出，由调用方收成提示语 */
-private fun writePng(context: Context, uri: Uri, bitmap: Bitmap) {
-    val stream = context.contentResolver.openOutputStream(uri, "wt")
-        ?: throw IllegalStateException("openOutputStream returned null")
-    stream.use { output ->
-        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-            throw IllegalStateException("bitmap.compress failed")
-        }
-    }
-}
-
-private fun textPaint(size: Float, colorHex: String, bold: Boolean = false) = Paint().apply {
-    isAntiAlias = true
-    this.color = Color.parseColor(colorHex)
-    textSize = size
-    typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-}
-
-private fun fillPaint(colorHex: String) = Paint().apply {
-    isAntiAlias = true
-    color = Color.parseColor(colorHex)
-    style = Paint.Style.FILL
-}
-
 /**
  * 按字符数折行。
  * 导出图是固定宽度、字号也固定，只要按「一行放多少字符」粗切就够用；
  * 中英混排的最坏情况是略短或略长一点，不会溢出画布（左右都留了 padding）。
+ *
+ * ⚠️ 故意**不复用** report/MonthlyReport.kt 里那个 `wrap`：那个是纯按字符数硬切，
+ * 这个优先在空格处断行并 trim，两者的换行结果不一样（月报那张图靠的是前者的行为）。
+ * 想合并得先确认两边导出图的观感都能接受。
  */
 private fun wrap(text: String, maxChars: Int): List<String> {
     if (text.length <= maxChars) return listOf(text)

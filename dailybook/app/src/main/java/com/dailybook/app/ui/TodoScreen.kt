@@ -108,6 +108,9 @@ fun TodoScreen(
     var newTitle by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<TodoEntity?>(null) }
     var confirmClearDone by remember { mutableStateOf(false) }
+    // 编辑弹窗里点了「删除」之后先停在这里：等用户在二次确认里真点了删除才落库。
+    // 删待办会**连它的子任务一起删**（DailyRepository.deleteTodo），一条误触就整份清单没了。
+    var pendingDelete by remember { mutableStateOf<TodoEntity?>(null) }
     // 视图选择要能扛住旋转 / 进程重建
     var viewMode by rememberSaveable { mutableStateOf(TodoViewMode.LIST) }
     val focusManager = LocalFocusManager.current
@@ -290,12 +293,27 @@ fun TodoScreen(
                 editing = null
             },
             onDelete = {
-                vm.deleteTodo(item)
+                // 先关掉编辑弹窗、把待删的那条挂起来，走下面那次二次确认。
+                // 以前这里直接 vm.deleteTodo(item)：按钮和「保存」挨着，点错就永久删掉待办 + 全部子任务。
+                pendingDelete = item
                 editing = null
             },
             onAddSubtask = { vm.addSubtask(item.id, it) },
             onToggleSubtask = { vm.toggleSubtask(it) },
             onDeleteSubtask = { vm.deleteSubtask(it) }
+        )
+    }
+
+    // 删除待办的二次确认：和「清除已完成」用同一个 ConfirmDialog。
+    // 文案里带上子任务条数 —— 那些子任务也会一起没，不说清楚就等于静默连坐。
+    pendingDelete?.let { item ->
+        val subtaskCount = state.subtasksByTodo[item.id].orEmpty().size
+        ConfirmDialog(
+            title = TodoStrings.confirmDeleteTodoTitle(lang),
+            text = TodoStrings.confirmDeleteTodoText(lang, subtaskCount),
+            confirmText = AppStrings.delete(lang),
+            onConfirm = { vm.deleteTodo(item) },
+            onDismiss = { pendingDelete = null }
         )
     }
 }

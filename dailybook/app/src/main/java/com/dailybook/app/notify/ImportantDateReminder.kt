@@ -10,6 +10,7 @@ import com.dailybook.app.util.ImportantDateSchedule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.ZoneId
 
 /**
@@ -22,15 +23,22 @@ import java.time.ZoneId
  * [ImportantDateReminderReceiver] 再排下一次：两次提醒之间至少隔着好几天，
  * 一次把一整年的闹钟全排上只会制造「闹钟风暴」，改日期时还容易留下幽灵提醒。
  *
- * 「响过没有」不靠额外的记账来判断，而是靠**时间本身**：
- * 提醒时刻总在日期之*前* N 天，响完那一刻它就已经过去了，
+ * 「响过没有」主要靠**时间本身**：提前 3 天的提醒响完那一刻它就已经过去了，
  * [ImportantDateSchedule.fireMillis] 算出来的又是「不早于今天的那一次」，
  * 所以响过之后重排自然会滚到下一次（一年 / 一月 / 一周之后，或者干脆没有下一次）。
- * 已经排上的时刻会记在本模块自己的 SharedPreferences 里（和 [ClassReminder] 记
+ * 「当天提醒」（`remindDaysBefore <= 0`）的提醒时刻就在日期当天上午 9:00，**不是**过去时，
+ * 单靠时间分不出来，所以还看一次本模块自己记的「这次发生已经通知过」
+ * （[alreadyNotified]，接收器发完通知才写）—— 否则刚响过的那次会被重排成「5 秒后立刻响」，
+ * 于是每 5 秒醒一次，直到超出 [MIN_DELAY_MS] 才停。
+ * 已经排上的时刻同样记在本模块自己的 SharedPreferences 里（和 [ClassReminder] 记
  * `scheduled_at` 同一个思路），便于排查「到底排上了没有」。
  *
  * 排出来的时刻由 [ImportantDateSchedule] 纯函数算：下一次发生的当天上午 9:00 往前挪
  * `remindDaysBefore` 天（0 = 当天）—— 上午 9 点这个选择的理由写在那里。
+ *
+ * ⚠️ `remindDaysBefore == 0`（界面上的「当天提醒」，也是默认值）是**要响的**：
+ * 以前这里按 `remindDaysBefore > 0` 过滤，于是最常见的设置一条提醒都排不出来 ——
+ * 对话框上写着「提醒也会在应用内按你设的提前 N 天发一次」，实际永远不响。
  */
 object ImportantDateReminder {
 
@@ -102,15 +110,27 @@ object ImportantDateReminder {
 
         val now = System.currentTimeMillis()
         val zone = ZoneId.systemDefault()
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
 
         val next = dates
-            // 「不提醒」（remindDaysBefore <= 0）的日期不排任何东西
-            .filter { it.remindDaysBefore > 0 }
+            // 这里**不按提醒天数过滤**：`remindDaysBefore == 0`（界面上的「当天提醒」，
+            // 也是默认值）和负数（老数据）都按「发生日当天上午 9:00」排，
+            // 具体时刻由 ImportantDateSchedule.reminderDayOf 归位。
+            // 以前写的是 `filter { it.remindDaysBefore > 0 }`，等于把默认设置整条丢掉。
             .mapNotNull { item ->
                 val fireAt = ImportantDateSchedule.fireMillis(item, now, zone)
                     ?: return@mapNotNull null
                 // 已经过去（响过了 / 那条「只过一次」的日子已经过完）的不再排
                 if (fireAt <= now - MIN_DELAY_MS) return@mapNotNull null
+                // 这一次发生已经发过通知就别再排了：接收器响完会立刻重排，而「当天提醒」的
+                // 提醒时刻就是刚才那一刻（还没超出 MIN_DELAY_MS），只看时间会把它当成
+                // 「还该响」而排成「5 秒后立刻响」—— 于是每 5 秒醒一次、直到 5 分钟后才停。
+                val occurrence = ImportantDateSchedule.nextOccurrence(item, today)
+                if (occurrence != null &&
+                    alreadyNotified(context, item.id, occurrence.toEpochDay())
+                ) {
+                    return@mapNotNull null
+                }
                 item to fireAt
             }
             .minByOrNull { (_, fireAt) -> fireAt }

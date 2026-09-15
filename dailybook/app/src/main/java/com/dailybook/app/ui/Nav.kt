@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Timer
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
+import com.dailybook.app.i18n.SettingsStrings
 
 /**
  * 底部五个标签页。
@@ -55,9 +56,10 @@ enum class SettingsCategory {
     ABOUT;
 
     fun label(lang: Lang): String = when (this) {
-        APPEARANCE -> AppStrings.settingsAppearance(lang)
+        // 「外观」「记账」两行和分类子页面上的分区标题是同一句，统一取 SettingsStrings 那一份
+        APPEARANCE -> SettingsStrings.sectionAppearance(lang)
         LANGUAGE -> AppStrings.settingsLanguage(lang)
-        LEDGER -> AppStrings.settingsLedger(lang)
+        LEDGER -> SettingsStrings.sectionLedger(lang)
         FOCUS -> AppStrings.settingsFocus(lang)
         STUDY -> AppStrings.settingsStudy(lang)
         DATA -> AppStrings.settingsData(lang)
@@ -83,7 +85,6 @@ sealed interface Route {
     // ---- 生活模块 ----
     data object Habits : Route
     data object Memos : Route
-    data class MemoDetail(val id: Long) : Route
     data object Milestones : Route
     data object ImportantDates : Route
 

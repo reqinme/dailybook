@@ -363,7 +363,7 @@ private fun LedgerSettings(state: UiState, vm: MainViewModel) {
             } else {
                 SettingsStrings.categoryBudgetHint(lang)
             },
-            trailing = AppStrings.manage(lang),
+            trailing = SettingsStrings.categoryBudgetAction(lang),
             onClick = { showCategoryBudget = true }
         )
 
@@ -375,7 +375,8 @@ private fun LedgerSettings(state: UiState, vm: MainViewModel) {
                 state.expenseCategories.size,
                 state.incomeCategories.size
             ),
-            trailing = AppStrings.manage(lang),
+            // 这两行原来都写「管理」，用户看不出区别：一个改额度、一个改分类本身
+            trailing = SettingsStrings.categoryManageAction(lang),
             onClick = { showCategoryManage = true }
         )
 
@@ -1066,7 +1067,8 @@ private fun AboutCategorySection(nav: Navigator) {
         )
         SettingsRow(
             title = SettingsStrings.licenseTitle(lang),
-            subtitle = SettingsStrings.licenseText(lang),
+            // 只留一行摘要：许可全文在「关于」页，别在列表和详情页各印一遍同一段话
+            subtitle = SettingsStrings.licenseRowSubtitle(lang),
             onClick = { nav.push(Route.About) }
         )
     }

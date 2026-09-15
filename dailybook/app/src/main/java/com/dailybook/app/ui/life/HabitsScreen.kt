@@ -75,6 +75,11 @@ import java.time.LocalDate
  * 「每周目标天数」（[HabitEntity.daysPerWeek]）也在这里和本周已打卡天数对照着显示成
  * 「本周 2 / 3 天」，达标时额外标一句 —— 这个设置以前只存不用，用户看不出任何差别。
  *
+ * 今日数量（每行的 `N / 目标` 与顶部「今日已完成 N / M 个习惯」）用的是
+ * [logsByHabitDay] 那份**按天求和**的结果，和右下角 7 格小图完全同源：
+ * 同一天出现两条记录（导入 / 恢复备份能造出来）时，两边不会一个说 3、一个说 1。
+ * 注意 [UiState.habitToday] 是「取今天的那一条」，本页不再用它。
+ *
  * 本页不发任何导航（没有子页面），但签名保持和父级统一调用的形式一致。
  */
 @Composable
@@ -92,7 +97,11 @@ fun HabitsScreen(
     var adding by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<HabitEntity?>(null) }
 
-    val doneToday = state.habits.count { (state.habitToday[it.id] ?: 0) >= it.targetPerDay }
+    // 今天的完成量：和 7 格小图**同一份**按天求和的结果（[logsByDay]）。
+    // 不再读 `state.habitToday`：那是「取今天的第一条记录」，万一同一天有两条（导入 / 恢复备份
+    // 能造出来），格子按求和显示 3、标题按一条显示 1，同一张卡上两个数字打架。
+    fun todayCountOf(habitId: Long): Int = logsByDay[habitId]?.get(todayMillis) ?: 0
+    val doneToday = state.habits.count { todayCountOf(it.id) >= it.targetPerDay }
 
     // 根容器用 Box：内容一列，FAB 贴在右下角叠在上面。
     // FAB 在自己的 Box 里只占按钮大小，不会挡住列表的触摸事件。
@@ -202,9 +211,10 @@ fun HabitsScreen(
 }
 
 /**
- * 打卡记录按「习惯 → 日期」聚合。
- * 表里一天只有一条（DAO 的 logOf 保证），但导入 / 恢复备份可能带来重复，
- * 所以这里按日期累加：同一天两条只会显示成一个点，不会多画。
+ * 打卡记录按「习惯 → 日期」聚合（同一天的多条**相加**）。
+ * 正常写入是一天一条，但导入 / 恢复备份可能带来重复，所以这里按日期累加：
+ * 同一天两条只显示成一个点、数量是两个的和 —— 这也是「今天完成了多少」的口径，
+ * 顶部概览、每行的 `N / 目标`、7 格小图和加减按钮都走它。
  */
 private fun logsByHabitDay(logs: List<HabitLogEntity>): Map<Long, Map<Long, Int>> =
     logs.groupBy { it.habitId }
@@ -233,12 +243,15 @@ private fun ColumnScope.HabitsContent(
         contentPadding = PaddingValues(bottom = 96.dp)
     ) {
         items(items = habits, key = { it.id }) { habit ->
+            val days = logsByDay[habit.id].orEmpty()
             HabitRow(
                 habit = habit,
-                todayCount = state.habitToday[habit.id] ?: 0,
+                // 今日数量直接取自「按天求和」的同一份数据：标题上的 N / 目标 和 7 格小图
+                // 用的是同一个数，同一天有多条记录时也不会一个说 3 一个说 1。
+                todayCount = days[todayMillis] ?: 0,
                 streak = state.habitStreak[habit.id] ?: 0,
                 weekDone = state.habitWeekDone[habit.id] ?: 0,
-                days = logsByDay[habit.id].orEmpty(),
+                days = days,
                 todayMillis = todayMillis,
                 onToggle = { onToggle(habit) },
                 onLog = { onLog(habit, it) },

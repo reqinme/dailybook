@@ -138,17 +138,6 @@ class AutoBackup private constructor(context: Context) {
         _failure.value = null
     }
 
-    /** 忘掉当前文件夹（用户想换一个 / 撤销授权时用） */
-    fun clearFolder() {
-        prefs.edit()
-            .remove(KEY_FOLDER_URI)
-            .remove(KEY_FAILED_AT)
-            .remove(KEY_FAILED_CODE)
-            .apply()
-        _folderUri.value = null
-        _failure.value = null
-    }
-
     /** 上次失败的原因码；null = 没有未处理的失败 */
     fun lastFailureReason(): BackupFailureCode? = _failure.value
 

@@ -3,8 +3,12 @@ package com.dailybook.app.data
 import android.content.Context
 import androidx.room.withTransaction
 import com.dailybook.app.util.toDayMillis
+import com.dailybook.app.util.toLocalDate
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
+
+/** 周期记账一次最多补多少笔：一条很多年前的「每天」规则也不该在这里长跑（剩下的由收尾一步推到未来） */
+private const val MAX_CATCH_UP = 60
 
 /** 记账 + 待办 + 专注记录的数据入口 */
 class DailyRepository(context: Context) {
@@ -185,17 +189,24 @@ class DailyRepository(context: Context) {
      * 取消勾选只改状态，不生成新任务。
      */
     suspend fun setTodoDone(item: TodoEntity, done: Boolean) {
-        if (!done || !item.repeats) {
-            todoDao.update(item.copy(done = done))
+        // 先按 id 把库里这一行重新读出来，不用调用方传进来的 item 直接生成下一次：
+        // item 是列表渲染那一刻的旧快照（界面上的改名 / 优先级 / 重要标记都是先写库再刷新列表的），
+        // 用户改完立刻勾选时快照还是老值，照它生成的下一次会把这次改动整个丢掉。
+        // 读不到（id = 0 之类）才退回 item，行为和以前一样。
+        val current = todoDao.getById(item.id) ?: item
+        if (!done || !current.repeats) {
+            todoDao.update(current.copy(done = done))
             return
         }
-        val base = item.dueMillis ?: LocalDate.now().toDayMillis()
-        val next = nextDueMillisOf(base, item.repeat)
         db.withTransaction {
-            todoDao.update(item.copy(done = true))
-            // 同一个到期日只生成一条：连点两下勾选框（或先勾后取消再勾）都不会冒出重复的下一次
-            if (next != null && todoDao.findPending(item.title, next) == null) {
-                todoDao.insert(item.copy(id = 0L, done = false, dueMillis = next))
+            val base = current.dueMillis ?: LocalDate.now().toDayMillis()
+            val next = nextDueMillisOf(base, current.repeat)
+            todoDao.update(current.copy(done = true))
+            // 去重键是「标题 + 到期日 + 未完成」：连点两下勾选框（或先勾后取消再勾）都不会冒出重复的下一次。
+            // 反过来，改过标题之后生成的下一次会被当成另一条任务（去重查不到同名的那条）——这正是想要的：
+            // 改了名说明用户把它当成另一件事，旧名字那条不该再拦着它。所以这里必须用刚读出来的当前标题。
+            if (next != null && todoDao.findPending(current.title, next) == null) {
+                todoDao.insert(current.copy(id = 0L, done = false, dueMillis = next))
             }
         }
     }
@@ -213,7 +224,13 @@ class DailyRepository(context: Context) {
 
     suspend fun clearCompletedTodos() = todoDao.clearCompleted()
 
-    suspend fun clearTodos() = todoDao.clearAll()
+    /** 清空待办时连子任务一起删，不留孤儿数据（和 [deleteTodo] 一样先子后父） */
+    suspend fun clearTodos() {
+        db.withTransaction {
+            subtaskDao.clearAll()
+            todoDao.clearAll()
+        }
+    }
 
     // ---- 专注记录 ----
 
@@ -272,35 +289,73 @@ class DailyRepository(context: Context) {
     suspend fun deleteRecurring(item: RecurringEntity) = recurringDao.delete(item)
 
     /**
-     * 把到期的周期记账补成真实记录，并把下一次往后推。
-     * 只补「到期的那一次」，长期没打开 App 也不会一次刷出一堆；
-     * 返回这次补记了几笔（0 表示没有到期的）。
+     * 把到期的周期记账补成真实记录，并把下一次推到「严格晚于今天」。
+     *
+     * 每一条错过的到期日都补成一笔**落在它自己日期上**的记录：每月 3000 元的房租、三个月没打开
+     * App，得到的是三笔（各自落在那三个月里），而不是只补一笔、还被记在已经过去的月份里。
+     *
+     * 循环上限 [MAX_CATCH_UP] 只管「这一次补多少笔」：十年前的「每天」规则也只补 60 次，
+     * 剩下的由收尾那一步直接推到未来 —— 收尾保证 nextDueMillis 严格晚于今天，
+     * 所以漏下的历史是**真的不补了**（而不是留到下次打开又补一批）。整个补齐在**一个事务**里完成。
+     *
+     * 返回这次一共补了几笔。
      */
     suspend fun materializeRecurring(today: LocalDate = LocalDate.now()): Int {
         val todayMillis = today.toDayMillis()
         val due = recurringDao.getAll().filter { it.enabled && it.nextDueMillis <= todayMillis }
         if (due.isEmpty()) return 0
 
+        var inserted = 0
         db.withTransaction {
             due.forEach { rule ->
-                txDao.insert(
-                    TransactionEntity(
-                        amountCents = rule.amountCents,
-                        typeName = rule.typeName,
-                        category = rule.category,
-                        account = rule.account,
-                        note = rule.note,
-                        tags = rule.tags,
-                        dateMillis = rule.nextDueMillis,
-                        createdAt = System.currentTimeMillis()
+                // rule.rule 是存下来的枚举名，rule.repeat 是它解析出来的枚举（认不出来退回「每月」）
+                val repeat = rule.repeat
+                fun nextPeriod(from: LocalDate): LocalDate = when (repeat) {
+                    RepeatRule.DAILY -> from.plusDays(1)
+                    RepeatRule.WEEKLY -> from.plusWeeks(1)
+                    RepeatRule.MONTHLY -> from.plusMonths(1)
+                    RepeatRule.NONE -> today.plusDays(1)
+                }
+
+                var date = rule.nextDueMillis.toLocalDate()
+                var steps = 0
+                while (date.toDayMillis() <= todayMillis && steps < MAX_CATCH_UP) {
+                    txDao.insert(
+                        TransactionEntity(
+                            amountCents = rule.amountCents,
+                            typeName = rule.typeName,
+                            category = rule.category,
+                            account = rule.account,
+                            note = rule.note,
+                            tags = rule.tags,
+                            // 补出来的每一笔都记在「它自己那个到期日」上，后面的月份统计才对得上
+                            dateMillis = date.toDayMillis(),
+                            createdAt = System.currentTimeMillis()
+                        )
                     )
-                )
-                val next = nextDueMillisOf(rule.nextDueMillis, rule.repeat, today)
-                    ?: rule.nextDueMillis
-                recurringDao.update(rule.copy(nextDueMillis = next))
+                    inserted++
+                    date = nextPeriod(date)
+                    steps++
+                }
+                // 收尾：把 nextDueMillis 落到**严格晚于今天**的第一个到期日。
+                //
+                // 只有撞到上限（date 还停在今天或更早）时才需要走这一步：正常收尾时 date 已经是今天之后的
+                // 第一个到期日，而 helper 的语义是「base 之后的下一期」——它的校正循环至少会往后走一整期，
+                // 对已经晚于今天的 date 再走一次就会白白跳过一期（1 月 1 日的房租、4 月 15 日打开时
+                // date 已经推到 5 月 1 日，再走一步就把整个 5 月跳掉、再也补不回来）。
+                //
+                // 撞上限时改用 Entities.kt 里那个已被单测覆盖的 helper，而不是在这里再步进 MAX_CATCH_UP 次：
+                // 后者对「逾期很多年的每天规则」会停在过去，下次打开又补 60 笔。
+                // helper 对 NONE 返回 null（这种规则没有下一期），退回 nextPeriod 的 NONE 口径 = 明天，
+                // 保证收尾之后 nextDueMillis 一定严格晚于今天。
+                if (date.toDayMillis() <= todayMillis) {
+                    date = nextDueMillisOf(date.toDayMillis(), repeat, today)?.toLocalDate()
+                        ?: nextPeriod(date)
+                }
+                recurringDao.update(rule.copy(nextDueMillis = date.toDayMillis()))
             }
         }
-        return due.size
+        return inserted
     }
 
     // ---- 备忘录 ----

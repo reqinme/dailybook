@@ -60,11 +60,13 @@ import com.dailybook.app.ui.ConfirmDialog
 import com.dailybook.app.ui.EmptyHint
 import com.dailybook.app.ui.Navigator
 import com.dailybook.app.ui.Shapes
+import com.dailybook.app.util.ImportantDateSchedule
 import com.dailybook.app.util.Lunar
 import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -522,10 +524,16 @@ private fun icsFileName(title: String, nextMillis: Long): String {
  *
  * 公开的顶层函数：父级以后想接「导出全部 / 分享」也能直接复用，不必再抄一份。
  * 规则要点：
- * - 行尾统一 CRLF；文本字段里的 `\` `;` `,` 和换行都要转义；
+ * - 行尾统一 CRLF；文本字段里的 `\` `;` `,` 和换行都要转义（[icsEscape]，SUMMARY 与
+ *   DESCRIPTION 都走它 —— 名字里带逗号（「张三,生日」）不会被日历 App 切成两个值）；
  * - 全天事件用 `DTSTART;VALUE=DATE:yyyyMMdd`（不带时区）；
  * - 重复：每年 / 每月 / 每周对应 RRULE 的 YEARLY / MONTHLY / WEEKLY；只过一次不写 RRULE；
- * - 提前提醒不为 0 时补一个 VALARM（TRIGGER 用负的天数）。
+ * - 提醒：VALARM 的 TRIGGER 用**绝对 UTC 时刻**，就是应用内真正响的那一刻
+ *   （发生日往前挪 `remindDaysBefore` 天的当地上午 9:00，见
+ *   [com.dailybook.app.util.ImportantDateSchedule.FIRE_HOUR]）。
+ *   以前写的是相对触发 `-P<天数>D`：那是「事件当天 00:00 往前推 N 天」，
+ *   和应用内的 9:00 差 9 小时，两边提示的是同一件事却不在同一个时刻；
+ *   而且「当天提醒」（0 天）以前干脆不写 VALARM，导出的事件里没有任何提醒。
  */
 fun buildIcs(item: ImportantDateEntity, nextMillis: Long, lang: Lang): String {
     val day = nextMillis.toLocalDate()
@@ -541,6 +549,13 @@ fun buildIcs(item: ImportantDateEntity, nextMillis: Long, lang: Lang): String {
         DateRepeat.WEEKLY -> "RRULE:FREQ=WEEKLY"
         DateRepeat.ONCE -> null
     }
+    // 提醒时刻：和应用内排程共用同一个纯函数，所以导出的事件和应用内通知是同一个时刻。
+    // 算不出来（农历超出年份表）时就不写 VALARM，不编一个假的时刻。
+    val remindAt = ImportantDateSchedule.fireMillisForOccurrence(
+        item,
+        day,
+        ZoneId.systemDefault()
+    )
 
     val lines = mutableListOf(
         "BEGIN:VCALENDAR",
@@ -555,11 +570,12 @@ fun buildIcs(item: ImportantDateEntity, nextMillis: Long, lang: Lang): String {
         "DESCRIPTION:" + icsEscape(description)
     )
     rule?.let { lines += it }
-    if (item.remindDaysBefore > 0) {
+    if (remindAt != null) {
         lines += "BEGIN:VALARM"
         lines += "ACTION:DISPLAY"
         lines += "DESCRIPTION:" + icsEscape(LifeStrings.dateIcsAlarm(lang, item.title))
-        lines += "TRIGGER:-P" + item.remindDaysBefore + "D"
+        // 绝对时刻必须写 UTC（RFC 5545：VALUE=DATE-TIME 的 TRIGGER 以 Z 结尾）
+        lines += "TRIGGER;VALUE=DATE-TIME:" + ICS_STAMP.format(Instant.ofEpochMilli(remindAt))
         lines += "END:VALARM"
     }
     lines += "END:VEVENT"

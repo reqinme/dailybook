@@ -165,6 +165,33 @@ private fun gradePointOf(text: String): Double? = when (text.lowercase(Locale.RO
 }
 
 // ============================================================
+// 「已修学分」的口径
+// ============================================================
+
+/**
+ * 一门课计入「已修学分」的那部分学分（[GradeEntity.credit] 或 0）。
+ *
+ * 规则：**学分 > 0 且绩点 > 0** 才算拿到学分。
+ * - `credit <= 0`：这门课本来就没有学分，不计入（GPA 的加权也把它排除在外，两边口径一致）；
+ * - `point <= 0`：不及格（百分制 60 分以下 / 五级制「不及格」/ 直接填 0 绩点），
+ *   或者**还没出分**（缓考、成绩留空时 [scoreToPoint] 返回 0.0）—— 学分都还没拿到，不计入。
+ *
+ * 为什么必须卡这一条：以前「已修学分」是 `grades.sumOf { it.credit }`（父级 [com.dailybook.app.UiState.totalCredits]
+ * 和本页原来的汇总都是这么算的），一门 59 分的课照样加进已修学分，甚至能把某个类别顶成「已达标」，
+ * 而同一页的 GPA 是按绩点加权的 —— 两个数字各自成立、放在一起说不通。
+ * 缓考 / 留空按「没拿到学分」处理，出分之后再录一次成绩就自然算进来了。
+ */
+internal fun earnedCredit(grade: GradeEntity): Double =
+    if (grade.credit > 0.0 && grade.point > 0.0) grade.credit else 0.0
+
+/** 一组成绩的已修学分合计（口径见 [earnedCredit]） */
+internal fun earnedCredits(grades: List<GradeEntity>): Double = grades.sumOf { earnedCredit(it) }
+
+/** 按课程类别汇总已修学分（口径见 [earnedCredit]）；和 [com.dailybook.app.UiState.creditsByCategory] 同形，只是不算没拿到的学分 */
+internal fun earnedCreditsByCategory(grades: List<GradeEntity>): Map<String, Double> =
+    grades.groupBy { it.category }.mapValues { entry -> entry.value.sumOf { earnedCredit(it) } }
+
+// ============================================================
 // 页面
 // ============================================================
 
@@ -181,7 +208,10 @@ fun GradesScreen(
     var editing by remember { mutableStateOf<GradeEntity?>(null) }
     var deleting by remember { mutableStateOf<GradeEntity?>(null) }
 
-    val totalCredits = remember(state.grades) { state.grades.sumOf { it.credit } }
+    // 已修学分：只算真正拿到学分的成绩（口径见 earnedCredit 的 KDoc）。
+    // 以前这里是 `state.grades.sumOf { it.credit }`，不及格（绩点 0.00）的课也算进来，
+    // 和右边那个按绩点加权算出来的 GPA 口径不一致。
+    val totalCredits = remember(state.grades) { earnedCredits(state.grades) }
     // 换算口径来自设置（GPA 计算口径 4.0 / 5.0），父级已经放进 state —— 界面不再自己猜：
     // 以前是「只要有一条成绩的绩点超过 4.0 就当成 5.0 口径」，于是用户选了 5.0、
     // 只要库里还有一条 ≤ 4.0 的旧成绩，预览就会翻回 4.0，存下来的数和预览的不是一个。
@@ -241,6 +271,13 @@ fun GradesScreen(
                                 lang,
                                 String.format(Locale.ROOT, "%.1f", scale)
                             ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            // 把「已修学分」的口径写出来：不然用户只会觉得数字比课程表上的学分少了
+                            text = StudyStrings.gradesCreditsRule(lang),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

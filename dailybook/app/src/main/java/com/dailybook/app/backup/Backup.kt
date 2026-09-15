@@ -29,6 +29,7 @@ import com.dailybook.app.data.TransactionEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
+import com.dailybook.app.i18n.LedgerStrings
 import com.dailybook.app.util.formatAmount
 import com.dailybook.app.util.toDayMillis
 import com.dailybook.app.util.toLocalDate
@@ -594,16 +595,23 @@ object Backup {
     /**
      * 记账流水导出为 CSV。开头写入 UTF-8 BOM，Excel 双击打开中文才不会乱码；
      * 换行用 CRLF，同样是照顾 Excel。
+     *
+     * 列的顺序是**只加不改**：前 7 列（日期 / 类型 / 分类 / 账户 / 金额 / 备注 / 标签）
+     * 和老版本完全一样，导入端也照旧按位置读它们。后面 4 列是后补的可选信息：
+     * 币种、原币金额、汇率、报销 —— 没有它们的话，「一笔 100 美元按 7.2 折算成 ¥720」
+     * 导出再导入会变成一笔 "原币金额 720 元人民币" 的记录，而「待报销 / 已报销」
+     * 这个标记会整个消失（报销卡的合计悄悄缩水）。
+     * 老版本的导出文件里没有这 4 列，导入时按本位币 / 1:1 / 未报销兜底（见 [parseCsv]）。
      */
     fun toCsv(transactions: List<TransactionEntity>, lang: Lang = Lang.DEFAULT): String {
         val sb = StringBuilder()
         sb.append('\uFEFF')
         sb.append(
             when (lang) {
-                Lang.ZH_CN -> "日期,类型,分类,账户,金额,备注,标签"
-                Lang.ZH_TW -> "日期,類型,分類,帳戶,金額,備註,標籤"
-                Lang.EN -> "Date,Type,Category,Account,Amount,Note,Tags"
-                Lang.JA -> "日付,種別,カテゴリ,口座,金額,メモ,タグ"
+                Lang.ZH_CN -> "日期,类型,分类,账户,金额,备注,标签,币种,原币金额,汇率,报销"
+                Lang.ZH_TW -> "日期,類型,分類,帳戶,金額,備註,標籤,幣別,原幣金額,匯率,報銷"
+                Lang.EN -> "Date,Type,Category,Account,Amount,Note,Tags,Currency,Foreign amount,Rate,Reimbursement"
+                Lang.JA -> "日付,種別,カテゴリ,口座,金額,メモ,タグ,通貨,現地通貨額,レート,精算"
             }
         ).append("\r\n")
         transactions
@@ -613,20 +621,54 @@ object Backup {
                 sb.append(csvCell(tx.type.label(lang))).append(',')
                 sb.append(csvCell(tx.category)).append(',')
                 sb.append(csvCell(tx.account)).append(',')
+                // 第 5 列「金额」仍旧是折成本位币之后的钱（所有统计口径都用它）
                 sb.append(csvCell(formatAmount(tx.amountCents))).append(',')
                 sb.append(csvCell(tx.note)).append(',')
-                sb.append(csvCell(tx.tags))
+                sb.append(csvCell(tx.tags)).append(',')
+                // ---- 后补的四列 ----
+                sb.append(csvCell(tx.currency)).append(',')
+                // 原币金额：外币记录写「原始的那笔钱」；本位币记录（含早期 foreignAmountCents = 0 的老数据）
+                // 就是金额本身 —— 和 [TransactionEntity] 的约定一致
+                val foreignCents = if (tx.foreignAmountCents > 0L) tx.foreignAmountCents else tx.amountCents
+                sb.append(csvCell(formatAmount(foreignCents))).append(',')
+                sb.append(csvCell(rateText(tx.rateScaled))).append(',')
+                sb.append(csvCell(reimbursementText(tx, lang)))
                 sb.append("\r\n")
             }
         return sb.toString()
     }
 
+    /**
+     * 汇率的写法：rateScaled（1 外币 = rate / [Currencies.RATE_SCALE] 元）→ "7.2"。
+     * 用 BigDecimal 直接挪小数点，不走 Double，保证「导出 → 导入」回到同一个整数。
+     */
+    private fun rateText(rateScaled: Long): String =
+        BigDecimal(rateScaled).movePointLeft(RATE_DECIMALS).stripTrailingZeros().toPlainString()
+
+    /** 汇率的小数位数：RATE_SCALE 就是 10 的这个次方（10000 → 4 位），跟着常量走，免得写死 4 对不上 */
+    private val RATE_DECIMALS: Int = Currencies.RATE_SCALE.toString().length - 1
+
+    /**
+     * 报销列的写法：待报销 / 已报销 / 空。
+     * 没标过的记录留空；用界面上的本地化词（[LedgerStrings]），四种语言的导出都能被 [parseCsv] 认回来。
+     */
+    private fun reimbursementText(tx: TransactionEntity, lang: Lang): String = when {
+        !tx.reimbursable -> ""
+        tx.reimbursed -> LedgerStrings.reimbursed(lang)
+        else -> LedgerStrings.pendingReimbursement(lang)
+    }
+
     // ---------- 导入 CSV ----------
 
     /**
-     * 解析记账 CSV。兼容本 App 导出的三种列数：
-     * 5 列（v1.3：日期,类型,分类,金额,备注）、6 列（多「账户」）、7 列（多「标签」）。
+     * 解析记账 CSV。兼容本 App 导出的四种列数：
+     * 5 列（v1.3：日期,类型,分类,金额,备注）、6 列（多「账户」）、7 列（多「标签」）、
+     * 11 列（再多「币种 / 原币金额 / 汇率 / 报销」这四列后补信息）。
      * 表头行自动跳过；解析不了的行直接忽略，所以脏数据不会让整次导入失败。
+     *
+     * 后补的四列**缺席时一律按默认值兜底**，老版本的导出文件照旧能导入：
+     * 币种 = 本位币、原币金额 = 金额、汇率 = 1:1、报销 = 未标记。
+     * 也就是说老文件导入出来的记录和以前**一模一样**，只是拿不回本来就导出不了的信息。
      */
     fun parseCsv(text: String, lang: Lang = Lang.DEFAULT): List<TransactionEntity> {
         val rows = mutableListOf<TransactionEntity>()
@@ -664,6 +706,23 @@ object Backup {
             }
 
             val cents = centsOf(amountCell) ?: return@forEach
+
+            // ---- 第 8 列起是后补的（可能整块不存在：老文件只有 5/6/7 列）----
+            val currency = cells.getOrNull(7)?.trim().orEmpty().ifBlank { Currencies.BASE }
+            val isForeign = currency != Currencies.BASE
+            // 本位币记录的原币金额就是金额本身，汇率是 1:1（[TransactionEntity] 的既有约定）
+            val foreignCents = if (isForeign) {
+                cells.getOrNull(8)?.let { centsOf(it) } ?: cents
+            } else {
+                cents
+            }
+            val rateScaled = if (isForeign) {
+                rateScaledOf(cells.getOrNull(9))
+            } else {
+                Currencies.RATE_SCALE
+            }
+            val (reimbursable, reimbursed) = reimbursementOf(cells.getOrNull(10))
+
             rows += TransactionEntity(
                 amountCents = cents,
                 typeName = type.name,
@@ -671,14 +730,47 @@ object Backup {
                 account = account,
                 note = note,
                 tags = tags,
-                currency = Currencies.BASE,
-                foreignAmountCents = cents,
-                rateScaled = Currencies.RATE_SCALE,
+                reimbursable = reimbursable,
+                reimbursed = reimbursed,
+                currency = currency,
+                foreignAmountCents = foreignCents,
+                rateScaled = rateScaled,
                 dateMillis = date.toDayMillis(),
                 createdAt = now
             )
         }
         return rows
+    }
+
+    /**
+     * 汇率列（"7.2"）→ rateScaled（72000）。
+     * 空、认不出来、非正数都退回 1:1（[Currencies.RATE_SCALE]）：宁可当成本位币等值，
+     * 也不要让一条脏数据把金额折算成 0 或者天文数字。
+     */
+    private fun rateScaledOf(raw: String?): Long {
+        val text = raw?.trim()?.replace(",", "").orEmpty()
+        if (text.isEmpty()) return Currencies.RATE_SCALE
+        return runCatching {
+            BigDecimal(text).movePointRight(RATE_DECIMALS).setScale(0, RoundingMode.HALF_UP).toLong()
+        }.getOrNull()?.takeIf { it > 0L } ?: Currencies.RATE_SCALE
+    }
+
+    /**
+     * 报销列 → (reimbursable, reimbursed)。
+     * 导出的是界面上的本地化词（待报销 / 已报销 这一对，四语言各不相同），
+     * 所以四种语言的标签都认 —— 换个语言的 App 导入别人导出的文件也一样。
+     * 空、认不出来一律当「没标记」（老文件没有这一列，走的就是这一支）。
+     */
+    private fun reimbursementOf(raw: String?): Pair<Boolean, Boolean> {
+        val value = raw?.trim().orEmpty()
+        if (value.isEmpty()) return false to false
+        if (Lang.entries.any { LedgerStrings.reimbursed(it).equals(value, ignoreCase = true) }) {
+            return true to true
+        }
+        if (Lang.entries.any { LedgerStrings.pendingReimbursement(it).equals(value, ignoreCase = true) }) {
+            return true to false
+        }
+        return false to false
     }
 
     /**

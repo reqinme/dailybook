@@ -1,5 +1,8 @@
 package com.dailybook.app.ui.study
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.dailybook.app.MainViewModel
@@ -74,6 +78,9 @@ import java.util.Locale
  * **没有图片加载库**：项目不引任何图片依赖，所以 `imageUri` 非空时这里只显示一个
  * 「已附图片」的胶囊（见 [StudyStrings.awardsHasImage]），不会去解码位图 ——
  * 按需加载 + 内存缓存是图片库该干的事，为一张缩略图引一个库不划算。
+ * 选图的入口在新增 / 编辑弹窗里（[AwardDialog]）：系统文件选择器（`OpenDocument` + `image/＊`），
+ * 只把可持久化的 URI 存进数据库，不复制文件、不新增依赖 —— 以前这个字段只能从备份里带进来，
+ * 界面上那句「已附图片」等于一句无法兑现的承诺。
  *
  * 级别（国家级 / 省级 / 校级 / 院级）是**数据**，存原文；界面上用固定四个芯片填，
  * 但已有记录里的自定义级别照原样显示。
@@ -188,13 +195,14 @@ fun AwardsScreen(
         AwardDialog(
             existing = null,
             onDismiss = { adding = false },
-            onSave = { title, kind, level, date, note ->
+            onSave = { title, kind, level, date, note, imageUri ->
                 vm.addAward(
                     title = title,
                     kind = kind,
                     dateMillis = date,
                     level = level,
-                    note = note
+                    note = note,
+                    imageUri = imageUri
                 )
                 adding = false
             }
@@ -205,14 +213,18 @@ fun AwardsScreen(
         AwardDialog(
             existing = award,
             onDismiss = { editing = null },
-            onSave = { title, kind, level, date, note ->
+            onSave = { title, kind, level, date, note, imageUri ->
+                // 按 id 取当前那一条再改：弹窗开着时这条可能被改过，
+                // 拿旧快照整份写回去会把那次改动抹掉（取不到才退回旧快照）。
+                val current = state.awards.firstOrNull { it.id == award.id } ?: award
                 vm.updateAward(
-                    award.copy(
+                    current.copy(
                         title = title,
                         kind = kind.name,
                         dateMillis = date,
                         level = level,
-                        note = note
+                        note = note,
+                        imageUri = imageUri
                     )
                 )
                 editing = null
@@ -347,18 +359,37 @@ private fun AwardDialog(
         kind: AwardKind,
         level: String,
         dateMillis: Long,
-        note: String
+        note: String,
+        imageUri: String
     ) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
     val lang = LocalLang.current
+    val context = LocalContext.current
     var title by remember { mutableStateOf(existing?.title.orEmpty()) }
     var kind by remember { mutableStateOf(existing?.awardKind ?: AwardKind.SCHOLARSHIP) }
     var level by remember { mutableStateOf(existing?.level.orEmpty()) }
     var date by remember { mutableStateOf(existing?.dateMillis?.toLocalDate() ?: LocalDate.now()) }
     var note by remember { mutableStateOf(existing?.note.orEmpty()) }
+    var imageUri by remember { mutableStateOf(existing?.imageUri.orEmpty()) }
     var showDatePicker by remember { mutableStateOf(false) }
     var rejected by remember { mutableStateOf(false) }
+
+    // 配图：和大事记那边同一套做法（系统文件选择器 + 只存 URI + 尽量持久化读权限）。
+    // 不复制文件进 App 目录、不申请存储权限、不引图片库；个别提供方不允许持久化授权时失败也不崩。
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            imageUri = uri.toString()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -438,6 +469,47 @@ private fun AwardDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                // ---- 配图：选一张（只记路径）/ 清掉 ----
+                // 卡片上那个「已附图片」胶囊说的就是这里选的图；以前没有任何入口能选，
+                // 只有从备份恢复才可能带上一个。
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(StudyStrings.awardsFieldImage(lang), style = MaterialTheme.typography.bodyMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (imageUri.isBlank()) AppStrings.notSet(lang)
+                            else StudyStrings.awardsImageChosen(lang),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (imageUri.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.secondary
+                        )
+                        TextButton(onClick = { imagePicker.launch(arrayOf("image/*")) }) {
+                            Text(AppStrings.select(lang))
+                        }
+                    }
+                }
+                if (imageUri.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = StudyStrings.awardsHasImage(lang),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f),
+                                    Shapes.pill
+                                )
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(onClick = { imageUri = "" }) { Text(AppStrings.clear(lang)) }
+                    }
+                }
+
                 if (rejected) {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -455,7 +527,7 @@ private fun AwardDialog(
                     if (clean.isEmpty()) {
                         rejected = true
                     } else {
-                        onSave(clean, kind, level.trim(), date.toDayMillis(), note.trim())
+                        onSave(clean, kind, level.trim(), date.toDayMillis(), note.trim(), imageUri)
                     }
                 }
             ) { Text(AppStrings.save(lang)) }

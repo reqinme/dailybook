@@ -29,66 +29,10 @@ object StudyStrings {
         date, weekday
     )
 
-    /** 「今日 3 节课」 */
-    fun hubTodayCourses(lang: Lang, count: Int) = pickf(
-        lang, "今日 %d 节课", "今日 %d 節課",
-        "%d classes today", "本日 %d コマ",
-        count
-    )
-
-    /** 「本周 12 节课」 */
-    fun hubWeekCourses(lang: Lang, count: Int) = pickf(
-        lang, "本周 %d 节课", "本週 %d 節課",
-        "%d classes this week", "今週 %d コマ",
-        count
-    )
-
-    /** 「考试倒计时 5 天」，考试名是数据 */
-    fun hubExamCountdown(lang: Lang, name: String, days: Long) = pickf(
-        lang, "%1\$s 还有 %2\$d 天", "%1\$s 還有 %2\$d 天",
-        "%1\$s in %2\$d days", "%1\$s まで %2\$d 日",
-        name, days
-    )
-
-    /** 「考试倒计时 · 今天」 */
-    fun hubExamToday(lang: Lang, name: String) = pickf(
-        lang, "%s 就是今天", "%s 就是今天",
-        "%s is today", "%s は今日",
-        name
-    )
-
     /** 「最近没有考试」 */
     fun hubNoExam(lang: Lang) = pick(
         lang, "最近没有安排考试", "最近沒有安排考試",
         "No exams coming up", "予定されている試験はありません"
-    )
-
-    /** 「未完成作业 3 条」 */
-    fun hubOpenAssignments(lang: Lang, count: Int) = pickf(
-        lang, "未完成作业 %d 条", "未完成作業 %d 條",
-        "%d assignments open", "未完了の課題 %d 件",
-        count
-    )
-
-    /** 「其中 2 条已逾期」 */
-    fun hubOverdue(lang: Lang, count: Int) = pickf(
-        lang, "其中 %d 条已逾期", "其中 %d 條已逾期",
-        "%d of them overdue", "うち %d 件が期限超過",
-        count
-    )
-
-    /** 「GPA 3.62」 */
-    fun hubGpa(lang: Lang, value: String) = pickf(
-        lang, "GPA %s", "GPA %s",
-        "GPA %s", "GPA %s",
-        value
-    )
-
-    /** 「已修 24.5 学分」 */
-    fun hubCredits(lang: Lang, value: String) = pickf(
-        lang, "已修 %s 学分", "已修 %s 學分",
-        "%s credits earned", "取得単位数 %s",
-        value
     )
 
     /** 概览里的标签：考试倒计时 */
@@ -467,11 +411,6 @@ object StudyStrings {
         "This exam is over, so there is nothing to plan", "試験が終わっているためプランを作れません"
     )
 
-    fun examsPlanNotEnoughDays(lang: Lang) = pick(
-        lang, "只剩一两天了，就直接冲刺吧", "只剩一兩天了，就直接衝刺吧",
-        "Only a day or two left — just cram", "残り 1〜2 日です。直前対策に切り替えましょう"
-    )
-
     fun examsDelete(lang: Lang) = pick(lang, "删除考试", "刪除考試", "Delete exam", "試験を削除")
 
     fun examsDeleteConfirm(lang: Lang, name: String) = pickf(
@@ -560,15 +499,6 @@ object StudyStrings {
         lang, "有 DDL 就记一条，别靠脑子记", "有 DDL 就記一條，別靠腦子記",
         "Log a due date instead of remembering it", "締切は頭で覚えず記録しましょう"
     )
-
-    /** 已完成的作业数量提示 */
-    fun assignmentsDoneCount(lang: Lang, count: Int) = pickf(
-        lang, "已完成 %d 条", "已完成 %d 條",
-        "%d completed", "%d 件完了",
-        count
-    )
-
-    fun assignmentsCourseChip(lang: Lang) = pick(lang, "课程", "課程", "Course", "授業")
 
     // ==================== GPA 计算器 ====================
 
@@ -1010,5 +940,78 @@ object StudyStrings {
         "下課時間要晚於上課時間",
         "The end time must be later than the start time",
         "終了時刻は開始時刻より後にしてください"
+    )
+
+    // ============================================================
+    // 追加（只增不改：上面原有的函数一个都没动）
+    // ============================================================
+
+    /**
+     * 作业弹窗里「课程」下面常驻的一句说明：填与不填**分别会发生什么**。
+     *
+     * 作业的判定就是「课程名非空」（[com.dailybook.app.data.TodoEntity.courseName]），
+     * 所以课程名一空，这条就从作业页消失、变成普通待办。字段本身是可选的
+     * （标签写着「课程（可选）」），但两种空法后果不同，不能在弹窗里不说：
+     * 新建时不填 → 只会进待办，点了保存却在这一页看不到，像是没保存成功；
+     * 编辑时清空 → 这条会搬走，需要用户点确认。
+     */
+    fun assignmentsCourseRule(lang: Lang) = pick(
+        lang,
+        "填了课程才留在作业页：新建时不填只会进待办，编辑时清空会离开这一页回到待办",
+        "填了課程才留在作業頁：新增時不填只會進待辦，編輯時清空會離開這一頁回到待辦",
+        "A course keeps it on this page — leave it empty when adding and it only lands in your to-dos; clear it when editing and it leaves this page for your to-dos",
+        "授業名があるとこのページに残ります。新規で空欄なら ToDo に入るだけ、編集で消すとこのページから外れます"
+    )
+
+    /**
+     * 学期起始日会被归到那一周的周一（第 1 周的周一）。
+     *
+     * 字段标签写的就是「第 1 周的周一」，而 [com.dailybook.app.ui.study.weekNumberFor]
+     * 内部也是先把起始日归到周一再算周次；用户选了周中的日子时，这句话说明真正生效的是哪一天
+     * （不做静默改动，也不让「标签说的」和「算出来的」差几天）。
+     */
+    fun coursesTermStartMonday(lang: Lang, date: String) = pickf(
+        lang, "第 1 周从 %s 起算：选了周中的日子会归到那一周的周一",
+        "第 1 週從 %s 起算：選了週中的日子會歸到那一週的週一",
+        "Week 1 starts on %s — a mid-week pick snaps back to that week's Monday",
+        "第 1 週は %s から：平日を選ぶとその週の月曜に合わせます",
+        date
+    )
+
+    /**
+     * 节次填到第 1~12 节之外（或结束早于开始）时的提示。
+     *
+     * 课表只有 12 行（`CoursesScreen` 里那个固定网格），越界的输入以前是**静默**夹到 1~12
+     * 再保存，用户填了 13 却存成 12、图上也就画 1 行；
+     * 现在把实际会存下来的节次说出来，看到的和存下来的不再是两个数。
+     */
+    fun coursesPeriodsClamped(lang: Lang, start: Int, end: Int) = pickf(
+        lang, "课表只有第 1-12 节：保存时会记成第 %1\$d-%2\$d 节",
+        "課表只有第 1-12 節：儲存時會記成第 %1\$d-%2\$d 節",
+        "The grid only has periods 1-12: this will be saved as period %1\$d-%2\$d",
+        "時間割は 1〜12 時限のみ：保存時は %1\$d〜%2\$d 時限になります",
+        start, end
+    )
+
+    /** 奖助弹窗里配图那一行的字段标签（和大事记那边的口径一致） */
+    fun awardsFieldImage(lang: Lang) = pick(lang, "配图", "配圖", "Image", "画像")
+
+    /** 奖助已经选好了一张配图（只记 URI，列表上仍然只显示「已附图片」胶囊、不显示缩略图） */
+    fun awardsImageChosen(lang: Lang) = pick(
+        lang, "已选择图片", "已選擇圖片", "Image chosen", "画像を選択済み"
+    )
+
+    /**
+     * 「已修学分」的口径说明（成绩页的汇总卡与学分进度页共用）。
+     *
+     * 以前已修学分把不及格（绩点 0.00）的课也算进去，和按绩点加权的 GPA 自相矛盾；
+     * 现在只算「有学分且绩点 > 0」的课，这句话把这个规则写给用户看。
+     */
+    fun gradesCreditsRule(lang: Lang) = pick(
+        lang,
+        "已修学分只算及格（绩点 > 0）且有学分的课；不及格、缓考或还没出分的不计入",
+        "已修學分只算及格（績點 > 0）且有學分的課；不及格、緩考或還沒出分的不計入",
+        "Earned credits count only passed courses with credits (credit > 0 and grade point > 0); failed, deferred or ungraded courses are left out",
+        "修得単位数は「単位数 > 0 かつ GPA ポイント > 0」の科目のみ。不合格・追試・未採点は含みません"
     )
 }

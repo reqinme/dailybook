@@ -285,13 +285,20 @@ fun ExamsScreen(
 // ============================================================
 
 /**
- * 把几条常见的复习任务平均铺在剩余天数上，返回 (任务标题, 日期) 列表。
+ * 把几条常见的复习任务铺在剩余天数上，返回 (任务标题, 日期) 列表。
  *
  * 规则：
  * - 考试已结束（[daysLeft] < 0）→ 返回空列表（调用方提示「已经结束」）；
  * - 只剩 0~2 天 → 只排 1 条（就是今天），这时候排 4 条没意义；
- * - 否则按天数决定条数（3~5 条），用 `天数 / (条数 + 1)` 取间隔，
- *   第一条从「今天 + 间隔」开始，最后一条落在考试前一天，越接近考试越密。
+ * - 否则按天数决定条数（3~5 条），再把这些条**铺满「今天 ~ 考试前一天」这段窗口**：
+ *   第 i 条的日期取窗口里的第 (2i-1)/(2×条数) 个等分点，
+ *   条数先按可用天数封顶，所以
+ *   ① 一天最多一条（相邻偏移量的步长 = 窗口/条数 ≥ 1，严格递增），
+ *   ② 最后一条落在考试前一天或更早，**不会排到考试当天**，
+ *   ③ 窗口短（还剩 3 天）时排今天 / +1 / +2，而不是被挤到考试当天。
+ *
+ * 以前用的是固定间隔 `天数 / (条数 + 1)`、再 `coerceAtLeast(1)`：剩余天数一少，
+ * 间隔就被顶成 1 天，几条任务连排到今天+1、+2、+3 —— 最后一条正好是考试当天。
  *
  * 这些只是**建议**：排出来的就是普通复习任务，用户勾掉或删掉都行。
  * 抽成纯函数是为了不依赖 Compose，也方便日后单独调间距规则。
@@ -303,11 +310,15 @@ internal fun autoPlanTasks(daysLeft: Long, lang: Lang): List<Pair<String, LocalD
         return listOf(StudyStrings.examPlanTaskFinal(lang) to today)
     }
 
-    val count = when {
+    // 可用窗口 = 今天（偏移 0）到考试前一天（偏移 daysLeft - 1），一共 daysLeft 天
+    val window = daysLeft.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+    val wanted = when {
         daysLeft <= 5L -> 3
         daysLeft <= 10L -> 4
         else -> MAX_PLAN_TASKS
     }
+    // 条数不超过可用天数：窗口越短排得越少，绝不一天堆两条
+    val count = wanted.coerceAtMost(window)
     val templates = listOf(
         StudyStrings.examPlanTaskRead(lang),
         StudyStrings.examPlanTaskPastPapers(lang),
@@ -315,11 +326,12 @@ internal fun autoPlanTasks(daysLeft: Long, lang: Lang): List<Pair<String, LocalD
         StudyStrings.examPlanTaskMock(lang),
         StudyStrings.examPlanTaskReview(lang)
     )
-    val step = (daysLeft / (count + 1)).coerceAtLeast(1L)
     return (1..count).map { index ->
         val title = templates[(index - 1) % templates.size]
-        val date = today.plusDays(step * index)
-        title to date
+        // 等分中点：index 递增 ⇒ 偏移严格递增（步长 = 窗口 / 条数 ≥ 1），
+        // 最后一个偏移 = 窗口 - ceil(窗口 / (2×条数)) ≤ 窗口 - 1，所以到不了考试当天
+        val offset = ((2 * index - 1) * window) / (2 * count)
+        title to today.plusDays(offset.toLong())
     }
 }
 

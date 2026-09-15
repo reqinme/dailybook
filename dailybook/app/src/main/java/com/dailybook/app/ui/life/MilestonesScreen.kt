@@ -1,5 +1,8 @@
 package com.dailybook.app.ui.life
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dailybook.app.MainViewModel
@@ -64,7 +68,10 @@ import java.time.ZoneOffset
  * 本项目没有引入任何图片加载库（Coil / Glide 都没有，也不允许为这一个界面新增依赖），
  * 而 SAF 给出的 `content://` URI 用 `BitmapFactory` 直接解也拿不到数据、还会踩权限与内存问题；
  * 所以这里只如实告诉用户「这条有图」，等以后有了图片加载库再把胶囊换成缩略图。
- * 本页也**不提供选图入口**：新增 / 编辑只写标题、备注、日期，原有 imageUri 会原样保留。
+ *
+ * 选图入口在新增 / 编辑弹窗里（[MilestoneDialog]）：系统文件选择器（`OpenDocument` + `image/＊`），
+ * 拿到的是可持久化的读权限 + 一条 URI 字符串，**只存 URI**，不复制文件、不新增任何依赖。
+ * 以前只能从备份里带进来一个 imageUri、界面上却没有地方能选，胶囊等于一句无法兑现的承诺。
  */
 @Composable
 fun MilestonesScreen(
@@ -125,11 +132,14 @@ fun MilestonesScreen(
                         item(key = "year-" + year) {
                             YearHeader(year = year)
                         }
-                        items(items = items, key = { it.id }) { milestone ->
+                        // 首尾标记按**这一年这一组**的位置算（index 0 / lastIndex）：
+                        // 只有这一组的第一张卡不画上截线（否则线会悬在年份标题上方）、
+                        // 最后一张卡不画下截线（否则线会拖到时间线尽头之外）。
+                        itemsIndexed(items = items, key = { _, item -> item.id }) { index, milestone ->
                             TimelineRow(
                                 milestone = milestone,
-                                firstOfYear = milestone.id == items.first().id,
-                                lastOfYear = milestone.id == items.last().id,
+                                firstOfYear = index == 0,
+                                lastOfYear = index == items.lastIndex,
                                 onEdit = { editing = milestone }
                             )
                         }
@@ -152,8 +162,8 @@ fun MilestonesScreen(
         MilestoneDialog(
             milestone = null,
             onDismiss = { adding = false },
-            onSave = { title, note, dateMillis ->
-                vm.addMilestone(title, note, dateMillis)
+            onSave = { title, note, dateMillis, imageUri ->
+                vm.addMilestone(title, note, dateMillis, imageUri)
                 adding = false
             },
             onDelete = null
@@ -164,10 +174,18 @@ fun MilestonesScreen(
         MilestoneDialog(
             milestone = milestone,
             onDismiss = { editing = null },
-            onSave = { title, note, dateMillis ->
-                // imageUri 不在本页编辑范围里，原样保留（本页不提供选图）
+            onSave = { title, note, dateMillis, imageUri ->
+                // 存的时候按 id 取**当前**这一条：弹窗开着的时候这条可能被改过
+                // （比如从别处改了配图），拿打开弹窗时的旧快照整份写回去会把那次改动抹掉。
+                // 只有这条已经不在了（被删掉）才退回打开弹窗时的那份。
+                val current = state.milestones.firstOrNull { it.id == milestone.id } ?: milestone
                 vm.updateMilestone(
-                    milestone.copy(title = title, note = note, dateMillis = dateMillis)
+                    current.copy(
+                        title = title,
+                        note = note,
+                        dateMillis = dateMillis,
+                        imageUri = imageUri
+                    )
                 )
                 editing = null
             },
@@ -356,22 +374,42 @@ private fun MilestoneCard(milestone: MilestoneEntity, onEdit: () -> Unit) {
     }
 }
 
-/** 新建 / 编辑大事记：标题、备注、日期（日期用和待办一样的 DatePickerDialog） */
+/** 新建 / 编辑大事记：标题、备注、日期（日期用和待办一样的 DatePickerDialog）、配图 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MilestoneDialog(
     milestone: MilestoneEntity?,
     onDismiss: () -> Unit,
-    onSave: (title: String, note: String, dateMillis: Long) -> Unit,
+    onSave: (title: String, note: String, dateMillis: Long, imageUri: String) -> Unit,
     onDelete: (() -> Unit)?
 ) {
     val lang = LocalLang.current
+    val context = LocalContext.current
     var title by remember { mutableStateOf(milestone?.title.orEmpty()) }
     var note by remember { mutableStateOf(milestone?.note.orEmpty()) }
     var date by remember {
         mutableStateOf(milestone?.dateMillis?.toLocalDate() ?: LocalDate.now())
     }
+    var imageUri by remember { mutableStateOf(milestone?.imageUri.orEmpty()) }
     var showPicker by remember { mutableStateOf(false) }
+
+    // 配图：系统文件选择器（OpenDocument + image/＊），只把 URI 存进数据库 ——
+    // 和设置页的背景图是同一个做法：不复制文件进 App 目录、不申请存储权限、不引任何图片库。
+    // 读权限尽量持久化（备份文件夹在 AutoBackup 里也是这样做的）：不持久化的话，
+    // 这条 URI 出了这次会话就可能读不到了；个别提供方不允许持久化，失败也不该让 App 崩。
+    val imagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            imageUri = uri.toString()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -412,19 +450,51 @@ private fun MilestoneDialog(
                         TextButton(onClick = { showPicker = true }) { Text(AppStrings.select(lang)) }
                     }
                 }
-                if (milestone != null && milestone.imageUri.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = LifeStrings.milestoneHasImage(lang),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+
+                // ---- 配图：选一张（只记路径）/ 清掉 ----
+                // 胶囊在卡片上只说明「有图」，这里才是真正能选的地方：
+                // 以前 imageUri 只能从备份带进来，界面上一句「已附图片」无从兑现。
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(LifeStrings.milestoneFieldImage(lang), style = MaterialTheme.typography.bodyMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (imageUri.isBlank()) AppStrings.notSet(lang)
+                            else LifeStrings.milestoneImageChosen(lang),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (imageUri.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.secondary
+                        )
+                        TextButton(onClick = { imagePicker.launch(arrayOf("image/*")) }) {
+                            Text(AppStrings.select(lang))
+                        }
+                    }
+                }
+                if (imageUri.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            // 只记路径、本页不解码位图（见文件头注释），但选过之后要能一眼看见、也能撤销
+                            text = LifeStrings.milestoneHasImage(lang),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        TextButton(onClick = { imageUri = "" }) { Text(AppStrings.clear(lang)) }
+                    }
                 }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { if (title.isNotBlank()) onSave(title.trim(), note.trim(), date.toDayMillis()) }
+                onClick = {
+                    if (title.isNotBlank()) {
+                        onSave(title.trim(), note.trim(), date.toDayMillis(), imageUri)
+                    }
+                }
             ) { Text(AppStrings.save(lang)) }
         },
         dismissButton = {

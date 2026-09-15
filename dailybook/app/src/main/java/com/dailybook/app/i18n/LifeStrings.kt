@@ -435,4 +435,28 @@ object LifeStrings {
         lang, "日常本提醒：%s", "日常本提醒：%s",
         "DailyBook reminder: %s", "日常本のリマインダー：%s", title
     )
+
+    // ============================================================
+    // 追加（只增不改：上面原有的函数一个都没动）
+    // ============================================================
+
+    /**
+     * 通知标题：**当天提醒**（`remindDaysBefore <= 0`，含界面默认值 0）那一档。
+     *
+     * 以前这一档根本没有通知（排程按「提前天数 > 0」过滤掉了），所以只借用了
+     * [dateNotifTitle] 的「%s 还有 %d 天」——真按 0 天算就是「还有 0 天」，读起来不通。
+     * 这里直说「就是今天」，和正文明细里的 [dateToday] 是一回事。
+     */
+    fun dateNotifTitleToday(lang: Lang, title: String) = pickf(
+        lang, "今天：%s", "今天：%s",
+        "Today: %s", "今日：%s", title
+    )
+
+    /** 大事记弹窗里配图那一行的字段标签 */
+    fun milestoneFieldImage(lang: Lang) = pick(lang, "配图", "配圖", "Image", "画像")
+
+    /** 大事记已经选好了一张配图（只记 URI，本页不显示缩略图） */
+    fun milestoneImageChosen(lang: Lang) = pick(
+        lang, "已选择图片", "已選擇圖片", "Image chosen", "画像を選択済み"
+    )
 }

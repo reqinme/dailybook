@@ -68,6 +68,11 @@ import kotlin.math.roundToInt
 // 想看细节就点进来，这一页自己一个滚动面，空的、满的都不会挤坏别的卡片。
 //
 // 数据来源只有 UiState，不新增任何 ViewModel 接口。
+//
+// 口径：这三份记账明细（本月记录 / 分类明细 / 每日明细）讲的都是**选中的那一个整月**，
+// 所以读 UiState.monthAllGroups（不带筛选），和 monthCount / monthExpense / calendarDays 同源。
+// 记账页那份带搜索 / 账户 / 标签 / 按天筛选的 monthGroups 只喂记账页自己的流水列表 ——
+// 两者别混用，否则同一页上「整月汇总」和「明细」会各说各话。
 
 /** 专注记录的时间点：HH:mm（与统计页上的时段明细同一套格式） */
 private fun clockText(millis: Long): String {
@@ -179,10 +184,14 @@ fun StatsDetailScreen(
  *
  * 用记账页同一套流水行排版（分类徽标、账户、备注、标签、金额），只是这里只读：
  * 不改数据、不给删除按钮，避免在统计里误删。日期分组用记账页的日期标题（今天 / 昨天 / 9月13日 周六）。
+ *
+ * 数据用 [UiState.monthAllGroups]（整月、**不带筛选**），和顶部那句
+ * 「本月共 N 笔 · 支 ¥… · 收 ¥…」是同一份口径 —— 用带筛选的 `monthGroups` 会出现
+ * 「标题写本月 42 笔、下面只列着记账页当前筛出来的 1 条」。
  */
 @Composable
 private fun MonthEntriesList(state: UiState, lang: Lang) {
-    val days = state.monthGroups.map { group ->
+    val days = state.monthAllGroups.map { group ->
         group.copy(items = group.items.sortedByDescending { it.createdAt })
     }
 
@@ -229,12 +238,14 @@ private fun MonthEntriesList(state: UiState, lang: Lang) {
 /**
  * 分类维度的明细：一行一个分类，笔数、金额、占比（进度条）。
  *
- * 笔数从 [UiState.monthGroups] 里数出来（同一份月份数据，和占比的口径一致）；
+ * 笔数从 [UiState.monthAllGroups]（整月、**不带筛选**）里数出来 —— 和金额、占比三者同一份数据，
+ * 所以「餐饮 1 笔 ¥860.00」旁边那个占比的分母正是这一整月，不会出现
+ * 「一行写 1 笔、整月那一栏写 30 笔」这种自相矛盾的画面。
  * 支出按支出总额算占比、收入按收入总额算，进度条各自用各自的总额当基准。
  */
 @Composable
 private fun CategoryEntriesList(state: UiState, lang: Lang) {
-    val countOf = state.monthGroups
+    val countOf = state.monthAllGroups
         .flatMap { it.items }
         .groupBy { it.category }
         .mapValues { entry -> entry.value.size }
@@ -367,11 +378,15 @@ private data class DailyRow(
  * 日期清单以 [UiState.calendarDays] 为准（当月每天一条，含没有记录的空白天），
  * 它和 [UiState.dayBars] 一样是**整月口径**（不受记账页的搜索 / 账户 / 标签 / 某天筛选影响），
  * 所以空白天、整月合计都不会被筛掉。
- * 当天有流水时再用 [UiState.monthGroups] 补上更细的笔数与收入；那份列表带筛选，
- * 所以只在对应日期确实存在时采用，取不到就退回整月口径的日历数据。
+ *
+ * 细到笔数与收入的那一层用 [UiState.monthAllGroups]：它同样是整月口径
+ * （不是记账页那份带筛选的 `monthGroups`），于是「某一天这一行的笔数 / 支出 / 收入」
+ * 三列出自同一批记录，横着加起来正好等于整月合计，不会再出现
+ * 「按天列的是筛选后的小数、退回整月的兜底值」混在一张表里的情况。
+ * 取不到分组时仍退回整月口径的日历数据（例如刚切月、分组还没算出来），兜底值同样是整月的。
  */
 private fun dailyRows(state: UiState): List<DailyRow> {
-    val groups = state.monthGroups.associateBy { it.date }
+    val groups = state.monthAllGroups.associateBy { it.date }
     val bars = state.dayBars.associateBy { it.day }
     val calendars: List<CalendarDay> = state.calendarDays.ifEmpty {
         (1..state.month.lengthOfMonth()).map { day ->

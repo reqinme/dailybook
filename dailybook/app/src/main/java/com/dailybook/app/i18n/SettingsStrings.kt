@@ -143,17 +143,6 @@ object SettingsStrings {
     )
     fun confirmClear(lang: Lang) = pick(lang, "确定清除", "確定清除", "Clear", "消去する")
 
-    // ---- 底部关于 ----
-    fun aboutVersion(lang: Lang, version: String) =
-        pickf(lang, "日常本 v%s", "日常本 v%s", "DailyBook v%s", "日常本 v%s", version)
-    fun aboutText(lang: Lang) = pick(
-        lang,
-        "记账 + 待办 + 专注计时，三合一。数据全部存在手机本地，不联网、不上传，只有通知、震动和开机后排提醒需要系统权限。",
-        "記帳 + 待辦 + 專注計時，三合一。資料全部存在手機本機，不連網、不上傳，只有通知、震動和開機後排提醒需要系統權限。",
-        "Ledger, to-dos and a focus timer in one app. All data stays on your phone — no network, no uploads. Only notifications, vibration and rescheduling reminders after a reboot need system permission.",
-        "家計簿 + ToDo + 集中タイマーの三役アプリ。データはすべて端末内に保存され、通信も送信もありません。システム権限が必要なのは通知・振動・再起動後のリマインダー再設定だけです。"
-    )
-
     // ---- 分类管理 ----
     fun categoryManage(lang: Lang) = pick(lang, "分类管理", "分類管理", "Categories", "カテゴリ管理")
     /** 记账卡片上的副标题：支出和收入各有多少个分类可选 */
@@ -244,14 +233,6 @@ object SettingsStrings {
     // v1.9 系统设置式改造：设置首页（分类列表）+ 各分类子页面
     // =====================================================================
 
-    /**
-     * 设置首页的标题。
-     *
-     * 顶栏的标题走 [AppStrings.settingsTitle]（路由层用），这里放一份让设置页面
-     * 自己也能取到标题，不必到处 import 两张表。
-     */
-    fun homeTitle(lang: Lang) = pick(lang, "设置", "設定", "Settings", "設定")
-
     /** 首页顶部小标题：「日常本 1.8」那种写法，版本号由 queryAppVersion() 拿出来 */
     fun homeHeader(lang: Lang, appName: String, version: String) =
         pickf(lang, "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", appName, version)
@@ -267,14 +248,6 @@ object SettingsStrings {
 
     /** 背景图（还没做的功能）：行是灰色的，不要写成「已经能用」 */
     fun backgroundImage(lang: Lang) = pick(lang, "背景图", "背景圖", "Background image", "背景画像")
-    fun notAvailableYet(lang: Lang) = pick(lang, "暂未开放", "尚未開放", "Not available yet", "未対応")
-    fun backgroundNotYetHint(lang: Lang) = pick(
-        lang,
-        "这个开关还没做，现在选了也不会有变化，下一版再补。",
-        "這個開關還沒做，現在選了也不會有變化，下一版再補。",
-        "This switch isn't built yet — choosing it does nothing for now; it's coming in a later version.",
-        "このスイッチはまだ実装していません。今は選んでも何も変わりません（後の版で対応します）。"
-    )
 
     // ---- 外观：自定义背景图（SettingsStore.backgroundUri / backgroundScrim）----
     /** 「已选好背景图」；没有背景图时复用 AppStrings.autoBackupNone（「还没有选择」） */
@@ -315,18 +288,6 @@ object SettingsStrings {
     /** 「提前 %d 分钟」 */
     fun minutesBeforeValue(lang: Lang, minutes: Int) =
         pickf(lang, "提前 %d 分钟", "提前 %d 分鐘", "%d min before", "%d 分前", minutes)
-
-    /**
-     * 学习这三项还没有对应的偏好设置：SettingsStore 里没有键，VM 也没有写入入口，
-     * 所以行是灰的，并明确说出「存在哪里」而不是假装已经生效。
-     */
-    fun studyNotConfiguredHint(lang: Lang) = pick(
-        lang,
-        "这个设置还没接线：偏好里还没有对应的键，现在改不了。课表里每门课可以单独填学期起始日。",
-        "這個設定還沒接線：偏好裡還沒有對應的鍵，現在改不了。課表裡每門課可以單獨填學期起始日。",
-        "Not wired up yet — there is no preference behind it, so it can't be changed here. Each course in the timetable has its own term start date.",
-        "まだ配線されていません（対応する設定項目がありません）。時間割の各授業には学期開始日を個別に設定できます。"
-    )
 
     // ---- 关于与更新 ----
     /** 关于卡片里的第一行：应用名 + 版本号 */
@@ -450,19 +411,6 @@ object SettingsStrings {
         "時間割に沿って授業の前に通知します（先に学期開始日と各授業の週を設定してください）"
     )
 
-    /**
-     * 上课提醒暂时不可用的原因（课表只有节次，没有具体时间）。
-     *
-     * ⚠️ 文案已被 [classReminderNoTimeHint] 取代：现在课表能填起止时间，提醒真的能排了，
-     * 「暂时还不能排」这句已经不成立。留着只是为了不动老代码引用，不要再往界面上放。
-     */
-    fun classReminderNoTime(lang: Lang) = pick(
-        lang, "暂时还不能排上课提醒：课表里只记了「周几、第几节」，没有具体几点几分，排不出准确的提醒时间。等课表能填每节课的起止时间后会接上",
-        "暫時還不能排上課提醒：課表裡只記了「週幾、第幾節」，沒有具體幾點幾分，排不出準確的提醒時間。等課表能填每節課的起止時間後會接上",
-        "Class reminders cannot be scheduled yet: the timetable only stores the weekday and period numbers, not clock times, so there is no accurate moment to fire. This will be wired up once a course can carry its start and end time",
-        "授業リマインダーはまだ設定できません。時間割は曜日と時限しか持っておらず、開始時刻が無いため正確な通知時刻を決められません。授業に開始・終了時刻を入力できるようになったら対応します"
-    )
-
     // ---- 上课提醒（开课时间表能填钟点之后）：通知文案 + 开关下方的诚实提示 ----
 
     /** 通知标题：「08:00 · 高等数学」；钟点是本地化后的时间，课程名是数据 */
@@ -497,5 +445,30 @@ object SettingsStrings {
         "開關是開著的，但還沒有課程填了上課時間 —— 提醒只對填了起止時間的課生效，去課表裡給課程補上時間才會響",
         "The switch is on, but no course has a start time yet — reminders only fire for courses with times filled in, so add them in the timetable",
         "スイッチはオンですが、開始時刻を入力した授業がまだありません。リマインダーは時刻を入力した授業にだけ働くので、時間割で入力してください"
+    )
+
+    // ---- 消除「两行都写『管理』」的歧义：各自说清点进去是干什么 ----
+
+    /** 「分类预算」行右侧的动作词：点进去是给各类别设上限 */
+    fun categoryBudgetAction(lang: Lang) = pick(
+        lang, "设置上限", "設定上限", "Set limits", "上限を設定"
+    )
+
+    /** 「分类管理」行右侧的动作词：点进去是增删分类本身 */
+    fun categoryManageAction(lang: Lang) = pick(
+        lang, "编辑列表", "編輯清單", "Edit list", "リストを編集"
+    )
+
+    /**
+     * 设置列表里「开源许可」那一行的**一行摘要**。
+     *
+     * 这一行原来把整段许可正文当副标题，点进去到「关于」页又是一模一样的正文 ——
+     * 同一段话在两级页面上各印一遍。现在列表里只留摘要，全文只留在「关于」页。
+     */
+    fun licenseRowSubtitle(lang: Lang) = pick(
+        lang, "用了哪些开源库、各自什么许可 —— 全文在「关于」页",
+        "用了哪些開源庫、各自什麼許可 —— 全文在「關於」頁",
+        "Which open-source libraries are used and under which licence — full text on the About page",
+        "使用しているオープンソースライブラリとそのライセンス —— 全文は「このアプリについて」にあります"
     )
 }

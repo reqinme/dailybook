@@ -62,11 +62,17 @@ import com.dailybook.app.ui.theme.incomeColor
 /**
  * 学分进度。
  *
- * 数据来源两处，都是父级算好的：
+ * 数据来源两处：
  * - 各个类别的要求：`creditTargets`（用户设的毕业要求）；
- * - 各个类别已修到的学分：`creditsByCategory`（从成绩表按类别累加），总计 `totalCredits`。
+ * - 各个类别已修到的学分：**本页自己从 `state.grades` 按 [earnedCredit] 的口径重算**
+ *   （`earnedCredits` / `earnedCreditsByCategory`），总计也是这个口径。
  *
- * 所以这一页**只读成绩**：真正录入学分的地方是「GPA 计算器」，这里只管进度与要求。
+ * 为什么不用父级算好的 `totalCredits` / `creditsByCategory`：那两个是 `sumOf { it.credit }`，
+ * 把不及格（绩点 0.00）的课也算成已修学分，于是一页里会出现「已修 24 / 要求 20 · 已达标」
+ * 而同一批成绩的 GPA 却把不及格算 0 —— 数字互相打脸。等父级那边也换成同一口径，
+ * 本地的这次重算就只是冗余（结果相同），不会冲突。
+ *
+ * 这一页**只读成绩**：真正录入学分的地方是「GPA 计算器」，这里只管进度与要求。
  * 分类名是数据（必修 / 选修 …），不翻译。
  */
 
@@ -87,16 +93,19 @@ fun CreditsScreen(
     var deleting by remember { mutableStateOf<CreditTargetEntity?>(null) }
 
     val requiredTotal = remember(state.creditTargets) { state.creditTargets.sumOf { it.required } }
+    // 已修学分（总 / 分类）都按「拿到学分才算」的口径本地重算，见文件头注释
+    val earnedByCategory = remember(state.grades) { earnedCreditsByCategory(state.grades) }
+    val earnedTotal = remember(state.grades) { earnedCredits(state.grades) }
     // 设了要求、但成绩里还没有学分的类别也要显示（0 / 要求），所以以 targets 为主
-    val rows = remember(state.creditTargets, state.creditsByCategory) {
+    val rows = remember(state.creditTargets, earnedByCategory) {
         state.creditTargets.map { target ->
-            target to (state.creditsByCategory[target.category] ?: 0.0)
+            target to (earnedByCategory[target.category] ?: 0.0)
         }
     }
     // 录了成绩但没建对应要求的类别：单独一组提示，避免「学分对不上总数」
-    val untracked = remember(state.creditTargets, state.creditsByCategory) {
+    val untracked = remember(state.creditTargets, earnedByCategory) {
         val tracked = state.creditTargets.map { it.category }.toSet()
-        state.creditsByCategory.filterKeys { it !in tracked }.filterValues { it > 0.0 }
+        earnedByCategory.filterKeys { it !in tracked }.filterValues { it > 0.0 }
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -120,11 +129,11 @@ fun CreditsScreen(
                     Spacer(Modifier.height(10.dp))
                     SectionCard(title = StudyStrings.creditsTotal(lang)) {
                         val totalRatio = if (requiredTotal <= 0.0) 0f
-                        else (state.totalCredits / requiredTotal).toFloat().coerceIn(0f, 1f)
+                        else (earnedTotal / requiredTotal).toFloat().coerceIn(0f, 1f)
                         Text(
                             text = StudyStrings.creditsSummary(
                                 lang,
-                                formatCredits(state.totalCredits),
+                                formatCredits(earnedTotal),
                                 formatCredits(requiredTotal)
                             ),
                             style = MaterialTheme.typography.titleMedium,
@@ -133,17 +142,17 @@ fun CreditsScreen(
                         Spacer(Modifier.height(8.dp))
                         ThinProgressBar(
                             ratio = totalRatio,
-                            color = progressColor(state.totalCredits, requiredTotal),
+                            color = progressColor(earnedTotal, requiredTotal),
                             height = 10.dp
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            text = if (requiredTotal > 0.0 && state.totalCredits >= requiredTotal) {
+                            text = if (requiredTotal > 0.0 && earnedTotal >= requiredTotal) {
                                 StudyStrings.creditsReached(lang)
                             } else {
                                 StudyStrings.creditsRemaining(
                                     lang,
-                                    formatCredits((requiredTotal - state.totalCredits).coerceAtLeast(0.0))
+                                    formatCredits((requiredTotal - earnedTotal).coerceAtLeast(0.0))
                                 )
                             },
                             style = MaterialTheme.typography.bodySmall,
@@ -152,6 +161,13 @@ fun CreditsScreen(
                         Spacer(Modifier.height(8.dp))
                         Text(
                             text = StudyStrings.creditsHint(lang),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            // 口径写出来：不然「已修学分」比课程表上的学分少会被当成算错了
+                            text = StudyStrings.gradesCreditsRule(lang),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

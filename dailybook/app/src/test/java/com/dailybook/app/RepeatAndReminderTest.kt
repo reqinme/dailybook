@@ -169,9 +169,13 @@ class CsvExportTest {
         )
         val lines = csv.trim().split("\r\n")
         assertTrue("应以 UTF-8 BOM 开头，Excel 才不会乱码", csv.startsWith("\uFEFF"))
-        assertEquals("日期,类型,分类,账户,金额,备注,标签", lines[0].removePrefix("\uFEFF"))
-        assertEquals("2026-09-14,支出,餐饮,现金,12.34,午饭,", lines[1])
-        assertEquals("2026-09-14,收入,工资,现金,500.00,,", lines[2])
+        assertEquals(
+            "日期,类型,分类,账户,金额,备注,标签,币种,原币金额,汇率,报销",
+            lines[0].removePrefix("\uFEFF")
+        )
+        // 后 4 列：没有币种 / 外币金额 / 报销标记的本位币记录 → CNY、原币金额 = 金额本身、汇率 1:1、报销留空
+        assertEquals("2026-09-14,支出,餐饮,现金,12.34,午饭,,CNY,12.34,1,", lines[1])
+        assertEquals("2026-09-14,收入,工资,现金,500.00,,,CNY,500.00,1,", lines[2])
     }
 
     @Test
@@ -179,7 +183,8 @@ class CsvExportTest {
         val day = LocalDate.of(2026, 9, 14).toDayMillis()
         val csv = Backup.toCsv(listOf(tx(100, "其他", "买书, 附\"签名\"版", day)))
         val row = csv.trim().split("\r\n")[1]
-        assertTrue(row.endsWith("\"买书, 附\"\"签名\"\"版\","))
+        // 带逗号和引号的备注整体加引号、内部引号翻倍；后面的币种 / 原币金额 / 汇率 / 报销照旧跟在后面
+        assertTrue(row.endsWith("\"买书, 附\"\"签名\"\"版\",,CNY,1.00,1,"))
     }
 
     @Test
@@ -188,8 +193,8 @@ class CsvExportTest {
         val second = LocalDate.of(2026, 9, 20).toDayMillis()
         val csv = Backup.toCsv(listOf(tx(100, "餐饮", "晚", second), tx(200, "餐饮", "早", first)))
         val lines = csv.trim().split("\r\n")
-        assertEquals("2026-09-01,支出,餐饮,现金,2.00,早,", lines[1])
-        assertEquals("2026-09-20,支出,餐饮,现金,1.00,晚,", lines[2])
+        assertEquals("2026-09-01,支出,餐饮,现金,2.00,早,,CNY,2.00,1,", lines[1])
+        assertEquals("2026-09-20,支出,餐饮,现金,1.00,晚,,CNY,1.00,1,", lines[2])
     }
 
     @Test

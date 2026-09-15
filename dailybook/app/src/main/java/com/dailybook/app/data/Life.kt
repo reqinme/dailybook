@@ -194,7 +194,14 @@ data class HabitEntity(
     val createdAt: Long
 )
 
-/** 习惯打卡记录：一天一条，累计当天完成量 */
+/**
+ * 习惯打卡记录：正常情况下一「天」一条，累计当天完成量。
+ *
+ * ⚠️ 但**不能假设只有一条**：导入 / 恢复备份会把同一天同一习惯的记录带进来多条（表里没有
+ * 唯一约束，也不该为它加一个会拒绝导入的约束）。所以读的时候一律按「同一天的多条求和」，
+ * 见 [HabitDao.countOf]；界面上的今日数量与 7 格小图也都用同一份求和结果，
+ * 免得出现「格子说 3、标题说 1」这种自相矛盾。
+ */
 @Entity(tableName = "habit_logs")
 data class HabitLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
@@ -236,8 +243,54 @@ interface HabitDao {
     @Delete
     suspend fun deleteLog(item: HabitLogEntity)
 
-    @Query("SELECT * FROM habit_logs WHERE habitId = :habitId AND dateMillis = :dayMillis LIMIT 1")
+    /**
+     * 某天某个习惯的那一条记录（写入前查一下「今天有没有打过卡」用）。
+     *
+     * `ORDER BY id ASC` 不能省：同一天可能有**多条**记录（导入 / 恢复备份会带进来），
+     * 没有排序时 SQLite 返回哪一条是不确定的，同一个操作可能这次改这条、下次改那条，
+     * 于是「今天一共打了多少」会随查询顺序跳来跳去（界面和网格对不上就是这个原因）。
+     * 需要「合计」而不是「某一条」时用 [countOf]。
+     */
+    @Query(
+        "SELECT * FROM habit_logs WHERE habitId = :habitId AND dateMillis = :dayMillis " +
+            "ORDER BY id ASC LIMIT 1"
+    )
     suspend fun logOf(habitId: Long, dayMillis: Long): HabitLogEntity?
+
+    /**
+     * 某天某个习惯的**合计**打卡量：同一天的多条记录相加（没有记录时是 0）。
+     *
+     * 这是「今天完成了多少」唯一正确的读法（[logOf] 只给一条，重复记录时会少算）。
+     */
+    @Query(
+        "SELECT COALESCE(SUM(count), 0) FROM habit_logs " +
+            "WHERE habitId = :habitId AND dateMillis = :dayMillis"
+    )
+    suspend fun countOf(habitId: Long, dayMillis: Long): Int
+
+    /**
+     * 把某天某个习惯的重复记录合掉：计数全部并到 id 最小的那一条上。
+     *
+     * 两步（先求和、再删多余）而不是一条 SQL：SQLite 里 UPDATE 的 SET 子查询按当前行求值，
+     * 先把合计写进保留的那条，再删掉其余的，总和不会丢。写入前调用它，
+     * 之后 [logOf] + `updateLog` 这套「改今天那条」的写法才真正对应「今天一共多少」。
+     */
+    @Query(
+        "UPDATE habit_logs SET count = (" +
+            "SELECT SUM(count) FROM habit_logs WHERE habitId = :habitId AND dateMillis = :dayMillis" +
+            ") WHERE id = (" +
+            "SELECT MIN(id) FROM habit_logs WHERE habitId = :habitId AND dateMillis = :dayMillis" +
+            ")"
+    )
+    suspend fun sumIntoLowestLog(habitId: Long, dayMillis: Long)
+
+    /** [sumIntoLowestLog] 的第二步：删掉除保留行以外的重复记录 */
+    @Query(
+        "DELETE FROM habit_logs WHERE habitId = :habitId AND dateMillis = :dayMillis AND id != (" +
+            "SELECT MIN(id) FROM habit_logs WHERE habitId = :habitId AND dateMillis = :dayMillis" +
+            ")"
+    )
+    suspend fun deleteDuplicateLogs(habitId: Long, dayMillis: Long)
 
     @Query("DELETE FROM habits")
     suspend fun clearAll()

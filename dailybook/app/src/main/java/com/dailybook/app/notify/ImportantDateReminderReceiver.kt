@@ -33,7 +33,9 @@ import java.time.temporal.ChronoUnit
  *
  * 到点重新查库（而不是把标题塞进 Intent）有三个好处，和 [ClassReminderReceiver] 一样：
  * 1. 用户在闹钟排好之后改了名字 / 日期 / 提前天数，响出来的是最新的内容；
- * 2. 日期被删了、或者提醒被关掉了（改成「当天提醒」也算关掉），就直接不响 —— 不会留下幽灵提醒；
+ * 2. 日期被删了、或者提醒被改到了别的日子，就直接不响 —— 不会留下幽灵提醒
+ *    （判据是 [ImportantDateSchedule.reminderDayOf] 算出来的提醒日是不是**今天**，
+ *    所以「当天提醒」（0 天）也照样算数，它只是提醒日 == 发生日而已）；
  * 3. 行已经不在了就什么都不做（[ImportantDateSchedule.fireMillis] 也算不出提醒时刻）。
  *
  * 通知自己建（没有走 [Notifier]）：[Notifier] 只暴露了几个具体场景的 helper，
@@ -53,8 +55,6 @@ class ImportantDateReminderReceiver : BroadcastReceiver() {
                 val app = context.applicationContext
                 // 闹钟到点后重新查库：日期被删掉了就什么都不做（不发任何通知）
                 val item = AppDatabase.get(app).importantDateDao().getById(dateId) ?: return@launch
-                // 到点时已经改成「不提醒」了就不响
-                if (item.remindDaysBefore <= 0) return@launch
 
                 val now = System.currentTimeMillis()
                 val zone = ZoneId.systemDefault()
@@ -133,10 +133,14 @@ class ImportantDateReminderReceiver : BroadcastReceiver() {
 
     /** 发出通知；返回 true 表示真的发出去了（没权限 / 被系统拒绝时返回 false） */
     private fun post(context: Context, lang: Lang, item: ImportantDateEntity, today: LocalDate): Boolean {
-        val title = if (item.repeatRule == DateRepeat.ONCE) {
-            LifeStrings.dateNotifTitleOnce(lang, item.title)
-        } else {
-            LifeStrings.dateNotifTitle(lang, item.title, item.remindDaysBefore)
+        // 标题按「这一次是提前几天提醒的」选：
+        // - 当天提醒（0 / 老数据里的负数）：直说「今天：X」——套「还有 0 天」那句话不通；
+        // - 「只过一次」且提前了几天：「快到了：X」，它没有「还剩几天」的说法；
+        // - 其余：`X 还有 N 天`。
+        val title = when {
+            item.remindDaysBefore <= 0 -> LifeStrings.dateNotifTitleToday(lang, item.title)
+            item.repeatRule == DateRepeat.ONCE -> LifeStrings.dateNotifTitleOnce(lang, item.title)
+            else -> LifeStrings.dateNotifTitle(lang, item.title, item.remindDaysBefore)
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)

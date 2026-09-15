@@ -21,6 +21,7 @@ import java.time.temporal.ChronoUnit
  *
  * 「只过一次」（[DateRepeat.ONCE]）的日期算出来的下一次就是原来那天，
  * 哪怕它已经过去了 —— 由调用方决定是显示成「已过去 N 天」还是干脆不排提醒。
+ * 这一条对**农历**日期同样成立（见 [nextOccurrence]）：ONCE 的农历日期不会年年复发。
  */
 object ImportantDateSchedule {
 
@@ -30,9 +31,19 @@ object ImportantDateSchedule {
     /**
      * 下一次发生（公历日）。返回 null 只有一种情况：农历日期超出了 [Lunar] 的年份表
      * （阳历那套无论什么规则都算得出一天，「只过一次」也照样把原来那天返回）。
+     *
+     * ⚠️ 农历日期**也要看重复规则**：[DateRepeat.ONCE] 的农历日期只发生一次，
+     * 就是当初存下来的那一天（[ImportantDateEntity.dateMillis] 是首次换算出的阳历日），
+     * 过了也停在原地 —— 于是它会像阳历的「只过一次」那样进「已经过去」那一组，
+     * 而不是年年复发。其余规则（每年 / 每月 / 每周）的农历日期仍按**每年**算
+     * （农历没有「每月同一天」的说法，界面上也是这么写的）。
      */
     fun nextOccurrence(item: ImportantDateEntity, today: LocalDate): LocalDate? {
         if (item.lunar) {
+            // 「只过一次」：认存下来的那一天，重复规则优先于农历换算。
+            // 以前这一步被跳过，标了「只过一次」的农历日期会一直往后滚到明年，
+            // 和阳历 ONCE（过期后停在原地、显示「已过去 N 天」）自相矛盾。
+            if (item.repeatRule == DateRepeat.ONCE) return item.dateMillis.toLocalDate()
             // 第一个参数的年只是占位：solarOfNextOccurrence 内部按「今天的农历年」往后找
             return Lunar.solarOfNextOccurrence(
                 Lunar.LunarDate(today.year, item.lunarMonth, item.lunarDay, item.lunarLeap),

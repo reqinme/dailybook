@@ -57,8 +57,13 @@ object ClassSchedule {
      *   [fallbackTermStartMillis]，也就是设置里的学期起始日），再用 [weeksMatch] 判断这周上不上 ——
      *   所以只在单周开的课，双周不会响。
      * - **窗口**：从 [nowMillis] 所在的那天起，往后最多 [SEARCH_DAYS] 天。
-     * - **已经过了提醒时刻、但课还没结束**的课照样返回（宁可晚一点响，也别整整一节课不吭声）：
+     * - **今天已经过了提醒时刻、但课还没结束**的课照样返回（宁可晚一点响，也别整整一节课不吭声）：
      *   此时 [ClassOccurrence.notifyAtMillis] 会早于 [nowMillis]，排程那边会把它提到「现在」立刻响。
+     *   这一条**只对今天**成立，判据是「这节课的下课时刻还晚于现在」（[endOfCourse]）：
+     *   - 课已经上完（下课时刻 <= [nowMillis]）→ 跳过今天，顺延到下一次（通常是下周）；
+     *   - 没填下课时间、或填得比上课还早 → 按 [DEFAULT_LESSON_MINUTES] 估一节课，
+     *     所以「还在上没上」是按这个估值判断的：开局 45 分钟之后就当这节课过去了；
+     *   - 窗口里更靠后的那些天（`offset >= 1`）不存在「已经上完」，只会被周次 / 星期几筛掉。
      *
      * @param leadMinutes 提前多少分钟提醒（负数按 0 处理）
      * @param fallbackTermStartMillis 课程自己没填学期起始日时的兜底值（设置里的那个），0 = 没有

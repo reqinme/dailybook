@@ -10,23 +10,20 @@ object LedgerStrings {
 
     // ---- 顶部与工具条 ----
     fun addEntry(lang: Lang) = pick(lang, "记一笔", "記一筆", "Add entry", "記録する")
-    fun searchHint(lang: Lang) = pick(lang, "搜索分类或备注", "搜尋分類或備註", "Search category or note", "カテゴリ・メモを検索")
+    /**
+     * 搜索框的提示。搜索实际匹配**分类 / 备注 / 标签**三者
+     * （见 MainViewModel.buildState 里的 `searched`），所以提示必须把标签也说上 ——
+     * 以前只写「分类或备注」，而流水行上明明显示着标签，用户搜标签搜不到就会以为记录丢了。
+     */
+    fun searchHint(lang: Lang) = pick(
+        lang, "搜索分类、备注或标签", "搜尋分類、備註或標籤",
+        "Search category, note or tag", "カテゴリ・メモ・タグを検索"
+    )
     fun accountFilterAll(lang: Lang) = pick(lang, "全部账户", "全部帳戶", "All accounts", "すべての口座")
 
     // ---- 空状态 ----
     fun emptySearchTitle(lang: Lang) = pick(lang, "没有匹配的记录", "沒有符合的紀錄", "No matching entries", "一致する記録がありません")
     fun emptySearchSubtitle(lang: Lang) = pick(lang, "换个关键词试试", "換個關鍵字試試", "Try another keyword", "別のキーワードを試してください")
-    fun emptyFilteredTitle(lang: Lang, account: String) = pickf(
-        lang,
-        "%1\$s 这个月没有记录", "%1\$s 這個月沒有紀錄",
-        "No %1\$s entries this month", "%1\$s は今月の記録がありません",
-        account
-    )
-    fun emptyFilteredSubtitle(lang: Lang) = pick(
-        lang,
-        "点上面的「全部账户」看全部流水", "點上面的「全部帳戶」看全部流水",
-        "Tap \"All accounts\" above to see every entry", "上の「すべての口座」で全記録を表示"
-    )
     fun emptyMonthTitle(lang: Lang) = pick(lang, "这个月还没有记账", "這個月還沒有記帳", "Nothing recorded this month", "今月はまだ記録がありません")
     fun emptyMonthSubtitle(lang: Lang) = pick(
         lang,
@@ -196,7 +193,7 @@ object LedgerStrings {
         count, expense, income
     )
 
-    // ---- v1.6：筛选后的空状态（旧的两参数 emptyFilteredTitle 仍在用，这里另起名字） ----
+    // ---- v1.6：筛选后的空状态（不带账户名的通用版，界面统一用它） ----
     fun emptyNoMatchTitle(lang: Lang) = pick(
         lang,
         "没有符合当前筛选的记录", "沒有符合目前篩選的紀錄",

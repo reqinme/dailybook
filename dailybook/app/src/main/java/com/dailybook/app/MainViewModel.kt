@@ -1,8 +1,12 @@
 package com.dailybook.app
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.compose.runtime.Immutable
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dailybook.app.backup.Backup
@@ -273,7 +277,25 @@ data class FocusStats(
 @Immutable
 data class UiState(
     val month: YearMonth = YearMonth.now(),
+    /**
+     * 记账页流水列表的分组：**带筛选**（搜索 / 账户 / 标签 / 按天），只喂记账页自己的那个列表。
+     *
+     * 它和 [monthExpense] / [monthIncome] / [monthCount] / [expenseSlices] / [calendarDays]
+     * **不是**同一份数据 —— 后面这些都是整月口径。拿这份分组去数笔数就会和整月汇总打架
+     * （「上面写本月 42 笔，下面只列 1 行」就是这么来的）。
+     * 统计详情页的三份明细请用 [monthAllGroups]，**不要把这两个字段合并回去**。
+     */
     val monthGroups: List<DayGroup> = emptyList(),
+    /**
+     * 整月分组：**不带任何筛选**，和 [monthExpense] / [monthIncome] / [monthCount] /
+     * [expenseSlices] / [calendarDays] 出自同一份整月流水（同一个 `groupBy` 形状，
+     * 所以界面可以在两者之间直接换用）。
+     *
+     * 统计详情页（本月记录 / 分类明细 / 每日明细）只讲「选中的这一个月」，
+     * 跟记账页当前的搜索 / 账户 / 标签 / 某天筛选毫无关系，三份明细都读这一份；
+     * 记账页的列表仍旧读 [monthGroups]（那里本来就该跟着筛选走）。
+     */
+    val monthAllGroups: List<DayGroup> = emptyList(),
     val monthExpense: Long = 0L,
     val monthIncome: Long = 0L,
     val monthCount: Int = 0,
@@ -485,6 +507,13 @@ private data class FocusSettings(
     val cats: CategoryInputs
 )
 
+/**
+ * 预算预警的档位（由低到高）。
+ * [NEAR]：本月支出用到预算的 80%；[OVER]：已经超支。
+ * 判定只在这里出现一次（[MainViewModel.budgetTierOf]），别在别处再写一遍阈值。
+ */
+private enum class BudgetTier { NEAR, OVER }
+
 class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     private val repo = DailyRepository(app)
@@ -620,7 +649,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     init {
         // 打开 App 先把到期的周期记账补成真实记录（补完会把下次日期往后推，不会重复记）
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { repo.materializeRecurring() }
+            withContext(Dispatchers.IO) {
+                repo.materializeRecurring()
+                // 补记的几笔会真的改变本月支出（长期没用 App 时一次可能跨过预算的两档）
+                checkBudgetAlert()
+            }
         }
         // 顺带跑一次自动备份：24 小时内已备份过会自动跳过，没配置就什么都不做
         viewModelScope.launch {
@@ -781,7 +814,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     ) {
         viewModelScope.launch {
             repo.addRecurring(amountCents, type, category, account, note, tags, rule, nextDueMillis)
-            withContext(Dispatchers.IO) { repo.materializeRecurring() }
+            withContext(Dispatchers.IO) {
+                repo.materializeRecurring()
+                // 补记出来的是真实的支出记录：可能一次就把本月预算跨过去
+                checkBudgetAlert()
+            }
         }
     }
 
@@ -847,7 +884,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 rateScaled = rateScaled
             )
             // 记完一笔顺手看一眼预算，越过预警线就提醒一次
-            if (type == TxType.EXPENSE) withContext(Dispatchers.IO) { checkBudgetAlert() }
+            // （不分收支：改/删一条收入不影响支出，但把支出改成收入、或删掉一笔支出都会变，
+            //  统一在每一条「会动到本月支出」的路上都查一次，见 checkBudgetAlert）
+            withContext(Dispatchers.IO) { checkBudgetAlert() }
         }
     }
 
@@ -881,11 +920,16 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                 foreignAmountCents = foreignAmountCents,
                 rateScaled = rateScaled
             )
+            // 把金额改大（改小也一样）可能正好把某一档跨过去，所以改完也要看一眼预算
+            withContext(Dispatchers.IO) { checkBudgetAlert() }
         }
     }
 
     fun deleteTransaction(item: TransactionEntity) {
-        viewModelScope.launch { repo.deleteTransaction(item) }
+        viewModelScope.launch {
+            repo.deleteTransaction(item)
+            withContext(Dispatchers.IO) { checkBudgetAlert() }
+        }
     }
 
     // ---- 待办 ----
@@ -988,11 +1032,37 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // ---- 预算预警 ----
 
     /**
-     * 记完一笔后检查：月度预算用到 80%、超支，以及各分类预算超支，各提醒一次。
-     * 用「月份 + 阈值」做键，所以同一个月里不会反复打扰；换月后自动重新计。
+     * 这个月的支出落在哪一档（没到 80% 返回 null）。
+     *
+     * 一条 `when` 从高往低判，**只看「现在到了哪一档」**，不看「上一次是哪一档、这一次跳了多远」：
+     * 支出从 70% 一步跳到 110% 时这里直接得到 [BudgetTier.OVER]，
+     * 不会因为分支顺序把某一档判不到（旧写法是先判超支、再判 80%，看起来一样，
+     * 但配合「只在记账时才查一次」就变成了「80% 那一档只有在某一次记账恰好落在 [80%,100%) 时才可能响」）。
+     * 于是每月的规则是确定的：**本月到达过哪一档就报哪一档，同一档每月只报一次**；
+     * 预算调大 / 删记录让支出退回低档后，没报过的低档之后仍会照常报（各档有自己的键）。
+     */
+    private fun budgetTierOf(spent: Long, budget: Long): BudgetTier? = when {
+        budget <= 0L -> null
+        spent > budget -> BudgetTier.OVER
+        spent >= budget * 8 / 10 -> BudgetTier.NEAR
+        else -> null
+    }
+
+    /**
+     * 检查预算：月度预算的「接近预算 / 已超支」两档，以及各分类预算超支，每档每月提醒一次。
+     *
+     * 调用时机：**每一条会改变本月支出的路**都要调它 —— 记一笔 / 改金额 / 删除 / 导入 CSV /
+     * 恢复备份 / 补记周期账 / 清空流水。以前只在 `addTransaction` 里查，所以「编辑金额改到超支」
+     * 「CSV 导入一大笔」这些路根本不会预警（开着开关也一声不响）。
+     *
+     * 没设任何预算时直接返回，连数据库都不读。
      */
     private suspend fun checkBudgetAlert() {
         if (!settings.budgetAlert.value) return
+        val budget = settings.monthlyBudgetCents.value
+        val categoryBudgets = settings.categoryBudgets.value.filterValues { it > 0L }
+        if (budget <= 0L && categoryBudgets.isEmpty()) return
+
         val month = YearMonth.now()
         val lang = settings.lang.value
         val monthKey = month.toString()
@@ -1002,23 +1072,22 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
         val spent = expenses.sumOf { it.amountCents }
 
-        val budget = settings.monthlyBudgetCents.value
-        if (budget > 0L) {
-            when {
-                spent > budget -> warnBudgetOnce("$monthKey:over") {
-                    AppStrings.budgetOverTitle(lang) to
-                        AppStrings.budgetOverText(lang, formatAmount(spent - budget))
-                }
-
-                spent >= budget * 8 / 10 -> warnBudgetOnce("$monthKey:near") {
-                    AppStrings.budgetNearTitle(lang) to
-                        AppStrings.budgetNearText(lang, formatAmount(spent), formatAmount(budget))
-                }
+        when (budgetTierOf(spent, budget)) {
+            BudgetTier.OVER -> warnBudgetOnce("$monthKey:over") {
+                AppStrings.budgetOverTitle(lang) to
+                    AppStrings.budgetOverText(lang, formatAmount(spent - budget))
             }
+
+            BudgetTier.NEAR -> warnBudgetOnce("$monthKey:near") {
+                AppStrings.budgetNearTitle(lang) to
+                    AppStrings.budgetNearText(lang, formatAmount(spent), formatAmount(budget))
+            }
+
+            // 还没到 80%：两档都不该响
+            null -> Unit
         }
 
-        settings.categoryBudgets.value.forEach { (category, catBudget) ->
-            if (catBudget <= 0L) return@forEach
+        categoryBudgets.forEach { (category, catBudget) ->
             val catSpent = expenses.filter { it.category == category }.sumOf { it.amountCents }
             if (catSpent > catBudget) {
                 warnBudgetOnce("$monthKey:cat:$category") {
@@ -1033,12 +1102,31 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * 同一档每月只提醒一次：先把通知发出去，**发得出去才记账**。
+     *
+     * 顺序很要紧。以前是反过来（先 `markBudgetWarned` 再发通知），于是一旦通知没发出去
+     * （Android 13+ 没给通知权限时 [Notifier.notifyBudgetAlert] 会直接 return），
+     * 这个月已经被标成「提醒过了」，用户从此再也收不到这一档的提醒 —— 静默失效。
+     * 现在权限没给就不记账，下次记账 / 导入时还会再试。
+     */
     private fun warnBudgetOnce(key: String, build: () -> Pair<String, String>) {
         if (settings.isBudgetWarned(key)) return
-        settings.markBudgetWarned(key)
+        // 和 Notifier 里的判断保持一致（Android 13+ 需要 POST_NOTIFICATIONS）。
+        // Notifier.notifyBudgetAlert 不返回「到底发没发出去」，所以只能在这里对同样的条件。
+        if (!canPostNotifications()) return
         val (title, text) = build()
         Notifier(app).notifyBudgetAlert(key, title, text)
+        settings.markBudgetWarned(key)
     }
+
+    /** 当前有没有发通知的权限：和 [Notifier] 内部那句判断同口径 */
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                app,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
 
     // ---- 备份 / 恢复 / 导出 ----
 
@@ -1067,6 +1155,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     fun importBackup(uri: Uri) = runFileTask {        val parsed = Backup.parse(Backup.readText(app, uri))
         repo.restore(parsed.snapshot)
         settings.setMonthlyBudget(parsed.budgetCents)
+        // 恢复备份换掉的是整份数据，本月支出一夜之间就可能跨过某一档
+        checkBudgetAlert()
         AppStrings.backupRestored(
             settings.lang.value,
             parsed.snapshot.transactions.size,
@@ -1090,6 +1180,8 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         if (fresh.isEmpty()) return@runFileTask AppStrings.importNothingNew(lang)
 
         repo.insertTransactions(fresh)
+        // 一次导入可能直接跨过 80% / 超支两档，导入完也要查一遍
+        checkBudgetAlert()
         AppStrings.importedCsv(lang, fresh.size, rows.size - fresh.size)
     }
 
@@ -1108,7 +1200,11 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     // ---- 清除数据 ----
 
     fun clearTransactions() {
-        viewModelScope.launch { repo.clearTransactions() }
+        viewModelScope.launch {
+            repo.clearTransactions()
+            // 清空会把本月支出打到 0：不会再触发新的一档，但「已经报过」的键要跟着当下这一眼重新对齐
+            withContext(Dispatchers.IO) { checkBudgetAlert() }
+        }
     }
 
     fun clearTodos() {
@@ -1419,9 +1515,12 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
         val monthTx = ledger.all.filter { YearMonth.from(it.dateMillis.toLocalDate()) == month }
         val query = ledger.query.trim()
+        // 搜索匹配分类 / 备注 / 标签三者：流水行上把标签显示出来了，搜索框也写着「分类、备注或标签」，
+        // 只查前两项会让「搜标签」永远搜不到（用户以为记录丢了）。
         val searched = if (query.isEmpty()) monthTx else monthTx.filter { tx ->
             tx.category.contains(query, ignoreCase = true) ||
-                tx.note.contains(query, ignoreCase = true)
+                tx.note.contains(query, ignoreCase = true) ||
+                tx.tagList.any { it.contains(query, ignoreCase = true) }
         }
         // 账户 / 标签 / 某一天这三个筛选只影响列表（和搜索一样），上方汇总是整月口径
         val accountFilter = ledger.accountFilter
@@ -1432,7 +1531,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             .filter { tagFilter == null || it.tagList.contains(tagFilter) }
             .filter { dayFilter == null || it.dateMillis.toLocalDate() == dayFilter }
 
-        val groups = listed
+        // 两份分组，`groupBy` 形状完全一样，区别只在数据范围：
+        // - listedGroups（UiState.monthGroups）：带搜索 / 账户 / 标签 / 按天筛选，喂记账页的流水列表；
+        // - allGroups（UiState.monthAllGroups）：整月不筛选，喂统计详情页的三份明细，
+        //   和下面的 monthExpense / monthIncome / monthCount / expenseSlices / calendarDays 同一份口径。
+        //
+        // 以前统计详情页读的是带筛选的那一份，于是「本月 42 笔」的标题下面可能只列着当前筛选出的 1 条，
+        // 分类明细里的「餐饮 1 笔 ¥860.00」也和整月那一栏的 30 笔互相矛盾。
+        fun groupsOf(source: List<TransactionEntity>): List<DayGroup> = source
             .groupBy { it.dateMillis.toLocalDate() }
             .toSortedMap(compareByDescending<LocalDate> { it })
             .map { (date, items) ->
@@ -1443,6 +1549,9 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
                     items = items
                 )
             }
+
+        val groups = groupsOf(listed)
+        val allGroups = groupsOf(monthTx)
 
         val monthExpense = monthTx.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
         val monthIncome = monthTx.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
@@ -1851,6 +1960,7 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         return UiState(
             month = month,
             monthGroups = groups,
+            monthAllGroups = allGroups,
             monthExpense = monthExpense,
             monthIncome = monthIncome,
             monthCount = monthTx.size,

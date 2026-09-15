@@ -63,6 +63,10 @@ import com.dailybook.app.util.toLocalDate
  * push 过去会是一屏空白。所以这里就地打开一个「全文弹窗」看完整内容，
  * 本页自给自足，不依赖父级补齐页面。等 MemoDetailScreen 就位后，
  * 把卡片的 clickable 换成 `nav.push(Route.MemoDetail(memo.id))` 即可。
+ *
+ * 全文弹窗与编辑弹窗都**只记 id**，显示 / 保存时再从 `state.memos` 里按 id 取当前的那一条
+ * （取不到说明已被删除，才退回打开弹窗时的那份）：这样弹窗开着时发生的改动（置顶、在别处编辑）
+ * 不会被旧快照覆盖，读到的也是最新文本。
  */
 @Composable
 fun MemosScreen(
@@ -164,14 +168,21 @@ fun MemosScreen(
             memo = memo,
             onDismiss = { editing = null },
             onSave = { title, content ->
-                vm.updateMemo(memo.copy(title = title, content = content))
+                // 保存时按 id 取**当前**这一条再改，不要拿打开弹窗时的整份快照写回去：
+                // 弹窗开着的时候这条可能被改过（比如在列表里点了「置顶」），
+                // 整份写回会把那次改动悄悄抹掉。取不到（已被删除）才退回旧快照。
+                val current = state.memos.firstOrNull { it.id == memo.id } ?: memo
+                vm.updateMemo(current.copy(title = title, content = content))
                 editing = null
             }
         )
     }
 
     reading?.let { memo ->
-        MemoReaderDialog(memo = memo, onDismiss = { reading = null })
+        // 全文弹窗同样按 id 取当前值：置顶 / 编辑之后就显示最新的内容与时间，
+        // 而不是打开弹窗那一刻的旧文本（顺带也能看出「更新于」有没有变）。
+        val current = state.memos.firstOrNull { it.id == memo.id } ?: memo
+        MemoReaderDialog(memo = current, onDismiss = { reading = null })
     }
 
     deleting?.let { memo ->

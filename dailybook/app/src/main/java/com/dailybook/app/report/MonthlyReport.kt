@@ -39,7 +39,14 @@ data class MonthlyReportData(
     /** 每日支出小节；[DailyBarData.ratio] 是 0～1 的相对高度 */
     val dailySectionTitle: String,
     val dailyBars: List<DailyBarData>,
-    /** 分类小节；[CategoryData.ratio] 是 0～1 的占比 */
+    /**
+     * 分类小节；[CategoryData.ratio] 是 0～1 的占比。
+     *
+     * 分母是**本月总支出**（和应用里「支出分类占比」那张卡片、分类明细页的「占 X%」同口径），
+     * 三个渲染器（HTML / PDF / PNG）都直接把它 ×100 印成百分比 ——
+     * 以前界面层传进来的是「占支出最多那一类的比例」，同一句「餐饮 30%」在应用里和在月报里
+     * 指的不是一回事。
+     */
     val categorySectionTitle: String,
     val categoryTopLabel: String,
     val categories: List<CategoryData>,
@@ -59,7 +66,7 @@ data class MonthlyReportData(
 /** 月报里的一根柱（每天支出） */
 data class DailyBarData(val label: String, val ratio: Float)
 
-/** 月报里的一个分类行 */
+/** 月报里的一个分类行（[ratio] = 该类支出 / 本月总支出） */
 data class CategoryData(val name: String, val amountText: String, val ratio: Float)
 
 /** 月报里的一条环比 */

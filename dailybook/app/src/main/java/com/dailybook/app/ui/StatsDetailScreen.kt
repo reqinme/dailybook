@@ -471,12 +471,18 @@ private fun DailyDetailRow(row: DailyRow, lang: Lang) {
 // ---- 专注记录 ----
 
 /**
- * 专注记录：本月汇总 + 所选月份的逐条明细 + 按待办汇总的投入时间。
+ * 专注记录：所选月份的汇总 + 逐条明细 + 按待办汇总的投入时间。
  *
  * 「逐条明细」用的是 [FocusStats.monthSessions]（选中月份的全部专注记录），
  * 不是 `todaySessions`——顶部有年月条，可以往回翻月份，明细必须跟着同一个月走，
  * 否则会出现「上面写着上个月几次、下面列的却是今天」这种对不上的画面。
  * 口径由 [StatsStrings.focusSessionsScopeNote] 说明。
+ *
+ * 汇总卡里那三个小格**故意混了两个范围**：今日次数与本周次数按「今天」算
+ * （它们本来就是「最近」的意思），平均每次跟着选中月份走。这一点写在卡片里的
+ * [StatsStrings.focusDetailScopeNote] 上，并且每一格的标签自己说清是次数还是时长、
+ * 是今天还是平均 —— 以前第三格标签写着「本月时长」而值是「平均每次」，
+ * 标签和数字说的不是一件事。
  */
 @Composable
 private fun FocusSessionsList(state: UiState, lang: Lang) {
@@ -511,7 +517,7 @@ private fun FocusSessionsList(state: UiState, lang: Lang) {
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth()) {
                         StatBlock(
-                            label = StatsStrings.focusToday(lang),
+                            label = StatsStrings.focusTodayCount(lang),
                             value = focus.todayCount.toString(),
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.weight(1f)
@@ -523,12 +529,22 @@ private fun FocusSessionsList(state: UiState, lang: Lang) {
                             modifier = Modifier.weight(1f)
                         )
                         StatBlock(
-                            label = StatsStrings.focusMonthDuration(lang),
+                            // 这一格是「本月总分钟 ÷ 本月次数」的平均值，标签就写「平均每次」。
+                            // 以前写的是 focusMonthDuration（「本月时长」），于是标签说本月时长、
+                            // 数字却是平均值 —— 本月总时长在上面那行汇总里已经有了。
+                            label = StatsStrings.focusAverageDuration(lang),
                             value = StatsStrings.focusMinutesShort(lang, average),
                             color = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    Spacer(Modifier.height(8.dp))
+                    // 三个数不是同一个范围，明说一句，免得「翻到上个月却夹着一格今天的次数」像是坏了
+                    Text(
+                        text = StatsStrings.focusDetailScopeNote(lang),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

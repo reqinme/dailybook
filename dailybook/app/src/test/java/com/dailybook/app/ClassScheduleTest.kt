@@ -21,7 +21,9 @@ import java.time.ZoneId
  *
  * 覆盖的关键性质：
  * - 今天的课在提醒时刻之前 → 今天就该响；
- * - 今天的课已经开始 → 顺延到下周，而不是当场补一声；
+ * - 今天的课**已经上完**（下课时刻已经过去）→ 顺延到下一次（通常是下周），而不是当场补一声；
+ *   只是**已经开始、还没下课**的那一节仍然会返回（排程会把它提到「现在」立刻响），
+ *   判据是「下课时刻还晚于现在」，精确口径见 util/ClassSchedule.kt 的 nextOccurrence；
  * - 提醒时刻越过午夜（周一 00:20 的课，提前 30 分钟 = 周日 23:50）→ 日期得回退一天；
  * - 只在单周开的课，双周必须跳过；
  * - 没填时间的课（-1）一律忽略；
@@ -96,9 +98,11 @@ class ClassScheduleTest {
     }
 
     @Test
-    fun sameDayAfterClassStartedGoesToNextWeek() {
-        // 周一 09:00：8:00 的课（9:40 下课）还在上，但已经不值得补一声；
-        // 而且它已经结束了，所以下一次是**下周一**同一时刻
+    fun sameDayAfterClassFinishedGoesToNextWeek() {
+        // 周一 09:00：这门课 8:00 上、8:30 就**下课了**（课程的 endMinutes 传的是 8*60+30），
+        // 现在已经上完 → 今天不再补响，下一次是**下周一**同一时刻。
+        // （只是已经开始、还没下课的那一节不在此列：那种仍然会返回，见
+        // notifyMomentAlreadyPassedStillKeepsTheOccurrence。）
         val now = at(monday, 9, 0)
         val occurrence = ClassSchedule.nextOccurrence(
             courses = listOf(course(endMinutes = 8 * 60 + 30)),

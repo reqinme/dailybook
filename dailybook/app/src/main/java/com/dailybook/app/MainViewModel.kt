@@ -12,6 +12,8 @@ import androidx.lifecycle.viewModelScope
 import com.dailybook.app.backup.Backup
 import com.dailybook.app.backup.AutoBackup
 import com.dailybook.app.backup.BackupOutcome
+import com.dailybook.app.backup.applyBackupSettings
+import com.dailybook.app.backup.readBackupSettings
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.CategoryStore
 import com.dailybook.app.data.Currencies
@@ -51,6 +53,10 @@ import com.dailybook.app.notify.Notifier
 import com.dailybook.app.notify.SummaryReminder
 import com.dailybook.app.notify.TodoReminder
 import com.dailybook.app.ui.theme.ThemeMode
+// 「已修学分」口径的唯一实现（学分 > 0 且绩点 > 0）：成绩页、学分进度页与这里共用同一份，
+// 界面层不再各自重算一遍
+import com.dailybook.app.ui.study.earnedCredits
+import com.dailybook.app.ui.study.earnedCreditsByCategory
 import com.dailybook.app.util.ImportantDateSchedule
 import com.dailybook.app.util.Lunar
 import com.dailybook.app.util.formatAmount
@@ -68,6 +74,17 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
+
+/**
+ * 「定量类习惯」的单位白名单（含繁体写法）：个 / 页。
+ *
+ * 只有这些单位的习惯才按「每天完成多少量」记，也就是学习周报里说的「定量计划」
+ * （背单词 20 个、背书计划 3 页）。以前这里是 `unit != "次"` 的黑名单，
+ * 于是「每天练琴 30 分钟」这种**按时间**记的习惯也被当成定量计划塞进周报，
+ * 卡片标题却写着「背单词打卡」—— 单位不认识的就不算，宁缺勿滥；
+ * 「次」本来就不在名单里，非定量的打卡习惯照旧被排除。
+ */
+private val COUNTABLE_HABIT_UNITS = setOf("个", "個", "页", "頁")
 
 enum class TodoFilter {
     ALL,
@@ -228,7 +245,13 @@ data class MonthBar(val month: YearMonth, val expense: Long, val income: Long) {
     val label: String get() = "${month.monthValue}月"
 }
 
-/** 年度汇总 */
+/**
+ * 年度汇总。
+ *
+ * [year] 是**选中月所在的那一年**（不是「今天所在的年」）：统计页上「N 年汇总」的标题、
+ * 同比卡片里的「今年 / 去年」和 [monthBars] 的最后一根柱子都跟着它走，
+ * 所以翻月份时这一页只讲一个年份。
+ */
 @Immutable
 data class YearSummary(
     val year: Int = YearMonth.now().year,
@@ -359,7 +382,13 @@ data class UiState(
     val importantDates: List<ImportantDateEntity> = emptyList(),
     val habits: List<HabitEntity> = emptyList(),
     val habitLogs: List<HabitLogEntity> = emptyList(),
-    /** 每个习惯今天的完成量：habitId → 今天的打卡数（没打卡 = 0） */
+    /**
+     * 每个习惯今天的完成量：habitId → 今天所有打卡记录的**合计**（没打卡 = 0）。
+     *
+     * 同一「天」不保证只有一条记录（恢复备份 / 导入会带进来重复行，表里也没有唯一约束），
+     * 所以这里按「同一天的多条求和」读，和 [com.dailybook.app.data.HabitDao.countOf]、
+     * 习惯页的 7 格小图同一口径 —— 以前取的是 `firstOrNull`，一天两条时界面就会自我矛盾。
+     */
     val habitToday: Map<Long, Int> = emptyMap(),
     /** 每个习惯的连续天数：habitId → 连续打卡天数（今天还没打卡则从昨天起算） */
     val habitStreak: Map<Long, Int> = emptyMap(),
@@ -375,7 +404,13 @@ data class UiState(
      * 但这些记录也**不该**凭空消失（以前就是那样），所以在列表里单独成组、明确标成已过去。
      */
     val pastDates: List<UpcomingDate> = emptyList(),
-    /** 定量类习惯（单位不是「次」的那些，也就是「背单词 / 背书计划」） */
+    /**
+     * 定量类习惯（单位是**可数**的 个 / 页，见 [COUNTABLE_HABIT_UNITS]），
+     * 也就是学习周报里说的「定量计划」（背单词 / 背书计划）。
+     *
+     * 只认白名单里的单位：「每天练琴 30 分钟」这类按时间记的习惯不算定量计划，
+     * 否则它会在周报里被当成一个背单词计划列出来（单位不认识的不算）。
+     */
     val wordHabits: List<HabitEntity> = emptyList(),
     // ---- 学习模块：课表 / 考试 / 作业 / 成绩 / 学分 / 奖助 ----
     val courses: List<CourseEntity> = emptyList(),
@@ -406,9 +441,20 @@ data class UiState(
      * 所以切换口径不会回头改写历史成绩，界面也不会再自己猜一个口径出来。
      */
     val gpaScale: Double = 4.0,
-    /** 已修学分总和 */
+    /**
+     * 已修学分总和。
+     *
+     * 口径：**学分 > 0 且绩点 > 0** 才算拿到学分（和成绩页的 `earnedCredit`、
+     * 学分进度页完全一致）。不及格（绩点 0.00）与「还没出分」的课都不计入 ——
+     * 以前这里是 `sumOf { it.credit }`，一门 59 分的课照样算进已修学分，
+     * 甚至能把某个类别顶成「已达标」，而同一批成绩的 GPA 却把它算 0。
+     */
     val totalCredits: Double = 0.0,
-    /** 每个课程类别已修的学分：类别 → 学分 */
+    /**
+     * 每个课程类别已修的学分：类别 → 学分。
+     *
+     * 口径同 [totalCredits]（学分 > 0 且绩点 > 0），和学分进度页的分类进度对得上。
+     */
     val creditsByCategory: Map<String, Double> = emptyMap(),
     /** 今天的专注时长（分钟），和 focusStats.todayMinutes 同源 */
     val studyMinutesToday: Int = 0
@@ -659,14 +705,18 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { AutoBackup.runBackupIfDue(app) }
         }
-        // 数据一变就刷新桌面小组件（没放小组件时 refresh 内部会直接返回，开销可忽略）
+        // 数据一变、或者**界面语言一换**就刷新桌面小组件（没放小组件时 refresh 内部会直接返回，
+        // 开销可忽略）。语言也要在这里听着：小组件上的文字是它自己按当前语言取的资源
+        // （见 WidgetProvider.localizedContext），而系统最长 30 分钟才唤起一次 onUpdate ——
+        // 不主动推一把的话，换了语言后桌面上会挂着旧语言半小时。
         viewModelScope.launch {
             combine(
                 repo.transactions,
                 repo.todos,
                 repo.focusSessions,
-                repo.exams
-            ) { _, _, _, _ -> Unit }.collect {
+                repo.exams,
+                settings.lang
+            ) { _, _, _, _, _ -> Unit }.collect {
                 WidgetProvider.refresh(app)
                 // 考试倒计时小组件跟着考试数据一起刷新
                 CountdownWidgetProvider.refresh(app)
@@ -1133,7 +1183,14 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     /** 导出全部数据为 JSON 备份文件（换机、重装前先存一份） */
     fun exportBackup(uri: Uri) = runFileTask {
         val snapshot = repo.snapshot()
-        Backup.writeText(app, uri, Backup.toJson(snapshot, settings.monthlyBudgetCents.value))
+        // 除了数据库里的全部内容，还要带上预算与各类设置（外观 / 语言 / 提醒 / 番茄钟 /
+        // 学习设置 / 分类清单 / 汇率 / 自动备份文件夹）—— 恢复之后才是「和原来一样」
+        val settingsSnapshot = readBackupSettings(app)
+        Backup.writeText(
+            app,
+            uri,
+            Backup.toJson(snapshot, settings.monthlyBudgetCents.value, settingsSnapshot)
+        )
         AppStrings.backupExported(
             settings.lang.value,
             snapshot.transactions.size,
@@ -1152,9 +1209,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
     }
 
     /** 从备份文件恢复：会覆盖当前全部数据 */
-    fun importBackup(uri: Uri) = runFileTask {        val parsed = Backup.parse(Backup.readText(app, uri))
+    fun importBackup(uri: Uri) = runFileTask {
+        val parsed = Backup.parse(Backup.readText(app, uri))
         repo.restore(parsed.snapshot)
         settings.setMonthlyBudget(parsed.budgetCents)
+        // 设置那一段是后加的：老备份里没有（parsed.settings == null）就整段跳过，
+        // 只恢复数据 —— 老文件照旧能用，也不会把本机的主题 / 语言悄悄改掉
+        parsed.settings?.let { applyBackupSettings(app, it) }
         // 恢复备份换掉的是整份数据，本月支出一夜之间就可能跨过某一档
         checkBudgetAlert()
         AppStrings.backupRestored(
@@ -1199,6 +1260,13 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
 
     // ---- 清除数据 ----
 
+    /**
+     * 清除所有记账流水（设置页那个按钮）。
+     *
+     * **周期记账规则不在删除范围里**，所以确认文案 [AppStrings] 那一侧必须说清
+     * 「规则会保留、到日子还会自动记一笔」，并指出想连规则一起清掉要用「清空全部数据」——
+     * 文案和行为必须一致（见 SettingsStrings.clearAllRecordsMessage）。
+     */
     fun clearTransactions() {
         viewModelScope.launch {
             repo.clearTransactions()
@@ -1706,13 +1774,17 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         // ---- 生活模块：备忘录 / 大事记 / 重要日期 / 习惯打卡 ----
         // 打卡记录存的就是「当天零点」，所以这里的「今天」也用本地零点比
         val todayMillis = today.toDayMillis()
-        // 一天一条记录（见 logHabit），所以按 habitId 分组后每组最多对上一个今天
+        // 一天**不一定**只有一条记录（导入 / 恢复备份会带进来重复行，见 HabitLogEntity 的说明），
+        // 所以按 habitId 分组之后还要按「同一天求和」读
         val habitLogsOf = life.habitLogs.groupBy { it.habitId }
 
-        // 每个习惯今天的完成量；没记录就是 0
+        // 每个习惯今天的完成量：把今天那几条**加起来**；没记录就是 0。
+        // 和习惯页（HabitsScreen）的今日数量、7 格小图同一口径 ——
+        // 以前这里取 `firstOrNull`，一天两条时标题就会比格子少
         val habitToday = life.habits.associate { habit ->
-            habit.id to (habitLogsOf[habit.id].orEmpty()
-                .firstOrNull { it.dateMillis == todayMillis }?.count ?: 0)
+            habit.id to habitLogsOf[habit.id].orEmpty()
+                .filter { it.dateMillis == todayMillis }
+                .sumOf { it.count }
         }
 
         // 连续天数：从今天往前一天天数；今天还没打卡就从昨天起算
@@ -1741,8 +1813,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             habit.id to days
         }
 
-        // 定量类习惯：单位不是「次」的就是按量记的（背单词是「个」、背书计划是「页」）
-        val wordHabits = life.habits.filter { it.unit != "次" }
+        // 定量类习惯：只认**可数的单位**（个 / 页，见 COUNTABLE_HABIT_UNITS）。
+        // 以前这里是 `unit != "次"` 的黑名单，于是「每天练琴 30 分钟」也被当成
+        // 背单词计划塞进学习周报的定量计划那一栏 —— 单位不认识的不算
+        val wordHabits = life.habits.filter { it.unit in COUNTABLE_HABIT_UNITS }
 
         // 重要日期的下一次发生：农历交给 Lunar 换算，阳历按重复规则往后滚 ——
         // 规则都在 ImportantDateSchedule 里（和提醒排程共用一份）。
@@ -1786,17 +1860,24 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
         } else {
             0.0
         }
-        val totalCredits = study.grades.sumOf { it.credit }
+        // 已修学分：**学分 > 0 且绩点 > 0** 才算拿到。口径的唯一实现在成绩页的 earnedCredit，
+        // 学分进度页与学习首页也用它自己重算 —— 这里直接复用同一个函数，
+        // 于是「三处各自算一遍」不会再分叉（以前这里是 sumOf { it.credit }，
+        // 不及格的课也算进已修学分，甚至能把某个类别顶成「已达标」）。
+        val totalCredits = earnedCredits(study.grades)
         // 按课程类别（必修 / 选修 / 通识）汇总已修学分，和 creditTargets 对照着看还差多少
-        val creditsByCategory = study.grades
-            .groupBy { it.category }
-            .mapValues { entry -> entry.value.sumOf { it.credit } }
+        val creditsByCategory = earnedCreditsByCategory(study.grades)
 
         // 今天的专注时长：和 focusStats.todayMinutes 同一个数，单独给学习页一个好读的名字
         val studyMinutesToday = todaySessions.sumOf { it.minutes }
 
-        // ---- 年度报表（近 12 个月趋势 + 当年汇总）----
-        val thisYear = today.year
+        // ---- 年度报表（近 12 个月趋势 + 年度汇总）----
+        // 「年」锚的是**选中月所在的那一年**（上面 `val month = ledger.month`），不是「今天的年份」：
+        // 以前这里和下面的趋势柱都按 today.year / YearMonth.from(today) 算，
+        // 于是把月份翻到 2024 年时，同一页上「2024 年汇总」的标题下面摆着 2026 年的数字，
+        // 趋势图也还是最近 12 个月 —— 一页两个「年」。同比那张卡片本来就用 month.year，
+        // 现在两边是同一个年份，标题与数字终于对得上。
+        val thisYear = month.year
         val yearTx = ledger.all.filter { it.dateMillis.toLocalDate().year == thisYear }
         val yearExpense = yearTx.filter { it.type == TxType.EXPENSE }.sumOf { it.amountCents }
         val yearIncome = yearTx.filter { it.type == TxType.INCOME }.sumOf { it.amountCents }
@@ -1806,8 +1887,10 @@ class MainViewModel(private val app: Application) : AndroidViewModel(app) {
             .map { (category, items) -> category to items.sumOf { it.amountCents } }
             .maxByOrNull { it.second }
         val byMonth = ledger.all.groupBy { YearMonth.from(it.dateMillis.toLocalDate()) }
+        // 近 12 个月的趋势也锚在**选中月**上（最后一根柱子就是选中的那个月），
+        // 和上面的年度汇总、下面的同比卡片讲的是同一段时间
         val monthBars = (11 downTo 0).map { back ->
-            val m = YearMonth.from(today).minusMonths(back.toLong())
+            val m = month.minusMonths(back.toLong())
             val items = byMonth[m].orEmpty()
             MonthBar(
                 month = m,

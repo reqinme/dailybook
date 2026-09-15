@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -43,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.dailybook.app.i18n.AppStrings
@@ -344,4 +346,48 @@ fun FieldLabel(text: String, modifier: Modifier = Modifier) {
         fontWeight = FontWeight.Medium,
         modifier = modifier
     )
+}
+
+/**
+ * 「标签 —— 金额」一行：金额靠右，长金额省略而不是撑破卡片；[suffix] 用来挂涨跌小标签。
+ *
+ * 原来私有在 StatsScreen 里，记账页的报销卡（一行摘要 + 指路）也要用同一行，
+ * 就搬到这个共用组件文件里 —— 两页各写一遍迟早会长歪。
+ */
+@Composable
+fun AmountRow(
+    label: String,
+    value: String,
+    color: Color,
+    suffix: (@Composable () -> Unit)? = null
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.End
+        ) {
+            if (suffix != null) {
+                suffix()
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End
+            )
+        }
+    }
 }

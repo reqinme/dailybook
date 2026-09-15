@@ -36,7 +36,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.UiState
-import com.dailybook.app.R
 import com.dailybook.app.data.HabitEntity
 import com.dailybook.app.data.TxType
 import com.dailybook.app.i18n.AppStrings
@@ -74,8 +73,9 @@ import java.util.Locale
  * - 完成的待办：只用 `todos.count { it.done }`。
  *   **口径说明**：待办表里没有存「完成日期」，所以这里给的是「目前已完成的总条数」，
  *   不是「这周完成的条数」——宁可说清口径，也不假装是周数据；
- * - 背单词打卡：`wordHabits`（生活模块里单位不是「次」的定量习惯，也就是背单词 / 背书计划）
- *   加上 `habitLogs` 中落在最近 7 天的打卡记录数，明细在「单词」页面里看；
+ * - 定量计划打卡：`wordHabits`（生活模块里**单位可数**的习惯：个 / 页，见
+ *   MainViewModel 的 COUNTABLE_HABIT_UNITS；「每天练琴 30 分钟」这类按时间记的习惯不在其中）
+ *   加上 `habitLogs` 中落在最近 7 天的打卡**天数**，明细在「习惯」页面里看；
  * - 支出：`transactions` 里日期落在最近 7 天的记录（按记账日期，不是创建时间）；
  * - 作业逾期数：`overdueAssignments`。
  *
@@ -104,7 +104,7 @@ private data class WeeklyReportData(
     val todoTotal: Int,
     val todoDone: Int,
     val wordPlans: List<HabitEntity>,
-    /** 背单词计划近 7 天的打卡次数（habit_logs 里落在这 7 天的记录数） */
+    /** 定量计划的近 7 天打卡**天数**（habit_logs 里落在这 7 天、按 habitId + 日期去重后） */
     val wordChecks: Int,
     val expenseCents: Long,
     val overdue: Int,
@@ -164,9 +164,12 @@ fun WeeklyReportScreen(
     /** 没有数据也允许导出（周报本来就是「这周啥也没干」的诚实版本） */
     fun startExport() {
         pendingExport = report
+        // 文件名里的应用名跟着 **App 内选的语言**走（和上面导出图里的页脚、以及
+        // 「导出备份」的 AppStrings.backupFileName 一致）；以前取的是系统资源
+        // R.string.app_name，英文界面下同一份周报：图上印 DailyBook、文件名却叫「日常本周报-…」。
         val fileName = StudyStrings.weeklyFileName(
             lang,
-            context.getString(R.string.app_name),
+            AppStrings.appName(lang),
             report.end.format(WEEKLY_FILE_FORMAT)
         ) + ".png"
         pngLauncher.launch(fileName)
@@ -207,7 +210,7 @@ fun WeeklyReportScreen(
         Spacer(Modifier.height(14.dp))
         SectionCard(title = StudyStrings.weeklyFocus(lang)) {
             Text(
-                text = StudyStrings.weeklyFocusValue(lang, report.focusMinutes, report.focusCount),
+                text = StatsStrings.perTodoMinutes(lang, report.focusMinutes, report.focusCount),
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -387,14 +390,19 @@ private fun weeklyReportData(state: UiState, today: LocalDate = LocalDate.now())
     val focusMinutes = days.sumOf { it.focusMinutes }
     val focusCount = days.sumOf { it.focusCount }
 
-    // 背单词打卡：只算「定量习惯」（wordHabits，单位不是「次」的那些）在最近 7 天的打卡记录数
+    // 定量计划打卡：只算「定量习惯」（wordHabits，单位可数的那些）在最近 7 天的打卡**天数**。
+    // 按 habitId + 那一天去重：同一天同一个习惯**可能有多条重复记录**（导入 / 恢复备份带进来的，
+    // 见 HabitLogEntity 的说明），按行数会一天数成两次，和习惯页的格子对不上。
     val wordIds = state.wordHabits.map { it.id }.toSet()
-    val wordChecks = state.habitLogs.count { log ->
-        log.habitId in wordIds &&
-            !log.dateMillis.toLocalDate().isBefore(start) &&
-            !log.dateMillis.toLocalDate().isAfter(today) &&
-            log.count > 0
-    }
+    val wordChecks = state.habitLogs
+        .filter { log ->
+            log.habitId in wordIds &&
+                !log.dateMillis.toLocalDate().isBefore(start) &&
+                !log.dateMillis.toLocalDate().isAfter(today) &&
+                log.count > 0
+        }
+        .distinctBy { it.habitId to it.dateMillis }
+        .size
 
     return WeeklyReportData(
         start = start,
@@ -598,7 +606,7 @@ private fun renderWeeklyBitmap(
         add(
             ReportRow.Figure(
                 StudyStrings.weeklyFocus(lang),
-                StudyStrings.weeklyFocusValue(lang, data.focusMinutes, data.focusCount),
+                StatsStrings.perTodoMinutes(lang, data.focusMinutes, data.focusCount),
                 PNG_FOCUS
             )
         )
@@ -638,7 +646,7 @@ private fun renderWeeklyBitmap(
             add(
                 ReportRow.Bar(
                     label = day.date.format(WEEKLY_DATE_FORMAT),
-                    value = StudyStrings.weeklyMinuteValue(lang, day.focusMinutes),
+                    value = StatsStrings.focusMinutesShort(lang, day.focusMinutes),
                     ratio = if (data.maxFocusMinutes <= 0) 0f
                     else day.focusMinutes.toFloat() / data.maxFocusMinutes.toFloat(),
                     color = PNG_FOCUS

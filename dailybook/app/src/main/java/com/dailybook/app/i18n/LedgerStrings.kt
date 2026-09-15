@@ -182,6 +182,20 @@ object LedgerStrings {
     fun pendingReimbursement(lang: Lang) = pick(lang, "待报销", "待報銷", "Pending", "精算待ち")
     fun reimbursed(lang: Lang) = pick(lang, "已报销", "已報銷", "Reimbursed", "精算済み")
 
+    /**
+     * 记账页报销卡上的一句指引。
+     *
+     * 这一页只留「待报销」一行（金额 + 笔数），已报销合计与统计口径的说明都在统计页的
+     * 报销卡片里 —— 同一个总金额在两页各画一张卡，改了一处忘了另一处就会对不上。
+     */
+    fun reimbursementSeeStats(lang: Lang) = pick(
+        lang,
+        "只显示待报销；已报销合计与统计口径（不限本月）在「统计」页。",
+        "只顯示待報銷；已報銷合計與統計口徑（不限本月）在「統計」頁。",
+        "Only the pending total is shown here — the reimbursed total and what the figures cover (all time, not just this month) are on the Stats page.",
+        "ここでは精算待ちのみを表示します。精算済みの合計と集計の範囲（今月に限らず全期間）は「統計」ページにあります。"
+    )
+
     // ---- v1.6：日历视图与当天筛选 ----
     fun viewList(lang: Lang) = pick(lang, "列表", "列表", "List", "リスト")
     fun viewCalendar(lang: Lang) = pick(lang, "日历", "日曆", "Calendar", "カレンダー")

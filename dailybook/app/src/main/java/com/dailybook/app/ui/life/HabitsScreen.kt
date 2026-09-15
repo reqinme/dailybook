@@ -78,7 +78,8 @@ import java.time.LocalDate
  * 今日数量（每行的 `N / 目标` 与顶部「今日已完成 N / M 个习惯」）用的是
  * [logsByHabitDay] 那份**按天求和**的结果，和右下角 7 格小图完全同源：
  * 同一天出现两条记录（导入 / 恢复备份能造出来）时，两边不会一个说 3、一个说 1。
- * 注意 [UiState.habitToday] 是「取今天的那一条」，本页不再用它。
+ * 页内自己算这一份（而不是读 [UiState.habitToday]）是为了和那 7 个格子共用同一个中间结果；
+ * 父级的 [UiState.habitToday] 现在也是「同一天求和」，两边口径一致，只是这里不再依赖它。
  *
  * 本页不发任何导航（没有子页面），但签名保持和父级统一调用的形式一致。
  */
@@ -98,8 +99,8 @@ fun HabitsScreen(
     var deleting by remember { mutableStateOf<HabitEntity?>(null) }
 
     // 今天的完成量：和 7 格小图**同一份**按天求和的结果（[logsByDay]）。
-    // 不再读 `state.habitToday`：那是「取今天的第一条记录」，万一同一天有两条（导入 / 恢复备份
-    // 能造出来），格子按求和显示 3、标题按一条显示 1，同一张卡上两个数字打架。
+    // 父级 [UiState.habitToday] 也是同一口径（按天求和），这里不读它只是为了少一份中间结果、
+    // 保证「格子」和「标题」出自同一个 map。
     fun todayCountOf(habitId: Long): Int = logsByDay[habitId]?.get(todayMillis) ?: 0
     val doneToday = state.habits.count { todayCountOf(it.id) >= it.targetPerDay }
 

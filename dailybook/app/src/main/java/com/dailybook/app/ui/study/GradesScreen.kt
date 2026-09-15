@@ -176,18 +176,26 @@ private fun gradePointOf(text: String): Double? = when (text.lowercase(Locale.RO
  * - `point <= 0`：不及格（百分制 60 分以下 / 五级制「不及格」/ 直接填 0 绩点），
  *   或者**还没出分**（缓考、成绩留空时 [scoreToPoint] 返回 0.0）—— 学分都还没拿到，不计入。
  *
- * 为什么必须卡这一条：以前「已修学分」是 `grades.sumOf { it.credit }`（父级 [com.dailybook.app.UiState.totalCredits]
+ * 为什么必须卡这一条：以前「已修学分」是 `grades.sumOf { it.credit }`（父级 UiState.totalCredits
  * 和本页原来的汇总都是这么算的），一门 59 分的课照样加进已修学分，甚至能把某个类别顶成「已达标」，
  * 而同一页的 GPA 是按绩点加权的 —— 两个数字各自成立、放在一起说不通。
  * 缓考 / 留空按「没拿到学分」处理，出分之后再录一次成绩就自然算进来了。
+ *
+ * 这个函数是这条口径的**唯一实现**：本页、学分进度页、学习首页，以及父级
+ * [com.dailybook.app.UiState.totalCredits] / [com.dailybook.app.UiState.creditsByCategory]
+ * 全都调用 [earnedCredit] / [earnedCredits] / [earnedCreditsByCategory]，
+ * 所以四处显示的数字不可能再各自演化。
  */
 internal fun earnedCredit(grade: GradeEntity): Double =
     if (grade.credit > 0.0 && grade.point > 0.0) grade.credit else 0.0
 
-/** 一组成绩的已修学分合计（口径见 [earnedCredit]） */
+/** 一组成绩的已修学分合计（口径见 [earnedCredit]）；父级 UiState.totalCredits 也调用它 */
 internal fun earnedCredits(grades: List<GradeEntity>): Double = grades.sumOf { earnedCredit(it) }
 
-/** 按课程类别汇总已修学分（口径见 [earnedCredit]）；和 [com.dailybook.app.UiState.creditsByCategory] 同形，只是不算没拿到的学分 */
+/**
+ * 按课程类别汇总已修学分（口径见 [earnedCredit]）。
+ * 父级的 [com.dailybook.app.UiState.creditsByCategory] 就是调用它算出来的，两处不可能不一致。
+ */
 internal fun earnedCreditsByCategory(grades: List<GradeEntity>): Map<String, Double> =
     grades.groupBy { it.category }.mapValues { entry -> entry.value.sumOf { earnedCredit(it) } }
 

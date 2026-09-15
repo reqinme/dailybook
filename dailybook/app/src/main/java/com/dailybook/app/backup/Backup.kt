@@ -40,7 +40,15 @@ import java.math.RoundingMode
 import java.time.LocalDate
 
 /** 备份文件解析结果 */
-data class ParsedBackup(val snapshot: DbSnapshot, val budgetCents: Long)
+data class ParsedBackup(
+    val snapshot: DbSnapshot,
+    val budgetCents: Long,
+    /**
+     * 文件里的「设置」那一段；**老备份文件里没有这一段，读出来就是 null**，
+     * 恢复时整段跳过（老备份照旧能恢复，也不会把本机设置改成默认值）。
+     */
+    val settings: BackupSettings? = null
+)
 
 /**
  * 备份文件的读写。
@@ -59,14 +67,27 @@ object Backup {
      * 5：多了生活与学习两个模块——「备忘录 / 大事记 / 重要日期 / 习惯 + 打卡记录 /
      *    课表 / 考试 + 复习计划 / 成绩 / 学分要求 / 奖助记录」
      * 读取时兼容更旧的版本（缺字段就取默认值），比当前版本更新的才拒绝。
+     *
+     * 注意：`format` 之后**又加过键**（待办 / 课表的 `courseName`、`startMinutes`，
+     * 以及现在的 `settings` 设置段），这些都没有加版本号：读取端对缺失的键一律给默认值，
+     * 所以老文件照样能读；反过来，旧版 App 读新文件时只是忽略这些不认识的键。
+     * 加版本号会把「其实读得懂的老备份」判成不兼容，那才是真的坏。
      */
     const val FORMAT = 5
 
     // ---------- 导出 ----------
 
+    /**
+     * 把整份数据（外加预算与各类设置）写成备份 JSON。
+     *
+     * [budgetCents] 仍然单独放在顶层：老版本 App 只认这个键，动它就等于让老 App 读不出预算。
+     * [settings] 是后加的「设置」段（分类预算、外观、语言、提醒、番茄钟、学习设置、
+     * 分类清单、汇率、自动备份），老文件里没有这一段，读出来是 null。
+     */
     fun toJson(
         snapshot: DbSnapshot,
         budgetCents: Long,
+        settings: BackupSettings = BackupSettings(),
         nowMillis: Long = System.currentTimeMillis()
     ): String {
         val root = JSONObject()
@@ -74,6 +95,8 @@ object Backup {
         root.put("format", FORMAT)
         root.put("exportedAt", nowMillis)
         root.put("budgetCents", budgetCents)
+        // 设置整段写在一个对象里：老 App 忽略它，新 App 缺了就按默认值读
+        root.put("settings", settings.toJson())
 
         root.put("transactions", JSONArray().apply {
             snapshot.transactions.forEach { tx ->
@@ -586,7 +609,9 @@ object Backup {
                     )
                 }.filter { it.title.isNotBlank() },
             ),
-            budgetCents = root.optLong("budgetCents", 0L).coerceAtLeast(0L)
+            budgetCents = root.optLong("budgetCents", 0L).coerceAtLeast(0L),
+            // 老备份（v5 早期，或更早的版本）里没有 settings 这一段 → null → 恢复时不动本机设置
+            settings = root.optJSONObject("settings")?.let { BackupSettings.fromJson(it) }
         )
     }
 

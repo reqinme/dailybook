@@ -127,8 +127,9 @@ fun StudyScreen(
             hint = StudyStrings.hubHintCredits(
                 lang,
                 // 和成绩页 / 学分进度页同一个口径（只算拿到学分的课，见 GradesScreen.earnedCredit 的 KDoc）。
-                // 父级的 state.totalCredits 目前是「所有成绩的学分之和」，两边对不上，
-                // 所以这里按同一口径重算一遍，三处显示的数字才不会各说各话。
+                // 父级的 state.totalCredits 现在也调用同一个函数（earnedCredits），
+                // 两边本来就相等；这里继续自己调一次只是为了不依赖父级的字段，
+                // 三处显示的数字必然一致。
                 formatCredits(earnedCredits(state.grades)),
                 formatCredits(state.creditTargets.sumOf { it.required })
             ),

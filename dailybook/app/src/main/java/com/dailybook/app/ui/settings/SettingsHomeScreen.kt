@@ -78,9 +78,11 @@ fun SettingsHomeScreen(
     ) {
         Spacer(Modifier.height(14.dp))
 
-        // 抬头：应用名 + 版本号（版本号从安装包里读，见 rememberAppVersion）
+        // 抬头：应用名 + 版本号（版本号从安装包里读，见 rememberAppVersion）。
+        // 这一行和关于卡片的第一行是同一份文案，共用 SettingsStrings.aboutAppLine
+        // （原来这里另有一个一字不差的 homeHeader，已合并掉）
         Text(
-            text = SettingsStrings.homeHeader(lang, AppStrings.appName(lang), version.display(lang)),
+            text = SettingsStrings.aboutAppLine(lang, AppStrings.appName(lang), version.display(lang)),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground
         )

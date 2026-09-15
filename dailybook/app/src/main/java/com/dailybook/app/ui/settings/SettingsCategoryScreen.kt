@@ -75,6 +75,7 @@ import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LedgerStrings
 import com.dailybook.app.i18n.LocalLang
 import com.dailybook.app.i18n.SettingsStrings
+import com.dailybook.app.i18n.StudyStrings
 import com.dailybook.app.i18n.TodoStrings
 import com.dailybook.app.notify.ClassReminder
 import com.dailybook.app.timer.TimerViewModel
@@ -959,10 +960,24 @@ private fun DataSettings(state: UiState, vm: MainViewModel) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         lastBackupFailure?.let { code ->
+            // 失败时间也从 AutoBackup 里读出来：只写「上次失败」时，用户分不清是刚才那次
+            // 还是上个礼拜留下的（这个 getter 以前一直没人读）。
+            // 重组由 code / 上次成功时间的变化触发，所以「失败了一次新的」界面一定会刷新。
+            val failedAt = remember(code, lastBackupAt) { autoBackup.lastFailureMillis() }
             Spacer(Modifier.height(4.dp))
             Text(
-                // 原因码翻成人话再套进「上次备份失败：…」；失败不会伪装成成功
-                text = AppStrings.autoBackupFailed(lang, AppStrings.backupFailure(lang, code.name)),
+                // 原因码翻成人话再套进「上次失败 <时间>：…」；失败不会伪装成成功
+                text = if (failedAt > 0L) {
+                    AppStrings.autoBackupFailedAt(
+                        lang,
+                        Instant.ofEpochMilli(failedAt)
+                            .atZone(ZoneId.systemDefault())
+                            .format(BACKUP_TIME_FORMAT),
+                        AppStrings.backupFailure(lang, code.name)
+                    )
+                } else {
+                    AppStrings.autoBackupFailed(lang, AppStrings.backupFailure(lang, code.name))
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error
             )
@@ -1541,7 +1556,9 @@ private fun RecurringDialog(
                 }
 
                 Spacer(Modifier.height(10.dp))
-                FieldLabel(SettingsStrings.recurringKindLabel(lang))
+                // 「类型」这个字段标签和奖助弹窗里那个是同一个词，共用 StudyStrings.awardsKind
+                // （原来本表里另有一个一字不差的 recurringKindLabel，已合并掉）
+                FieldLabel(StudyStrings.awardsKind(lang))
                 Spacer(Modifier.height(6.dp))
                 ChipFlow {
                     TxType.entries.forEach { entry ->

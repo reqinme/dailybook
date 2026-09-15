@@ -123,6 +123,23 @@ class SettingsStore private constructor(context: Context) {
         prefs.edit().remove(KEY_CATEGORY_BUDGETS).apply()
     }
 
+    /**
+     * 整体替换分类预算（恢复备份时用）。
+     * 和 [setCategoryBudget] 同一套规则：分类名去空白、0 或负数按「不限」处理（直接不存）。
+     */
+    fun setCategoryBudgets(budgets: Map<String, Long>) {
+        val next = budgets
+            .mapKeys { (category, _) -> category.trim() }
+            .filterKeys { it.isNotEmpty() }
+            .filterValues { it > 0L }
+        _categoryBudgets.value = next
+        if (next.isEmpty()) {
+            prefs.edit().remove(KEY_CATEGORY_BUDGETS).apply()
+        } else {
+            prefs.edit().putString(KEY_CATEGORY_BUDGETS, JSONObject(next).toString()).apply()
+        }
+    }
+
     fun setLedgerReminder(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_LEDGER_REMIND, enabled).apply()
         _ledgerReminderEnabled.value = enabled
@@ -238,6 +255,19 @@ class SettingsStore private constructor(context: Context) {
         if (code.isBlank() || rateScaled <= 0L) return
         prefs.edit().putLong(KEY_RATE_PREFIX + code, rateScaled).apply()
     }
+
+    /**
+     * 所有记过的币种汇率（币种代码 → ×[Currencies.RATE_SCALE] 的整数汇率），导出备份用。
+     *
+     * 直接扫偏好设置里的键，而不是遍历 [Currencies.PRESETS]：币种列表将来变长、
+     * 或者用户手填过别的代码时，这里不会漏掉任何一条。
+     */
+    fun currencyRates(): Map<String, Long> = prefs.all
+        .filterKeys { it.startsWith(KEY_RATE_PREFIX) }
+        .mapNotNull { (key, value) ->
+            (value as? Long)?.let { rate -> key.removePrefix(KEY_RATE_PREFIX) to rate }
+        }
+        .toMap()
 
     /** 某个预警是否已经发过（按月 + 阈值去重，避免每记一笔都提醒） */
     fun isBudgetWarned(key: String): Boolean = warnedKeys().contains(key)

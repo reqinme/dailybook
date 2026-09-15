@@ -49,7 +49,6 @@ import com.dailybook.app.Insight
 import com.dailybook.app.InsightKind
 import com.dailybook.app.MainViewModel
 import com.dailybook.app.MonthBar
-import com.dailybook.app.R
 import com.dailybook.app.UiState
 import com.dailybook.app.data.Accounts
 import com.dailybook.app.data.Categories
@@ -148,13 +147,16 @@ private fun monthlyReportData(state: UiState, lang: Lang): MonthlyReportData {
     val monthLabel = formatMonthLabel(state.month, lang)
     val comparison = state.comparison
 
-    // 分类行：金额由大到小，占比以支出最高的那类为基准，柱条才好比较
-    val topCents = state.expenseSlices.maxOfOrNull { it.cents } ?: 0L
+    // 分类行：金额由大到小，占比 = 该类支出 / **本月总支出**，
+    // 和本页「支出分类占比」那张卡片、分类明细页的「占 X%」是同一个分母。
+    // 以前这里拿「支出最高的那一类」当分母（柱条好比较），可百分比是照原样印在月报上的 ——
+    // 于是同一个「餐饮 30%」在应用里是本月占比、在月报里是占最大那类的比例，两处对不上。
     val categories = state.expenseSlices.take(8).map { slice ->
         CategoryData(
             name = "${Categories.emojiOf(slice.category)}${slice.category}",
             amountText = formatAmount(slice.cents),
-            ratio = if (topCents <= 0L) 0f else (slice.cents.toFloat() / topCents.toFloat())
+            ratio = if (state.monthExpense <= 0L) 0f
+            else (slice.cents.toFloat() / state.monthExpense.toFloat()).coerceIn(0f, 1f)
         )
     }
     val maxDayCents = state.maxDayCents.coerceAtLeast(1L)
@@ -171,7 +173,9 @@ private fun monthlyReportData(state: UiState, lang: Lang): MonthlyReportData {
         incomeCents = state.monthIncome,
         balanceCents = state.balance,
         summaryNote = StatsStrings.reportSummaryLine(lang, monthLabel),
-        dailySectionTitle = StatsStrings.reportDailySection(lang),
+        // 「每日支出」「智能洞察」「本月 N 次 · 共 M 分钟」这三句本页也有（卡片标题 / 汇总行），
+        // 和月报里的小节标题一字不差，已合并成同一份文案（不再各留一个函数）
+        dailySectionTitle = StatsStrings.dailyExpenseTitle(lang),
         dailyBars = state.dayBars.map { bar ->
             DailyBarData(
                 label = StatsStrings.reportDailyBar(lang, bar.day, formatAmount(bar.cents)),
@@ -182,7 +186,7 @@ private fun monthlyReportData(state: UiState, lang: Lang): MonthlyReportData {
         categoryTopLabel = StatsStrings.reportTopCategoryLabel(lang),
         categories = categories,
         focusSectionTitle = StatsStrings.reportFocusSection(lang),
-        focusLine = StatsStrings.reportFocusLine(
+        focusLine = StatsStrings.focusSessionCount(
             lang,
             state.focusStats.monthCount,
             state.focusStats.monthMinutes
@@ -205,7 +209,7 @@ private fun monthlyReportData(state: UiState, lang: Lang): MonthlyReportData {
                 StatsStrings.compareDelta(lang, comparison.yearExpensePercent())
             )
         ),
-        insightSectionTitle = StatsStrings.reportInsightSection(lang),
+        insightSectionTitle = StatsStrings.insightTitle(lang),
         insights = insightsToLines(state.insights, lang),
         emptyText = StatsStrings.reportEmptySection(lang)
     )
@@ -293,9 +297,13 @@ fun StatsScreen(
     fun startExport(format: ExportFormat) {
         if (state.isReportable) {
             reportData = monthlyReportData(state, lang)
+            // 文件名里的应用名跟着**App 内选的语言**走（AppStrings.appName），
+            // 和「导出备份」的 AppStrings.backupFileName 同一套写法；
+            // 以前用的是 context.getString(R.string.app_name)（系统资源），
+            // 于是英文界面导出的月报文件叫「日常本月报-…」，隔壁备份却叫「DailyBook-backup-…」
             val fileName = "${StatsStrings.reportFileName(
                 lang,
-                context.getString(R.string.app_name),
+                AppStrings.appName(lang),
                 state.month.toString()
             )}.${format.extension}"
             when (format) {
@@ -344,8 +352,11 @@ fun StatsScreen(
         )
 
         // ==================== 记录入口 ====================
-        // 五份原始列表（本月记录 / 分类明细 / 每日明细 / 专注记录 / 待办完成情况）不在这里铺开，
+        // 四份原始列表（本月记录 / 分类明细 / 每日明细 / 待办完成情况）不在这里铺开，
         // 点标题进 StatsDetailScreen 看整份；这一页只留汇总和可视化，不会被长列表拖散。
+        // 专注记录那一个入口在下面专注区的「今日专注明细」卡片里，这里**不重复放**：
+        // 同一个 StatsDetail(StatsDetailKind.FOCUS_SESSIONS) 原来在这两处各有一个按钮，
+        // 点进的是同一页 —— 留一处，放在紧挨着专注数字的地方。
         Spacer(Modifier.height(8.dp))
         SectionCard(title = StatsStrings.recordsTitle(lang)) {
             // 卡片自带 18dp 内边距，入口行不再自己缩进，点按区域直接铺满卡片宽度
@@ -362,11 +373,6 @@ fun StatsScreen(
             StatsDetailRow(
                 label = AppStrings.statsDailyEntries(lang),
                 onClick = { nav.push(Route.StatsDetail(StatsDetailKind.DAILY_ENTRIES)) },
-                horizontalPadding = 0.dp
-            )
-            StatsDetailRow(
-                label = AppStrings.statsFocusSessions(lang),
-                onClick = { nav.push(Route.StatsDetail(StatsDetailKind.FOCUS_SESSIONS)) },
                 horizontalPadding = 0.dp
             )
             StatsDetailRow(
@@ -465,7 +471,8 @@ fun StatsScreen(
         Spacer(Modifier.height(14.dp))
         SectionCard(title = StatsStrings.yearSummaryTitle(lang, state.yearSummary.year)) {
             if (!state.yearSummary.hasData) {
-                HintText(StatsStrings.noThisYearRecords(lang))
+                // 兜底文案也带上年份：卡片跟着选中月份走，翻到 2024 年时不能还说「今年」
+                HintText(StatsStrings.noThisYearRecords(lang, state.yearSummary.year))
             } else {
                 Row {
                     StatBlock(
@@ -748,8 +755,9 @@ fun StatsScreen(
             FocusWeekChart(focus.recentDays)
         }
 
-        // 专注的明细（今天做了哪几段）也不在这一页铺开，改成入口按钮：
-        // 进来能看到本月汇总、今天的每一条（含「中断」标记）和按待办的投入时间
+        // 专注的明细（选中月份做了哪几段）也不在这一页铺开，改成入口按钮：
+        // 进来能看到本月汇总、所选月份的每一条（含「中断」标记）和按待办的投入时间。
+        // 这里是专注记录的**唯一**入口（「记录」区那一份重复的入口已删掉）
         Spacer(Modifier.height(14.dp))
         SectionCard(title = StatsStrings.todayDetailTitle(lang)) {
             StatsDetailRow(
@@ -941,44 +949,8 @@ private fun InsightCard(insights: List<Insight>) {
     }
 }
 
-/** 「标签 —— 金额」一行：金额靠右，长金额省略而不是撑破卡片；[suffix] 用来挂涨跌小标签 */
-@Composable
-private fun AmountRow(
-    label: String,
-    value: String,
-    color: Color,
-    suffix: (@Composable () -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.End
-        ) {
-            if (suffix != null) {
-                suffix()
-                Spacer(Modifier.width(6.dp))
-            }
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                color = color,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.End
-            )
-        }
-    }
-}
+// AmountRow（「标签 —— 金额」那一行）搬到了 ui/Components.kt：
+// 记账页的报销卡也要用同一行（同一个包，调用处不用改）。
 
 @Composable
 private fun SliceRow(slice: CategorySlice, color: Color) {
@@ -1249,7 +1221,7 @@ private fun CategoryBudgetView(row: CategoryBudgetRow) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = if (row.over) StatsStrings.overBudget(lang, formatAmount(row.overCents))
+                text = if (row.over) StatsStrings.overBudgetLine(lang, formatAmount(row.overCents))
                 else StatsStrings.remainingBudget(lang, formatAmount(row.remainingCents)),
                 style = MaterialTheme.typography.bodySmall,
                 color = accent

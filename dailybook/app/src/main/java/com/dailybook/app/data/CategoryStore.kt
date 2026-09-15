@@ -46,6 +46,19 @@ class CategoryStore private constructor(context: Context) {
         save(type, if (type == TxType.EXPENSE) Categories.EXPENSE else Categories.INCOME)
     }
 
+    /**
+     * 整体替换某一类的清单（恢复备份时用）。
+     *
+     * 和 [add] 同一套过滤：去掉空白、空名与超过 8 个字的名字，并去重；
+     * 过滤后为空时 [save] 会回落到预置列表（和「全删光」一样，避免选择器变成空的）。
+     */
+    fun setAll(type: TxType, names: List<String>) {
+        val safe = names.map { it.trim() }
+            .filter { it.isNotEmpty() && it.length <= 8 }
+            .distinct()
+        save(type, safe)
+    }
+
     private fun save(type: TxType, list: List<String>) {
         val safe = if (list.isEmpty()) {
             if (type == TxType.EXPENSE) Categories.EXPENSE else Categories.INCOME

@@ -76,6 +76,7 @@ import com.dailybook.app.i18n.AppStrings
 import com.dailybook.app.i18n.Lang
 import com.dailybook.app.i18n.LedgerStrings
 import com.dailybook.app.i18n.LocalLang
+import com.dailybook.app.i18n.StatsStrings
 import com.dailybook.app.ui.theme.expenseColor
 import com.dailybook.app.ui.theme.incomeColor
 import com.dailybook.app.util.formatAmount
@@ -557,41 +558,33 @@ private fun DayFilterCard(state: UiState, vm: MainViewModel) {
     }
 }
 
+/**
+ * 报销卡（记账页）。
+ *
+ * 这里是**精简版**：只报「待报销」的金额与笔数，再指一句完整统计在哪。
+ * 完整的报销情况（待报销合计 + 已报销合计 + 统计口径说明）只画在统计页的
+ * [com.dailybook.app.ui.StatsScreen] 那张卡里 —— 以前两页各画一张几乎一样的卡，
+ * 两边都改一次才不会对不上，索性只留一处权威渲染，这一页只做入口旁边的提示。
+ */
 @Composable
 private fun ReimbursementCard(state: UiState) {
     val lang = LocalLang.current
     SectionCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = LedgerStrings.pendingReimbursement(lang),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "¥${formatAmount(state.pendingReimbursementCents)}",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = LedgerStrings.reimbursed(lang),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "¥${formatAmount(state.reimbursedCents)}",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        AmountRow(
+            label = LedgerStrings.pendingReimbursement(lang),
+            value = StatsStrings.reimbursementAmountWithCount(
+                lang,
+                formatAmount(state.pendingReimbursementCents),
+                state.pendingReimbursementCount
+            ),
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = LedgerStrings.reimbursementSeeStats(lang),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

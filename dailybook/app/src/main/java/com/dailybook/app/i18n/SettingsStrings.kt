@@ -118,8 +118,23 @@ object SettingsStrings {
         pickf(lang, "确认%s？", "確認%s？", "Confirm: %s?", "%s でよろしいですか？", target)
     fun clearAllRecords(lang: Lang) =
         pick(lang, "清除所有记账记录", "清除所有記帳紀錄", "Clear all ledger records", "すべての記録を削除")
-    fun clearAllRecordsMessage(lang: Lang) =
-        pick(lang, "所有收支记录都会被删除，且无法恢复。", "所有收支紀錄都會被刪除，且無法復原。", "All income and expense records will be deleted, and this cannot be undone.", "すべての収支記録が削除され、元に戻せません。")
+
+    /**
+     * 「清除所有记账记录」的二次确认说明。
+     *
+     * 必须点名**保留下来的东西**：这个按钮只删流水，周期记账规则不在删除范围里
+     * （见 MainViewModel.clearTransactions），规则留着、日子一到就会再补记出新的流水。
+     * 以前这句只说「所有收支记录都会被删除」，删完发现房租又自己冒出来，像是没删干净；
+     * 想连规则一起清掉的话得用「清空全部数据」，所以这里把那条路也指出来
+     * （和 clearEverythingMessage 里点名「含周期记账」是同一个口径）。
+     */
+    fun clearAllRecordsMessage(lang: Lang) = pick(
+        lang,
+        "所有收支记录都会被删除，且无法恢复。周期记账规则会保留：日子一到还会自动记出新的一笔，想连规则一起清掉请用「清空全部数据」。",
+        "所有收支紀錄都會被刪除，且無法復原。週期記帳規則會保留：日子一到還是會自動記出新的一筆，想連規則一起清掉請用「清空全部資料」。",
+        "All income and expense records will be deleted, and this cannot be undone. Recurring rules are kept — they will record new entries again on their due dates. Use \"Erase all data\" if you want those gone too.",
+        "すべての収支記録が削除され、元に戻せません。定期的な記録のルールは残ります（期日になると再び自動で記録されます）。ルールも消したい場合は「すべてのデータを消去」を使ってください。"
+    )
     fun clearAllTodos(lang: Lang) =
         pick(lang, "清除所有待办", "清除所有待辦", "Clear all to-dos", "すべての ToDo を削除")
     fun clearAllTodosMessage(lang: Lang) =
@@ -183,7 +198,7 @@ object SettingsStrings {
     fun recurringCount(lang: Lang, count: Int) =
         pickf(lang, "%d 条", "%d 條", "%d rules", "%d 件", count)
     fun recurringAdd(lang: Lang) = pick(lang, "新增周期记账", "新增週期記帳", "Add recurring entry", "定期的な記録を追加")
-    fun recurringKindLabel(lang: Lang) = pick(lang, "类型", "類型", "Type", "種類")
+    // 字段标签「类型」和奖助弹窗里那个是同一个词，合并到了 StudyStrings.awardsKind（原文一字不差）
     fun recurringEnabled(lang: Lang) =
         pick(lang, "已启用（到日子自动记一笔）", "已啟用（到日子自動記一筆）", "Active — recorded on its due date", "有効（期日に自動で記録）")
     fun recurringPaused(lang: Lang) = pick(lang, "已暂停", "已暫停", "Paused", "一時停止中")
@@ -232,10 +247,6 @@ object SettingsStrings {
     // =====================================================================
     // v1.9 系统设置式改造：设置首页（分类列表）+ 各分类子页面
     // =====================================================================
-
-    /** 首页顶部小标题：「日常本 1.8」那种写法，版本号由 queryAppVersion() 拿出来 */
-    fun homeHeader(lang: Lang, appName: String, version: String) =
-        pickf(lang, "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", appName, version)
 
     /** 首页分类列表的副标题（分类名用 SettingsCategory.label） */
     fun homeCategoryHint(lang: Lang) = pick(
@@ -290,7 +301,13 @@ object SettingsStrings {
         pickf(lang, "提前 %d 分钟", "提前 %d 分鐘", "%d min before", "%d 分前", minutes)
 
     // ---- 关于与更新 ----
-    /** 关于卡片里的第一行：应用名 + 版本号 */
+    /**
+     * 「应用名 + 版本号」那一行（例如「日常本 1.9」）。
+     *
+     * 关于卡片的第一行、设置首页顶部的小标题、以及各设置子页面「关于」里的那一行都是它 ——
+     * 原来首页那份叫 homeHeader、和这个函数一字不差，已按「同一份文案只留一处」合并到这里。
+     * 版本号由 queryAppVersion() 拿出来，代码里不写死。
+     */
     fun aboutAppLine(lang: Lang, appName: String, version: String) =
         pickf(lang, "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", "%1\$s %2\$s", appName, version)
 

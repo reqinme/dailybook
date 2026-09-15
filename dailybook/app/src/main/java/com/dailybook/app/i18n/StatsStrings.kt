@@ -41,6 +41,12 @@ object StatsStrings {
         "赤いカテゴリは予算超過です。来月はここから見直すのが近道です。"
     )
 
+    /**
+     * 每日支出卡片的标题（统计页）。
+     *
+     * 月报里的「每日支出」小节也用这一句（原来月报那边另有一个一字不差的
+     * `reportDailySection`，已按「同一份文案只留一处」合并掉）。
+     */
     fun dailyExpenseTitle(lang: Lang) = pick(
         lang, "每日支出", "每日支出",
         "Daily spending", "日別の支出"
@@ -53,20 +59,34 @@ object StatsStrings {
         "12-month trend", "直近12か月の収支"
     )
 
+    /**
+     * 近 12 个月趋势图没有数据时的兜底文案。
+     *
+     * 不说「最近一年」：这张图的窗口锚在**选中的月份**上（最后一根柱子就是选中的那个月），
+     * 翻到很久以前的月份时「最近一年」会让人误以为是「从今天往前数一年」。
+     */
     fun noYearRecords(lang: Lang) = pick(
-        lang, "最近一年还没有记账记录", "最近一年還沒有記帳記錄",
-        "No entries in the past year yet", "この1年の記録はまだありません"
+        lang, "这 12 个月还没有记账记录", "這 12 個月還沒有記帳記錄",
+        "No entries in these 12 months yet", "この 12 か月の記録はまだありません"
     )
 
+    /** 「2026 年汇总」——标题里必须带上年份，否则翻到别的年份时标题和数字对不上 */
     fun yearSummaryTitle(lang: Lang, year: Int) = pickf(
         lang, "%d 年汇总", "%d 年彙總",
         "%d summary", "%d年の集計",
         year
     )
 
-    fun noThisYearRecords(lang: Lang) = pick(
-        lang, "今年还没有记账记录", "今年還沒有記帳記錄",
-        "No entries this year yet", "今年の記録はまだありません"
+    /**
+     * 该年份没有记录时的兜底文案。
+     *
+     * 以前是写死的「今年还没有记账记录」：年份卡片现在跟着**选中的月份**走，
+     * 翻到 2024 年却写着「今年」就自相矛盾了，所以把年份当参数传进来。
+     */
+    fun noThisYearRecords(lang: Lang, year: Int) = pickf(
+        lang, "%d 年还没有记账记录", "%d 年還沒有記帳記錄",
+        "No entries in %d yet", "%d年の記録はまだありません",
+        year
     )
 
     fun yearExpense(lang: Lang) = pick(lang, "年支出", "年支出", "Year expense", "年間支出")
@@ -131,6 +151,44 @@ object StatsStrings {
     fun focusWeekDuration(lang: Lang) = pick(lang, "本周时长", "本週時長", "Week time", "今週の時間")
 
     fun focusMonthDuration(lang: Lang) = pick(lang, "本月时长", "本月時長", "Month time", "今月の時間")
+
+    /**
+     * 专注详情页里「今日次数」这一项。
+     *
+     * 和统计页上那个短标签 [focusToday]（「今日」）分开：详情页那一行里
+     * 「今日」「本周次数」「平均每次」三个数**不是同一个范围**，标签必须自己说清是次数还是时长，
+     * 不然「今日 3」到底是什么的 3 全靠猜。
+     */
+    fun focusTodayCount(lang: Lang) = pick(
+        lang, "今日次数", "今日次數",
+        "Today", "今日の回数"
+    )
+
+    /**
+     * 专注详情页那一行里的「平均每次时长」。
+     *
+     * 以前这里错用了 [focusMonthDuration]（「本月时长」），可填进去的值是
+     * `本月总分钟 / 次数` —— 标签和数字说的不是一件事；本月总时长在上面那行汇总里已经有了。
+     */
+    fun focusAverageDuration(lang: Lang) = pick(
+        lang, "平均每次", "平均每次",
+        "Avg per session", "1 回あたり"
+    )
+
+    /**
+     * 专注详情页汇总卡里那一句口径说明。
+     *
+     * 卡片里的三个数**故意不是同一个范围**：今日与本周按「今天」算（它们本来就是「最近」的意思），
+     * 上面的合计和下面的名单跟着上面选的月份走。不说清就会出现「翻到上个月，下面列着上个月的记录，
+     * 上面却有一格写着今天的次数」这种看起来自相矛盾的画面。
+     */
+    fun focusDetailScopeNote(lang: Lang) = pick(
+        lang,
+        "「今日」与「本周次数」按今天算，不受上面月份影响；上面的合计与下面的名单都是所选月份的。",
+        "「今日」與「本週次數」按今天算，不受上面月份影響；上面的合計與下面的名單都是所選月份的。",
+        "\"Today\" and \"Week count\" are counted from today and ignore the month above; the totals above and the list below both follow the selected month.",
+        "「今日」と「今週の回数」は今日を基準にした数字で、上の月には左右されません。上の合計と下の一覧は選択した月のものです。"
+    )
 
     /** StatBlock 里的短时长：「45 分」 */
     fun focusMinutesShort(lang: Lang, minutes: Int) = pickf(
@@ -214,7 +272,14 @@ object StatsStrings {
 
     // ---- 预算 ----
 
-    fun overBudget(lang: Lang, amount: String) = pickf(
+    /**
+     * 分类预算超支：「超支 ¥12.00」。
+     *
+     * 名字里带 `Line` 是为了和记账页预算卡上的 [LedgerStrings.overBudget]（「已超支 ¥…」，
+     * 另一句话）区分开：以前两张表里各有一个 `overBudget`，名字一样、文案不同，
+     * 想在某个文件里同时用两句就得写全限定名。
+     */
+    fun overBudgetLine(lang: Lang, amount: String) = pickf(
         lang, "超支 ¥%s", "超支 ¥%s",
         "Over by ¥%s", "¥%s 超過",
         amount
@@ -258,6 +323,13 @@ object StatsStrings {
         "「集中目標」に設定した ToDo からの記録だけを集計します。"
     )
 
+    /**
+     * 「N 分钟 · M 次」——时长与次数的组合值。
+     *
+     * 名字里的 perTodo 来自它最早的用途（按待办汇总那一行），但这一句是**通用**的
+     * 时长 · 次数写法：学习周报的专注卡片也用同一句（原来 StudyStrings 里另有一个
+     * 一字不差的 `weeklyFocusValue`，已按「同一份文案只留一处」合并到这里）。
+     */
     fun perTodoMinutes(lang: Lang, minutes: Int, count: Int) = pickf(
         lang, "%1\$d 分钟 · %2\$d 次", "%1\$d 分鐘 · %2\$d 次",
         "%1\$d min · %2\$d sessions", "%1\$d 分 · %2\$d 回", minutes, count
@@ -362,6 +434,12 @@ object StatsStrings {
 
     // ==================== v1.7：智能洞察 ====================
 
+    /**
+     * 智能洞察卡片的标题。
+     *
+     * 月报里的「智能洞察」小节也用这一句（原来月报那边另有一个一字不差的
+     * `reportInsightSection`，已合并掉）。
+     */
     fun insightTitle(lang: Lang) = pick(
         lang, "智能洞察", "智慧洞察",
         "Insights", "インサイト"
@@ -404,11 +482,6 @@ object StatsStrings {
         "Spending by category", "支出カテゴリ"
     )
 
-    fun reportDailySection(lang: Lang) = pick(
-        lang, "每日支出", "每日支出",
-        "Daily spending", "日別の支出"
-    )
-
     /** 每日柱状图每一根柱子下面的说明 */
     fun reportDailyBar(lang: Lang, day: Int, amount: String) = pickf(
         lang, "%1\$d 日 · ¥%2\$s", "%1\$d 日 · ¥%2\$s",
@@ -424,20 +497,6 @@ object StatsStrings {
     fun reportFocusSection(lang: Lang) = pick(
         lang, "专注统计", "專注統計",
         "Focus", "集中"
-    )
-
-    /** 月报里的专注时长与次数：「本月 12 次 · 共 300 分钟」 */
-    fun reportFocusLine(lang: Lang, count: Int, minutes: Int) = pickf(
-        lang,
-        "本月 %1\$d 次 · 共 %2\$d 分钟", "本月 %1\$d 次 · 共 %2\$d 分鐘",
-        "%1\$d sessions this month · %2\$d minutes in total",
-        "今月 %1\$d 回 · 合計 %2\$d 分",
-        count, minutes
-    )
-
-    fun reportInsightSection(lang: Lang) = pick(
-        lang, "智能洞察", "智慧洞察",
-        "Insights", "インサイト"
     )
 
     fun reportCompareSection(lang: Lang) = pick(
@@ -479,7 +538,12 @@ object StatsStrings {
 
     // ---- 记录入口区 ----
 
-    /** 统计页上「记录」区的小标题，下面跟着五个入口按钮 */
+    /**
+     * 统计页上「记录」区的小标题。
+     *
+     * 下面挂的是**四**个入口（本月记录 / 分类明细 / 每日明细 / 待办完成情况）；
+     * 专注记录那一个入口在专注区「今日专注明细」卡片里，不再在这一区重复出现。
+     */
     fun recordsTitle(lang: Lang) = pick(
         lang, "记录", "紀錄",
         "Records", "記録"
@@ -565,7 +629,12 @@ object StatsStrings {
 
     // ---- 专注记录（FOCUS_SESSIONS） ----
 
-    /** 专注页顶部：「本月 12 次 · 共 300 分钟」 */
+    /**
+     * 选中月份的专注汇总：「本月 12 次 · 共 300 分钟」。
+     *
+     * 专注详情页顶部与月报的专注小节共用这一句（原来月报那边另有一个一字不差的
+     * `reportFocusLine`，已合并掉）。
+     */
     fun focusSessionCount(lang: Lang, count: Int, minutes: Int) = pickf(
         lang,
         "本月 %1\$d 次 · 共 %2\$d 分钟", "本月 %1\$d 次 · 共 %2\$d 分鐘",

@@ -468,7 +468,14 @@ object StudyStrings {
 
     fun assignmentsTitleField(lang: Lang) = pick(lang, "作业内容", "作業內容", "Title", "課題名")
 
-    fun assignmentsCourseField(lang: Lang) = pick(lang, "课程（可选）", "課程（選填）", "Course (optional)", "授業（任意）")
+    /**
+     * 字段标签：作业挂的课程。
+     *
+     * 不带「（可选）」：课程名不是随便填的装饰 —— 作业的判定就是「课程名非空」，
+     * 新建时不填这条只会进待办、编辑时清空会把它搬回待办（见 [assignmentsCourseRule]，
+     * 那两句说明常驻在这个字段下面）。标签写「可选」会和这个行为打架，所以只说这是什么字段。
+     */
+    fun assignmentsCourseField(lang: Lang) = pick(lang, "课程", "課程", "Course", "授業")
 
     fun assignmentsDueField(lang: Lang) = pick(lang, "截止日期", "截止日期", "Due date", "締切")
 
@@ -705,6 +712,13 @@ object StudyStrings {
 
     fun awardsName(lang: Lang) = pick(lang, "名称", "名稱", "Title", "名称")
 
+    /**
+     * 字段标签：类型。
+     *
+     * 奖助记录弹窗里选的是奖助类别（奖助学金 / 竞赛 / 证书 / 其他）；
+     * 周期记账弹窗里选的是收支类型（支出 / 收入）—— 两处都是「类型」这一个词，
+     * 原来分居两张表、一字不差（SettingsStrings.recurringKindLabel），已合并到这里。
+     */
     fun awardsKind(lang: Lang) = pick(lang, "类型", "類型", "Type", "種類")
 
     fun awardsKindScholarship(lang: Lang) = pick(lang, "奖助学金", "獎助學金", "Scholarship", "奨学金")
@@ -780,12 +794,6 @@ object StudyStrings {
 
     fun weeklyFocus(lang: Lang) = pick(lang, "专注", "專注", "Focus", "集中")
 
-    fun weeklyFocusValue(lang: Lang, minutes: Int, count: Int) = pickf(
-        lang, "%1\$d 分钟 · %2\$d 次", "%1\$d 分鐘 · %2\$d 次",
-        "%1\$d min · %2\$d sessions", "%1\$d 分 · %2\$d 回",
-        minutes, count
-    )
-
     fun weeklyTodo(lang: Lang) = pick(lang, "待办完成", "待辦完成", "To-dos", "ToDo")
 
     fun weeklyTodoValue(lang: Lang, done: Int, total: Int) = pickf(
@@ -794,18 +802,30 @@ object StudyStrings {
         done, total
     )
 
-    fun weeklyWords(lang: Lang) = pick(lang, "背单词打卡", "背單詞打卡", "Vocabulary", "単語学習")
+    /**
+     * 定量计划打卡这一栏的标题。
+     *
+     * 不说「背单词」：这一栏列的是**单位可数**的习惯（个 / 页），背单词只是其中一种，
+     * 背书计划、每天练琴 30 个音阶都算；而「每天练琴 30 分钟」这种按时间记的习惯根本不在这一栏里
+     * （见 MainViewModel 的 COUNTABLE_HABIT_UNITS）。标题必须和这一栏真正装的东西一致。
+     */
+    fun weeklyWords(lang: Lang) = pick(lang, "定量计划打卡", "定量計畫打卡", "Quantitative plans", "定量プランのチェック")
 
     fun weeklyWordsValue(lang: Lang, plans: Int) = pickf(
-        lang, "%d 个计划在进行", "%d 個計畫在進行",
-        "%d active plans", "進行中のプラン %d 件",
+        lang, "%d 个定量计划在进行", "%d 個定量計畫在進行",
+        "%d active quantitative plans", "進行中の定量プラン %d 件",
         plans
     )
 
-    /** 「近 7 天打卡 12 次」——单词计划的定量打卡（habit_logs 里近 7 天的记录数） */
+    /**
+     * 「近 7 天打卡 12 次」——定量计划的近 7 天打卡**天数**。
+     *
+     * 口径：一条记录 = 这一天这个习惯打过卡（同一天多条重复记录只算一天，
+     * 见 HabitLogEntity 的说明），不是「记录行数」。
+     */
     fun weeklyWordChecks(lang: Lang, count: Int) = pickf(
-        lang, "近 7 天打卡 %d 次", "近 7 天打卡 %d 次",
-        "%d check-ins in 7 days", "直近 7 日で %d 回",
+        lang, "定量计划近 7 天打卡 %d 天", "定量計畫近 7 天打卡 %d 天",
+        "%d check-in days on quantitative plans in 7 days", "定量プランの直近 7 日で %d 日",
         count
     )
 
@@ -841,19 +861,13 @@ object StudyStrings {
         "Daily spending, last 7 days", "直近 7 日の支出"
     )
 
-    fun weeklyMinuteValue(lang: Lang, minutes: Int) = pickf(
-        lang, "%d 分", "%d 分",
-        "%d min", "%d 分",
-        minutes
-    )
-
     /** 数据口径说明（也是老实交代限制的地方） */
     fun weeklyNote(lang: Lang) = pick(
         lang,
-        "数据来自本机已有记录：专注取近 7 天的记录，待办只统计「已完成」的条数（没有存完成日期，所以不分先后），背单词打卡取定量计划的近 7 天打卡次数，支出按记账日期取近 7 天。",
-        "資料來自本機已有紀錄：專注取近 7 天的紀錄，待辦只統計「已完成」的條數（沒有存完成日期，所以不分先後），背單詞打卡取定量計畫的近 7 天打卡次數，支出按記帳日期取近 7 天。",
-        "Everything comes from local records: focus sessions from the last 7 days, to-dos as a plain count of completed items (no completion date is stored, so they are not dated), vocabulary check-ins from quantitative habits over the last 7 days, and expenses by entry date over the last 7 days.",
-        "データは端末内の記録から算出します。集中は直近 7 日分、ToDo は完了件数のみ（完了日を保存していないため日付順ではありません）、単語のチェックインは定量プランの直近 7 日分、支出は記録日の直近 7 日分です。"
+        "数据来自本机已有记录：专注取近 7 天的记录，待办只统计「已完成」的条数（没有存完成日期，所以不分先后），定量计划打卡取定量计划的近 7 天打卡天数，支出按记账日期取近 7 天。",
+        "資料來自本機已有紀錄：專注取近 7 天的紀錄，待辦只統計「已完成」的條數（沒有存完成日期，所以不分先後），定量計畫打卡取定量計畫的近 7 天打卡天數，支出按記帳日期取近 7 天。",
+        "Everything comes from local records: focus sessions from the last 7 days, to-dos as a plain count of completed items (no completion date is stored, so they are not dated), quantitative habit check-ins counted as days over the last 7 days, and expenses by entry date over the last 7 days.",
+        "データは端末内の記録から算出します。集中は直近 7 日分、ToDo は完了件数のみ（完了日を保存していないため日付順ではありません）、定量プランのチェックインは直近 7 日の日数、支出は記録日の直近 7 日分です。"
     )
 
     /** 什么都没有的时候 */
@@ -950,10 +964,13 @@ object StudyStrings {
      * 作业弹窗里「课程」下面常驻的一句说明：填与不填**分别会发生什么**。
      *
      * 作业的判定就是「课程名非空」（[com.dailybook.app.data.TodoEntity.courseName]），
-     * 所以课程名一空，这条就从作业页消失、变成普通待办。字段本身是可选的
-     * （标签写着「课程（可选）」），但两种空法后果不同，不能在弹窗里不说：
+     * 所以课程名一空，这条就从作业页消失、变成普通待办。字段留空在语法上是允许的，
+     * 但两种空法后果不同，不能在弹窗里不说：
      * 新建时不填 → 只会进待办，点了保存却在这一页看不到，像是没保存成功；
      * 编辑时清空 → 这条会搬走，需要用户点确认。
+     *
+     * 正因如此，[assignmentsCourseField] 的标签**不再**写「（可选）」——
+     * 标签说「可选」、下面却说「不填就离开这一页」，两句话互相打架。
      */
     fun assignmentsCourseRule(lang: Lang) = pick(
         lang,

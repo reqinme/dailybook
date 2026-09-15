@@ -528,6 +528,20 @@ object AppStrings {
         lang, "上次备份失败：%s", "上次備份失敗：%s", "Last backup failed: %s", "前回のバックアップ失敗：%s", reason
     )
 
+    /**
+     * 失败时间 + 原因：「上次失败 2026-09-14 21:05：…」。
+     *
+     * 和 [autoBackupFailed] 是两个函数而不是一个：失败的**时间**在老版本里没地方显示
+     * （`lastFailureMillis()` 一直没人读），所以只写「上次失败」时用户分不清是刚才那次
+     * 还是上礼拜留下的。界面上带得出时间时用这句，带不出（老数据、时间为 0）才退回上句。
+     */
+    fun autoBackupFailedAt(lang: Lang, whenText: String, reason: String) = pickf(
+        lang,
+        "上次失败 %1\$s：%2\$s", "上次失敗 %1\$s：%2\$s",
+        "Last failure %1\$s: %2\$s", "前回の失敗 %1\$s：%2\$s",
+        whenText, reason
+    )
+
     fun autoBackupNotNow(lang: Lang) = pick(
         lang, "今天已经备份过了", "今天已經備份過了", "Already backed up today", "本日はバックアップ済みです"
     )

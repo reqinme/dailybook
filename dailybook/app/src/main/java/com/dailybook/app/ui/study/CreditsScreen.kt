@@ -67,10 +67,11 @@ import com.dailybook.app.ui.theme.incomeColor
  * - 各个类别已修到的学分：**本页自己从 `state.grades` 按 [earnedCredit] 的口径重算**
  *   （`earnedCredits` / `earnedCreditsByCategory`），总计也是这个口径。
  *
- * 为什么不用父级算好的 `totalCredits` / `creditsByCategory`：那两个是 `sumOf { it.credit }`，
- * 把不及格（绩点 0.00）的课也算成已修学分，于是一页里会出现「已修 24 / 要求 20 · 已达标」
- * 而同一批成绩的 GPA 却把不及格算 0 —— 数字互相打脸。等父级那边也换成同一口径，
- * 本地的这次重算就只是冗余（结果相同），不会冲突。
+ * 为什么这里自己算一遍、而不是直接用父级算好的 `totalCredits` / `creditsByCategory`：
+ * 父级现在**也是**这个口径（它调用的是同一对函数 `earnedCredits` / `earnedCreditsByCategory`），
+ * 所以两种取法结果相同 —— 以前父级是 `sumOf { it.credit }`，把不及格（绩点 0.00）的课也算成
+ * 已修学分，一页里会出现「已修 24 / 要求 20 · 已达标」而同一批成绩的 GPA 却把不及格算 0。
+ * 父级改好之后（见 UiState.totalCredits 的 KDoc），本地这次重算就只是冗余，不会冲突。
  *
  * 这一页**只读成绩**：真正录入学分的地方是「GPA 计算器」，这里只管进度与要求。
  * 分类名是数据（必修 / 选修 …），不翻译。

@@ -195,18 +195,18 @@ class AutoBackup private constructor(context: Context) {
             val displayName = fileNameFor(today)
             val json = buildJson(nowMillis)
             writeInto(app, treeUri, displayName, json)
-            // 只有真的写成功了才记时间 / 清失败；删除轮换失败不影响本次成功判定，
-            // 但记一条 LIST_FAILED 让设置页能看出「备份成了、清理没成」，好过静默失败
+            // 顺序很要紧：**先记成功，再轮换**。
+            // 以前是反过来的（写 LIST_FAILED 之后又调 recordSuccess），而 recordSuccess 会把
+            // 失败码与 `_failure` 一起清掉 —— 于是「只保留最近 7 份」的清理失败被成功记账抹掉，
+            // 设置页永远看不到，失败可以无声无息地一直发生。
+            // 现在两件事各记各的：KEY_LAST_AT = 这次写成功的时间，KEY_FAILED_* = 清理没做成
+            // （recordFailure 不碰 KEY_LAST_AT，所以「上次成功」仍然是真实的上次成功时刻）。
+            recordSuccess(nowMillis)
             runCatching { prune(treeUri) }
                 .onFailure { error ->
                     Log.w(TAG, "prune failed", error)
-                    prefs.edit()
-                        .putLong(KEY_FAILED_AT, nowMillis)
-                        .putString(KEY_FAILED_CODE, BackupFailureCode.LIST_FAILED.name)
-                        .apply()
-                    _failure.value = BackupFailureCode.LIST_FAILED
+                    recordFailure(nowMillis, BackupFailureCode.LIST_FAILED)
                 }
-            recordSuccess(nowMillis)
             BackupOutcome.SUCCESS
         }
     } catch (error: Throwable) {
@@ -216,11 +216,13 @@ class AutoBackup private constructor(context: Context) {
         BackupOutcome.FAILED
     }
 
-    /** 与手动导出同样的一份 JSON（带预算，导回去能完整恢复），格式交给 [Backup] 自己维护 */
+    /** 与手动导出同样的一份 JSON（带预算与各类设置，导回去能完整恢复），格式交给 [Backup] 自己维护 */
     private suspend fun buildJson(nowMillis: Long): String {
         val snapshot = DailyRepository(app).snapshot()
         val budget = SettingsStore.get(app).monthlyBudgetCents.value
-        return Backup.toJson(snapshot, budget, nowMillis)
+        // 设置那一段和「导出备份」按钮走同一个 readBackupSettings：
+        // 自动备份出来的文件和手动导出的文件内容一样，恢复哪个都不会少设置
+        return Backup.toJson(snapshot, budget, readBackupSettings(app), nowMillis)
     }
 
     private fun hasPersistedPermission(treeUri: Uri): Boolean = try {

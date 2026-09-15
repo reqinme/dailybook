@@ -484,6 +484,12 @@ class DailyRepository(context: Context) {
     /**
      * 记一次打卡（把当天的量改成 count）。
      * 当天还没有记录就新建一条，已经有了就原地改，保证「一天一条」。
+     *
+     * 写入前先把当天这个习惯的**重复记录并成一条**（[HabitDao.sumIntoLowestLog] +
+     * [HabitDao.deleteDuplicateLogs]，和读改写同一个事务）：导入 / 恢复备份会带进来
+     * 同一天的多条记录（表里没有唯一约束），而界面读的是「当天合计」
+     * （见 [HabitDao.countOf] 与 `UiState.habitToday`）。不先合掉就直接改其中一条的话，
+     * 屏幕上那个总数会凭空跳一下 —— 例如合计 20、改成 20 落到某一条上，合计就成了 20 + 20。
      */
     suspend fun logHabit(
         habitId: Long,
@@ -491,19 +497,34 @@ class DailyRepository(context: Context) {
         count: Int,
         nowMillis: Long = System.currentTimeMillis()
     ) {
-        val existing = habitDao.logOf(habitId, dayMillis)
-        if (existing == null) {
-            habitDao.insertLog(
-                HabitLogEntity(
-                    habitId = habitId,
-                    dateMillis = dayMillis,
-                    count = count,
-                    createdAt = nowMillis
+        db.withTransaction {
+            mergeHabitLogsOfDay(habitId, dayMillis)
+            val existing = habitDao.logOf(habitId, dayMillis)
+            if (existing == null) {
+                habitDao.insertLog(
+                    HabitLogEntity(
+                        habitId = habitId,
+                        dateMillis = dayMillis,
+                        count = count,
+                        createdAt = nowMillis
+                    )
                 )
-            )
-        } else {
-            habitDao.updateLog(existing.copy(count = count))
+            } else {
+                habitDao.updateLog(existing.copy(count = count))
+            }
         }
+    }
+
+    /**
+     * 把某天某个习惯的重复打卡记录并成一条：计数全部加到 id 最小的那一条上，其余删掉。
+     *
+     * 只在写入前调用（读不需要，读一律按「同一天求和」，见 [HabitDao.countOf]）。
+     * 表里没有「habitId + dateMillis」的唯一约束，也不该加 —— 加了会让导入备份时
+     * 整条记录被拒绝；所以重复只能这样在写入前顺手收拢。
+     */
+    private suspend fun mergeHabitLogsOfDay(habitId: Long, dayMillis: Long) {
+        habitDao.sumIntoLowestLog(habitId, dayMillis)
+        habitDao.deleteDuplicateLogs(habitId, dayMillis)
     }
 
     /**
@@ -511,6 +532,9 @@ class DailyRepository(context: Context) {
      * 没有记录 = 没做过，勾上就直接记满当天的目标量；
      * 已经有记录且大于 0 = 已做过，再点一次清成 0（取消勾选）；
      * 其余情况（记录存在但是 0）= 取消过又点回来，直接补满目标量。
+     *
+     * 和 [logHabit] 一样，先并掉当天的重复记录再判断 —— 判断依据是**当天合计**，
+     * 否则一天两条时会出现「点一下从合计 20 跳到 0，再点一下跳到目标量」这种错乱。
      */
     suspend fun toggleHabitDone(
         habitId: Long,
@@ -519,18 +543,21 @@ class DailyRepository(context: Context) {
         nowMillis: Long = System.currentTimeMillis()
     ) {
         val target = targetPerDay.coerceAtLeast(1)
-        val existing = habitDao.logOf(habitId, dayMillis)
-        when {
-            existing == null -> habitDao.insertLog(
-                HabitLogEntity(
-                    habitId = habitId,
-                    dateMillis = dayMillis,
-                    count = target,
-                    createdAt = nowMillis
+        db.withTransaction {
+            mergeHabitLogsOfDay(habitId, dayMillis)
+            val existing = habitDao.logOf(habitId, dayMillis)
+            when {
+                existing == null -> habitDao.insertLog(
+                    HabitLogEntity(
+                        habitId = habitId,
+                        dateMillis = dayMillis,
+                        count = target,
+                        createdAt = nowMillis
+                    )
                 )
-            )
-            existing.count > 0 -> habitDao.updateLog(existing.copy(count = 0))
-            else -> habitDao.updateLog(existing.copy(count = target))
+                existing.count > 0 -> habitDao.updateLog(existing.copy(count = 0))
+                else -> habitDao.updateLog(existing.copy(count = target))
+            }
         }
     }
 

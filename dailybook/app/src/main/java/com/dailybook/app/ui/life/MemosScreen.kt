@@ -59,10 +59,11 @@ import com.dailybook.app.util.toLocalDate
  * 两列瀑布流（[LazyVerticalStaggeredGrid]）：卡片高度跟着内容走，
  * 两列各自排自己的，短卡片下面不会留一大片空白，320dp 窄屏也够放两列。
  *
- * ⚠️ 点卡片**没有** push `Route.MemoDetail`：父级那个 `MemoDetailScreen` 还没写，
- * push 过去会是一屏空白。所以这里就地打开一个「全文弹窗」看完整内容，
- * 本页自给自足，不依赖父级补齐页面。等 MemoDetailScreen 就位后，
- * 把卡片的 clickable 换成 `nav.push(Route.MemoDetail(memo.id))` 即可。
+ * ⚠️ 点卡片**不会**导航到任何子页面：备忘录是**刻意就地读**的 ——
+ * 全文在一个弹窗里看（[MemoReaderDialog]），本页自给自足。
+ * 以前这里写的是「等父级的 MemoDetailScreen 就位后再 push Route.MemoDetail」，
+ * 但那条路由（Route.MemoDetail / MemoDetailScreen）已经删掉了，不会再有第二个页面：
+ * 一条备忘录只有标题和正文，为它单独开一页不值当。别再按旧注释去找那个页面。
  *
  * 全文弹窗与编辑弹窗都**只记 id**，显示 / 保存时再从 `state.memos` 里按 id 取当前的那一条
  * （取不到说明已被删除，才退回打开弹窗时的那份）：这样弹窗开着时发生的改动（置顶、在别处编辑）
@@ -350,7 +351,7 @@ private fun MemoDialog(
 }
 
 /**
- * 就地看全文（替代还没实现的 MemoDetailScreen）。
+ * 就地看全文（这就是备忘录的「详情」，没有单独的一页；`Route.MemoDetail` 已经删掉）。
  * 不做滚动容器嵌套：正文整块放在可滚动列里，标题在弹窗头部不跟着滚。
  */
 @Composable

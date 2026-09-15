@@ -51,30 +51,25 @@ object ImportantDateSchedule {
      */
     fun nextSolarOccurrence(start: LocalDate, rule: DateRepeat, today: LocalDate): LocalDate {
         if (rule == DateRepeat.ONCE) return start
-        var date = start
-        when (rule) {
-            DateRepeat.YEARLY -> {
-                val years = ChronoUnit.YEARS.between(start, today)
-                if (years > 0) date = start.plusYears(years)
-            }
-            DateRepeat.MONTHLY -> {
-                val months = ChronoUnit.MONTHS.between(start, today)
-                if (months > 0) date = start.plusMonths(months)
-            }
-            DateRepeat.WEEKLY -> {
-                val weeks = ChronoUnit.WEEKS.between(start, today)
-                if (weeks > 0) date = start.plusWeeks(weeks)
-            }
+        val unit = when (rule) {
+            DateRepeat.YEARLY -> ChronoUnit.YEARS
+            DateRepeat.MONTHLY -> ChronoUnit.MONTHS
+            DateRepeat.WEEKLY -> ChronoUnit.WEEKS
             DateRepeat.ONCE -> return start
         }
+
+        // 先按「整 N 个单位」大步快进到今天附近
+        var step = unit.between(start, today).coerceAtLeast(0)
+        var date = start.plus(step, unit)
+
+        // 再小步校正。关键：**每一步都从 start 重新推**（start + step 个单位），
+        // 不要拿上一步算出来的 date 继续加 —— 因为月末会被 Java 的 plusMonths 夹取
+        // （1/31 + 1 个月 = 2/28），一旦用夹取过的日期继续推，
+        // 「每月 31 日」过了 2 月就永远变成 28 日了。
         var guard = 0
         while (date.isBefore(today) && guard++ < 8) {
-            date = when (rule) {
-                DateRepeat.YEARLY -> date.plusYears(1)
-                DateRepeat.MONTHLY -> date.plusMonths(1)
-                DateRepeat.WEEKLY -> date.plusWeeks(1)
-                DateRepeat.ONCE -> return start
-            }
+            step++
+            date = start.plus(step, unit)
         }
         return date
     }

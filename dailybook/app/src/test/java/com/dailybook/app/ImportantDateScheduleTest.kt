@@ -243,4 +243,42 @@ class ImportantDateScheduleTest {
             ImportantDateSchedule.nextOccurrence(leapSixth, LocalDate.of(2026, 1, 1))
         )
     }
+
+    @Test
+    fun lunarOnceStaysOnItsOwnDayInsteadOfRecurringEveryYear() {
+        // 农历 + 只过一次：必须认规则 —— 停在存档那天（哪怕已经过去），
+        // 不能像「每年」那样年年复发。以前 nextOccurrence 的农历分支在检查 repeatRule 之前
+        // 就直接返回了「下一次中秋」式的年度结果，于是「只过一次」这个标签在农历上是假的，
+        // 那条也永远不会进「已经过去」分组。
+        val once = item(
+            LocalDate.of(2026, 9, 25), DateRepeat.ONCE,
+            lunar = true, lunarMonth = 8, lunarDay = 15
+        )
+        assertEquals(
+            "还没到那天：就是那天的阳历日",
+            LocalDate.of(2026, 9, 25),
+            ImportantDateSchedule.nextOccurrence(once, LocalDate.of(2026, 1, 1))
+        )
+        assertEquals(
+            "已经过去：仍然返回原来那天（交给界面显示「已过去 N 天」），而不是顺延到明年",
+            LocalDate.of(2026, 9, 25),
+            ImportantDateSchedule.nextOccurrence(once, LocalDate.of(2026, 10, 1))
+        )
+        assertEquals(
+            "隔了很多年也一样，不会复发",
+            LocalDate.of(2026, 9, 25),
+            ImportantDateSchedule.nextOccurrence(once, LocalDate.of(2030, 5, 1))
+        )
+
+        // 对照：同样这条农历日期，规则是「每年」时就应该往后顺延到下一次中秋
+        val yearly = item(
+            LocalDate.of(2026, 9, 25), DateRepeat.YEARLY,
+            lunar = true, lunarMonth = 8, lunarDay = 15
+        )
+        assertEquals(
+            "每年：过期后顺延到次年八月十五",
+            LocalDate.of(2027, 9, 15),
+            ImportantDateSchedule.nextOccurrence(yearly, LocalDate.of(2026, 10, 1))
+        )
+    }
 }
